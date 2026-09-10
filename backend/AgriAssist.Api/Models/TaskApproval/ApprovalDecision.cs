@@ -20,5 +20,6 @@ public enum ApprovalDecisionType
 {
     Approved = 1,
     Rejected = 2,
-    RevisionRequested = 3
+    RevisionRequested = 3,
+    Cancelled = 4
 }

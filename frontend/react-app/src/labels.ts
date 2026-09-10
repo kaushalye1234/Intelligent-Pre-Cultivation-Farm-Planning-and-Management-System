@@ -68,4 +68,5 @@ export const approvalDecision: Record<number, string> = {
   1: 'Approved',
   2: 'Rejected',
   3: 'Revision Requested',
+  4: 'Cancelled',
 }
