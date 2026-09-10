@@ -1,8 +1,14 @@
 ﻿# Member 4: Task/Approval and Final Integration Plan
 
 Date: 2026-09-09
-Status: Source-grounded planning draft; implementation and team integration have not been performed.
+Status: Milestone 1 manual Task/Approval hardening implemented in the local foundation on 2026-09-10; shared AI and team integration remain pending.
 Assignment source: `05_FINAL_MEMBER_4_TASK_APPROVAL_INTEGRATION.md`, supplied by the user from Downloads.
+
+## Progress update — 2026-09-10
+
+Milestone 1 now includes task/schedule detail APIs, schedule update, draft/revision submission, auditable cancellation, restricted soft deletion, scoped filters/history, stable sorting, date/reference validation, task-time and irrigation-overlap conflict checks, and server-owned approval transitions. The React page now supports editing, resubmission, cancellation, and officer-entered decision reasons. Cancellation reuses immutable `ApprovalDecision` records with a new append-only `Cancelled = 4` enum value, so this milestone does not require a schema migration.
+
+Verified locally: backend build passed with no warnings; seven focused Task/Approval and regression tests passed; React production build passed; 12 frontend tests passed; lint completed with existing hook/fast-refresh warnings and no errors. The full backend suite passed 10 of 11 tests, with the unrelated auth integration test blocked by Windows Event Log permissions in the sandbox. PostgreSQL concurrency and the four-agent workflow remain unverified and are part of later milestones.
 
 ## 1. Your responsibility
 

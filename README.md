@@ -1,6 +1,6 @@
-# Member 4 - Task/Approval foundation
+# Member 4 - Task/Approval implementation
 
-This branch imports the existing Member 4 Task/Approval component from the local AgriAssist foundation snapshot. It is a source handoff, not the finished four-agent integration or a standalone runnable application.
+This branch contains the existing Member 4 Task/Approval component plus the completed Milestone 1 manual workflow hardening. It is a source handoff for the four-member integration and is not a standalone runnable application while the shared foundation is absent from the remote repository.
 
 The branch is based on the team's existing initial commit. Existing snapshot files are imported as one honest contribution; prior authorship and development history are not reconstructed.
 
@@ -8,10 +8,11 @@ The branch is based on the team's existing initial commit. Existing snapshot fil
 
 - TaskApproval controller, service/interface, DTOs and validators.
 - FarmTask, IrrigationSchedule and ApprovalDecision models.
-- React TaskApprovalPage with task/schedule lists, creation and manual decisions.
+- React TaskApprovalPage with task/schedule lists, create/edit actions, explicit submission and cancellation, and officer-entered approval comments.
+- Focused backend business-rule tests and a frontend decision-dialog test.
 - [Member 4 implementation and integration plan](docs/plans/member-4-task-approval-integration-plan.md).
 
-The backend currently supports task listing/creation/update, schedule listing/creation, approval history, and approve/reject/request-revision actions. Final decision endpoints restrict access to AgriculturalOfficer/Admin. This is the current foundation behavior, with known gaps below.
+The backend now supports filtered and paged task/schedule/history reads, detail endpoints, create/update/submit/cancel/soft-delete flows, approval decisions, ownership-scoped farmer history, deterministic task/schedule conflict checks, and audit metadata updates. Final decision endpoints restrict access to AgriculturalOfficer/Admin. Direct client-supplied status transitions are rejected, and reject/revision/cancellation actions require a reason.
 
 ## Required team foundation
 
@@ -19,19 +20,35 @@ The remote main branch contained only LICENSE when this handoff was prepared. Th
 
 - ASP.NET Core 8 project/package files, Program.cs registration, AppDbContext/mappings/migrations, shared DTOs, validators, error/current-user services, auth and CropPlanning models.
 - React project/package files, API client, auth context, routing, shared types, formatting/labels and UI components imported by TaskApprovalPage.
-- Shared workflow models and database schema. Register ITaskApprovalService -> TaskApprovalService and the task/schedule/approval request validators in the shared backend composition root.
-- Shared test projects and fixtures. The local snapshot's AuditRegressionTests includes a sequential repeated-task-approval test, but also contains Member 3 coverage; that mixed file is not imported as a Member 4-only file.
+- Shared workflow models and database schema. Register `ITaskApprovalService -> TaskApprovalService` and all TaskApproval request validators in the shared backend composition root.
+- Shared test projects and fixtures. The local snapshot's `AuditRegressionTests` includes a sequential repeated-task-approval test, but also contains Member 3 coverage; that mixed file is not imported as a Member 4-only file.
+
+When the shared foundation is merged, replay these integration edits from the verified local workspace rather than replacing shared files wholesale:
+
+- Register `IRequestValidator<CancellationRequest>, CancellationRequestValidator` in `Program.cs`.
+- Add `ApprovalDecisionType.Cancelled = 4` to the shared frontend decision labels.
+- Let the shared API client extract messages from the backend `{ error: { message } }` response shape.
+- Pass `CancellationRequestValidator` to the TaskApproval service constructor in the existing mixed `AuditRegressionTests` fixture.
 
 Merge these files into their existing paths when the team foundation is available. Do not replace shared application setup with a second implementation. This upload deliberately does not include other members' modules, environment files, personal Codex skills, local logs or build artifacts.
 
-## Known incomplete work
+## Remaining integration work
 
-The manual foundation is not the completed assignment. The scheduling agent, deterministic candidate validation, workflow-level approval transaction, resource-reservation coordination, complete CRUD/conflict/history behavior, detailed React workflow review and Flutter final-status integration still need implementation.
+Milestone 1 covers the manual Task/Approval lifecycle. The scheduling agent, deterministic candidate validation, workflow-level approval transaction, resource-reservation coordination, concurrency enforcement at the PostgreSQL boundary, and final workflow review UI remain for later milestones.
 
-The source review identified caller-supplied task statuses, unscoped approval-history reads, optional rejection/revision comments and unverified concurrent approval behavior. See the plan for remediation. Do not treat this snapshot as production-ready.
+The assignment mentions Flutter integration, but `mobile/flutter_app` is absent from the verified checkout. That work remains unavailable until the team supplies the mobile project. See the plan for the complete milestone sequence and verification limits.
 
-## Verification for this upload
+## Verification for Milestone 1
 
-All 10 imported source/plan files were hash-compared with the local originals before staging. One existing extra trailing blank line in TaskApprovalPage.tsx was removed in this handoff copy to pass the Git whitespace check; application behavior is unchanged. The upload diff was checked for whitespace errors and reviewed for accidental credentials. No application build or runtime test can establish this branch is runnable until the shared project foundation is present. No integration, performance, deployment or AI execution results are claimed.
+All 10 Member 4 source, test, and plan files were byte-compared with the verified local originals before staging.
+
+- Backend test-project build: passed with 0 warnings and 0 errors.
+- Focused TaskApproval/Audit tests: 7 passed.
+- Full backend suite: 10 passed and 1 unrelated Auth integration test was blocked by Windows Event Log access in the sandbox.
+- Frontend lint: passed with warnings and no errors.
+- Frontend production build: passed.
+- Frontend tests: 12 passed across 2 files.
+
+The upload diff is checked for whitespace errors and accidental credential patterns before commit. The remote branch cannot be compiled by itself until the shared application foundation is merged; the successful checks above were run in the complete local workspace.
 
 The plan's no-Git finding describes the original local snapshot at inspection time. This handoff branch now preserves the actual team Git history; it does not retroactively give that snapshot an authorship history.
