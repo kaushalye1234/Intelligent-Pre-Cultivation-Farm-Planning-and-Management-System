@@ -1,0 +1,32 @@
+# Local secrets
+.env
+**/.env
+!.env.example
+!**/.env.example
+
+# .NET
+bin/
+obj/
+TestResults/
+*.user
+
+# Node / React
+node_modules/
+dist/
+coverage/
+.vite/
+
+# Flutter
+.dart_tool/
+.packages
+build/
+ios/Pods/
+android/.gradle/
+
+# IDE / OS
+.vs/
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+Desktop.ini

@@ -1,0 +1,30 @@
+using AgriAssist.Api.Dtos.CropPlanning;
+using AgriAssist.Api.Dtos.Shared;
+
+namespace AgriAssist.Api.Services.CropPlanning;
+
+public interface ICropPlanningService
+{
+    Task<PagedResult<FarmResponse>> SearchFarmsAsync(PagedQuery query, CancellationToken cancellationToken);
+    Task<FarmResponse> GetFarmAsync(Guid id, CancellationToken cancellationToken);
+    Task<FarmResponse> CreateFarmAsync(FarmRequest request, CancellationToken cancellationToken);
+    Task<FarmResponse> UpdateFarmAsync(Guid id, FarmRequest request, CancellationToken cancellationToken);
+    Task DeleteFarmAsync(Guid id, CancellationToken cancellationToken);
+
+    Task<PagedResult<FieldResponse>> SearchFieldsAsync(PagedQuery query, Guid? farmId, CancellationToken cancellationToken);
+    Task<FieldResponse> CreateFieldAsync(FieldRequest request, CancellationToken cancellationToken);
+    Task<FieldResponse> UpdateFieldAsync(Guid id, FieldRequest request, CancellationToken cancellationToken);
+
+    Task<PagedResult<CropTypeResponse>> SearchCropTypesAsync(PagedQuery query, CancellationToken cancellationToken);
+    Task<CropTypeResponse> CreateCropTypeAsync(CropTypeRequest request, CancellationToken cancellationToken);
+    Task<CropTypeResponse> UpdateCropTypeAsync(Guid id, CropTypeRequest request, CancellationToken cancellationToken);
+
+    Task<PagedResult<CropCycleResponse>> SearchCropCyclesAsync(PagedQuery query, Guid? fieldId, CancellationToken cancellationToken);
+    Task<CropCycleResponse> CreateCropCycleAsync(CropCycleRequest request, CancellationToken cancellationToken);
+
+    Task<PagedResult<CropPlanRequestResponse>> SearchCropPlanRequestsAsync(PagedQuery query, CancellationToken cancellationToken);
+    Task<CropPlanRequestResponse> CreateCropPlanRequestAsync(CropPlanRequestCreate request, CancellationToken cancellationToken);
+    Task<CropPlanRequestResponse> UpdateCropPlanRequestAsync(Guid id, CropPlanRequestUpdate request, CancellationToken cancellationToken);
+    Task<CropPlanRequestResponse> GeneratePreliminaryRequestAsync(CropPlanRequestCreate request, CancellationToken cancellationToken);
+    Task<IReadOnlyList<CropPlanHistoryResponse>> GetCropPlanHistoryAsync(Guid requestId, CancellationToken cancellationToken);
+}

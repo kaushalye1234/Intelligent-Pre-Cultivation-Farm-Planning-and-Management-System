@@ -1,0 +1,956 @@
+Using launch settings from C:\Users\sanet\Desktop\new-farm-paln\backend\AgriAssist.Api\Properties\launchSettings.json...
+Building...
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (157ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "Users" AS u)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (109ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "CropTypes" AS c)
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://localhost:5000
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Development
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: C:\Users\sanet\Desktop\new-farm-paln\backend\AgriAssist.Api
+warn: Microsoft.AspNetCore.HttpsPolicy.HttpsRedirectionMiddleware[3]
+      Failed to determine the https port for redirect.
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (452ms) [Parameters=[@__normalizedEmail_0='?'], CommandType='Text', CommandTimeout='30']
+      SELECT u."Id", u."CreatedAt", u."CreatedByUserId", u."Email", u."FullName", u."IsActive", u."IsDeleted", u."LastLoginAt", u."PasswordHash", u."Role", u."UpdatedAt", u."UpdatedByUserId"
+      FROM "Users" AS u
+      WHERE u."Email" = @__normalizedEmail_0
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (422ms) [Parameters=[@p2='?' (DbType = Guid), @p0='?' (DbType = DateTime), @p1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      UPDATE "Users" SET "LastLoginAt" = @p0, "UpdatedAt" = @p1
+      WHERE "Id" = @p2;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (84ms) [Parameters=[@__normalizedEmail_0='?'], CommandType='Text', CommandTimeout='30']
+      SELECT u."Id", u."CreatedAt", u."CreatedByUserId", u."Email", u."FullName", u."IsActive", u."IsDeleted", u."LastLoginAt", u."PasswordHash", u."Role", u."UpdatedAt", u."UpdatedByUserId"
+      FROM "Users" AS u
+      WHERE u."Email" = @__normalizedEmail_0
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (457ms) [Parameters=[@p2='?' (DbType = Guid), @p0='?' (DbType = DateTime), @p1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      UPDATE "Users" SET "LastLoginAt" = @p0, "UpdatedAt" = @p1
+      WHERE "Id" = @p2;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (190ms) [Parameters=[@__normalizedEmail_0='?'], CommandType='Text', CommandTimeout='30']
+      SELECT u."Id", u."CreatedAt", u."CreatedByUserId", u."Email", u."FullName", u."IsActive", u."IsDeleted", u."LastLoginAt", u."PasswordHash", u."Role", u."UpdatedAt", u."UpdatedByUserId"
+      FROM "Users" AS u
+      WHERE u."Email" = @__normalizedEmail_0
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (77ms) [Parameters=[@p2='?' (DbType = Guid), @p0='?' (DbType = DateTime), @p1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      UPDATE "Users" SET "LastLoginAt" = @p0, "UpdatedAt" = @p1
+      WHERE "Id" = @p2;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (122ms) [Parameters=[@__normalizedEmail_0='?'], CommandType='Text', CommandTimeout='30']
+      SELECT u."Id", u."CreatedAt", u."CreatedByUserId", u."Email", u."FullName", u."IsActive", u."IsDeleted", u."LastLoginAt", u."PasswordHash", u."Role", u."UpdatedAt", u."UpdatedByUserId"
+      FROM "Users" AS u
+      WHERE u."Email" = @__normalizedEmail_0
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (116ms) [Parameters=[@p2='?' (DbType = Guid), @p0='?' (DbType = DateTime), @p1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      UPDATE "Users" SET "LastLoginAt" = @p0, "UpdatedAt" = @p1
+      WHERE "Id" = @p2;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (110ms) [Parameters=[@__normalizedEmail_0='?'], CommandType='Text', CommandTimeout='30']
+      SELECT u."Id", u."CreatedAt", u."CreatedByUserId", u."Email", u."FullName", u."IsActive", u."IsDeleted", u."LastLoginAt", u."PasswordHash", u."Role", u."UpdatedAt", u."UpdatedByUserId"
+      FROM "Users" AS u
+      WHERE u."Email" = @__normalizedEmail_0
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (113ms) [Parameters=[@p2='?' (DbType = Guid), @p0='?' (DbType = DateTime), @p1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      UPDATE "Users" SET "LastLoginAt" = @p0, "UpdatedAt" = @p1
+      WHERE "Id" = @p2;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (130ms) [Parameters=[@__userId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT u."Id", u."CreatedAt", u."CreatedByUserId", u."Email", u."FullName", u."IsActive", u."IsDeleted", u."LastLoginAt", u."PasswordHash", u."Role", u."UpdatedAt", u."UpdatedByUserId"
+      FROM "Users" AS u
+      WHERE u."Id" = @__userId_0
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (95ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT count(*)::int
+      FROM "Users" AS u
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (103ms) [Parameters=[@__p_1='?' (DbType = Int32), @__p_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT u."Id", u."FullName", u."Email", u."Role", u."IsActive", u."CreatedAt", u."LastLoginAt"
+      FROM "Users" AS u
+      ORDER BY u."FullName"
+      LIMIT @__p_1 OFFSET @__p_0
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (91ms) [Parameters=[@__normalizedEmail_0='?'], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "Users" AS u
+          WHERE u."Email" = @__normalizedEmail_0)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (104ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = DateTime), @p2='?' (DbType = Guid), @p3='?', @p4='?', @p5='?' (DbType = Boolean), @p6='?' (DbType = Boolean), @p7='?' (DbType = DateTime), @p8='?', @p9='?', @p10='?' (DbType = DateTime), @p11='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "Users" ("Id", "CreatedAt", "CreatedByUserId", "Email", "FullName", "IsActive", "IsDeleted", "LastLoginAt", "PasswordHash", "Role", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (91ms) [Parameters=[@__id_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT u."Id", u."CreatedAt", u."CreatedByUserId", u."Email", u."FullName", u."IsActive", u."IsDeleted", u."LastLoginAt", u."PasswordHash", u."Role", u."UpdatedAt", u."UpdatedByUserId"
+      FROM "Users" AS u
+      WHERE u."Id" = @__id_0
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (110ms) [Parameters=[@__id_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT u."Id", u."CreatedAt", u."CreatedByUserId", u."Email", u."FullName", u."IsActive", u."IsDeleted", u."LastLoginAt", u."PasswordHash", u."Role", u."UpdatedAt", u."UpdatedByUserId"
+      FROM "Users" AS u
+      WHERE u."Id" = @__id_0
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (90ms) [Parameters=[@p2='?' (DbType = Guid), @p0='?', @p1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      UPDATE "Users" SET "Role" = @p0, "UpdatedAt" = @p1
+      WHERE "Id" = @p2;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (93ms) [Parameters=[@__id_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT u."Id", u."CreatedAt", u."CreatedByUserId", u."Email", u."FullName", u."IsActive", u."IsDeleted", u."LastLoginAt", u."PasswordHash", u."Role", u."UpdatedAt", u."UpdatedByUserId"
+      FROM "Users" AS u
+      WHERE u."Id" = @__id_0
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (97ms) [Parameters=[@p2='?' (DbType = Guid), @p0='?' (DbType = Boolean), @p1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      UPDATE "Users" SET "IsActive" = @p0, "UpdatedAt" = @p1
+      WHERE "Id" = @p2;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (108ms) [Parameters=[@__ownerId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "Users" AS u
+          WHERE u."Id" = @__ownerId_0 AND u."Role" = 'Farmer' AND u."IsActive")
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (107ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = DateTime), @p2='?' (DbType = Guid), @p3='?' (DbType = Boolean), @p4='?', @p5='?', @p6='?' (DbType = Guid), @p7='?' (DbType = Decimal), @p8='?' (DbType = DateTime), @p9='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "Farms" ("Id", "CreatedAt", "CreatedByUserId", "IsDeleted", "Location", "Name", "OwnerUserId", "TotalArea", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (99ms) [Parameters=[@__P_UserId_0='?' (DbType = Guid), @__request_FarmId_1='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT f."Id", f."CreatedAt", f."CreatedByUserId", f."IsDeleted", f."Location", f."Name", f."OwnerUserId", f."TotalArea", f."UpdatedAt", f."UpdatedByUserId"
+      FROM "Farms" AS f
+      WHERE NOT (f."IsDeleted") AND f."OwnerUserId" = @__P_UserId_0 AND f."Id" = @__request_FarmId_1
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (96ms) [Parameters=[@__request_FarmId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT COALESCE(sum(f."Area"), 0.0)
+      FROM "Fields" AS f
+      WHERE f."FarmId" = @__request_FarmId_0 AND NOT (f."IsDeleted")
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (98ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = Decimal), @p2='?' (DbType = DateTime), @p3='?' (DbType = Guid), @p4='?' (DbType = Guid), @p5='?' (DbType = Boolean), @p6='?' (DbType = Boolean), @p7='?', @p8='?', @p9='?' (DbType = DateTime), @p10='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "Fields" ("Id", "Area", "CreatedAt", "CreatedByUserId", "FarmId", "IsActive", "IsDeleted", "Name", "SoilType", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (113ms) [Parameters=[@__P_UserId_0='?' (DbType = Guid), @__request_FarmId_1='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT f."Id", f."CreatedAt", f."CreatedByUserId", f."IsDeleted", f."Location", f."Name", f."OwnerUserId", f."TotalArea", f."UpdatedAt", f."UpdatedByUserId"
+      FROM "Farms" AS f
+      WHERE NOT (f."IsDeleted") AND f."OwnerUserId" = @__P_UserId_0 AND f."Id" = @__request_FarmId_1
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (110ms) [Parameters=[@__request_FarmId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT COALESCE(sum(f."Area"), 0.0)
+      FROM "Fields" AS f
+      WHERE f."FarmId" = @__request_FarmId_0 AND NOT (f."IsDeleted")
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (120ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT count(*)::int
+      FROM "CropTypes" AS c
+      WHERE NOT (c."IsDeleted")
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (122ms) [Parameters=[@__p_1='?' (DbType = Int32), @__p_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT c."Id", c."CreatedAt", c."CreatedByUserId", c."Description", c."IsActive", c."IsDeleted", c."Name", c."UpdatedAt", c."UpdatedByUserId"
+      FROM "CropTypes" AS c
+      WHERE NOT (c."IsDeleted")
+      ORDER BY c."Name"
+      LIMIT @__p_1 OFFSET @__p_0
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (108ms) [Parameters=[@__P_UserId_0='?' (DbType = Guid), @__farmId_1='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "Farms" AS f
+          WHERE NOT (f."IsDeleted") AND f."OwnerUserId" = @__P_UserId_0 AND f."Id" = @__farmId_1)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (99ms) [Parameters=[@__P_UserId_0='?' (DbType = Guid), @__fieldId_1='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "Fields" AS f
+          INNER JOIN "Farms" AS f0 ON f."FarmId" = f0."Id"
+          WHERE NOT (f."IsDeleted") AND NOT (f0."IsDeleted") AND f0."OwnerUserId" = @__P_UserId_0 AND f."Id" = @__fieldId_1)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (90ms) [Parameters=[@__cropTypeId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "CropTypes" AS c
+          WHERE c."Id" = @__cropTypeId_0 AND c."IsActive" AND NOT (c."IsDeleted"))
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (187ms) [Parameters=[@__request_FarmId_0='?' (DbType = Guid), @__request_FieldId_1='?' (DbType = Guid), @__request_CropTypeId_2='?' (DbType = Guid), @__activeStatuses_3='?' (DbType = Object)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "CropPlanRequests" AS c
+          WHERE c."FarmId" = @__request_FarmId_0 AND c."FieldId" = @__request_FieldId_1 AND c."CropTypeId" = @__request_CropTypeId_2 AND c."Status" = ANY (@__activeStatuses_3) AND NOT (c."IsDeleted"))
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (88ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = Decimal), @p2='?' (DbType = DateTime), @p3='?' (DbType = Guid), @p4='?' (DbType = Guid), @p5='?' (DbType = Guid), @p6='?' (DbType = Guid), @p7='?' (DbType = Boolean), @p8='?', @p9='?' (DbType = Date), @p10='?' (DbType = Date), @p11='?' (DbType = Guid), @p12='?', @p13='?' (DbType = DateTime), @p14='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "CropPlanRequests" ("Id", "Budget", "CreatedAt", "CreatedByUserId", "CropTypeId", "FarmId", "FieldId", "IsDeleted", "Objective", "PreferredEndDate", "PreferredStartDate", "RequestedByUserId", "Status", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11, @p12, @p13, @p14);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (118ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = Guid), @p2='?' (DbType = DateTime), @p3='?' (DbType = Guid), @p4='?' (DbType = Guid), @p5='?', @p6='?' (DbType = Boolean), @p7='?', @p8='?', @p9='?' (DbType = DateTime), @p10='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "CropPlanRequestHistories" ("Id", "ChangedByUserId", "CreatedAt", "CreatedByUserId", "CropPlanRequestId", "FromStatus", "IsDeleted", "Note", "ToStatus", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (97ms) [Parameters=[@__P_UserId_0='?' (DbType = Guid), @__farmId_1='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "Farms" AS f
+          WHERE NOT (f."IsDeleted") AND f."OwnerUserId" = @__P_UserId_0 AND f."Id" = @__farmId_1)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (95ms) [Parameters=[@__P_UserId_0='?' (DbType = Guid), @__fieldId_1='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "Fields" AS f
+          INNER JOIN "Farms" AS f0 ON f."FarmId" = f0."Id"
+          WHERE NOT (f."IsDeleted") AND NOT (f0."IsDeleted") AND f0."OwnerUserId" = @__P_UserId_0 AND f."Id" = @__fieldId_1)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (94ms) [Parameters=[@__cropTypeId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "CropTypes" AS c
+          WHERE c."Id" = @__cropTypeId_0 AND c."IsActive" AND NOT (c."IsDeleted"))
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (79ms) [Parameters=[@__request_FarmId_0='?' (DbType = Guid), @__request_FieldId_1='?' (DbType = Guid), @__request_CropTypeId_2='?' (DbType = Guid), @__activeStatuses_3='?' (DbType = Object)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "CropPlanRequests" AS c
+          WHERE c."FarmId" = @__request_FarmId_0 AND c."FieldId" = @__request_FieldId_1 AND c."CropTypeId" = @__request_CropTypeId_2 AND c."Status" = ANY (@__activeStatuses_3) AND NOT (c."IsDeleted"))
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (90ms) [Parameters=[@__P_UserId_0='?' (DbType = Guid), @__requestId_1='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "CropPlanRequests" AS c
+          INNER JOIN "Farms" AS f ON c."FarmId" = f."Id"
+          WHERE NOT (c."IsDeleted") AND f."OwnerUserId" = @__P_UserId_0 AND c."Id" = @__requestId_1)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (78ms) [Parameters=[@__requestId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT c."Id", c."CropPlanRequestId", c."FromStatus", c."ToStatus", c."Note", c."ChangedByUserId", c."CreatedAt"
+      FROM "CropPlanRequestHistories" AS c
+      WHERE c."CropPlanRequestId" = @__requestId_0
+      ORDER BY c."CreatedAt"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (95ms) [Parameters=[@__fieldId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "Fields" AS f
+          INNER JOIN "Farms" AS f0 ON f."FarmId" = f0."Id"
+          WHERE NOT (f."IsDeleted") AND NOT (f0."IsDeleted") AND f."Id" = @__fieldId_0)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (104ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = DateTime), @p2='?' (DbType = DateTime), @p3='?' (DbType = Guid), @p4='?' (DbType = Guid), @p5='?' (DbType = Guid), @p6='?' (DbType = Boolean), @p7='?' (DbType = DateTime), @p8='?', @p9='?', @p10='?' (DbType = DateTime), @p11='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "FieldInspections" ("Id", "CompletedAt", "CreatedAt", "CreatedByUserId", "FieldId", "InspectorUserId", "IsDeleted", "ScheduledAt", "Status", "Summary", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (84ms) [Parameters=[@__inspectionId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "FieldInspections" AS f
+          WHERE NOT (f."IsDeleted") AND f."Id" = @__inspectionId_0)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (98ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = DateTime), @p2='?' (DbType = Guid), @p3='?' (DbType = Guid), @p4='?' (DbType = Boolean), @p5='?', @p6='?', @p7='?' (DbType = DateTime), @p8='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "InspectionObservations" ("Id", "CreatedAt", "CreatedByUserId", "FieldInspectionId", "IsDeleted", "Notes", "ObservationType", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (86ms) [Parameters=[@__inspectionId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "FieldInspections" AS f
+          WHERE NOT (f."IsDeleted") AND f."Id" = @__inspectionId_0)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (98ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = DateTime), @p2='?' (DbType = Guid), @p3='?', @p4='?' (DbType = DateTime), @p5='?' (DbType = Guid), @p6='?' (DbType = Guid), @p7='?' (DbType = Boolean), @p8='?', @p9='?', @p10='?', @p11='?' (DbType = DateTime), @p12='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "CropIssues" ("Id", "CreatedAt", "CreatedByUserId", "Description", "EscalatedAt", "EscalatedToUserId", "FieldInspectionId", "IsDeleted", "Severity", "Status", "Title", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11, @p12);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (115ms) [Parameters=[@__issueId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT c."Id", c."CreatedAt", c."CreatedByUserId", c."Description", c."EscalatedAt", c."EscalatedToUserId", c."FieldInspectionId", c."IsDeleted", c."Severity", c."Status", c."Title", c."UpdatedAt", c."UpdatedByUserId", f."Id", f."CompletedAt", f."CreatedAt", f."CreatedByUserId", f."FieldId", f."InspectorUserId", f."IsDeleted", f."ScheduledAt", f."Status", f."Summary", f."UpdatedAt", f."UpdatedByUserId", f0."Id", f0."Area", f0."CreatedAt", f0."CreatedByUserId", f0."FarmId", f0."IsActive", f0."IsDeleted", f0."Name", f0."SoilType", f0."UpdatedAt", f0."UpdatedByUserId", f1."Id", f1."CreatedAt", f1."CreatedByUserId", f1."IsDeleted", f1."Location", f1."Name", f1."OwnerUserId", f1."TotalArea", f1."UpdatedAt", f1."UpdatedByUserId"
+      FROM "CropIssues" AS c
+      INNER JOIN "FieldInspections" AS f ON c."FieldInspectionId" = f."Id"
+      INNER JOIN "Fields" AS f0 ON f."FieldId" = f0."Id"
+      INNER JOIN "Farms" AS f1 ON f0."FarmId" = f1."Id"
+      WHERE NOT (c."IsDeleted") AND c."Id" = @__issueId_0
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (115ms) [Parameters=[@p4='?' (DbType = Guid), @p0='?' (DbType = DateTime), @p1='?' (DbType = Guid), @p2='?', @p3='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      UPDATE "CropIssues" SET "EscalatedAt" = @p0, "EscalatedToUserId" = @p1, "Status" = @p2, "UpdatedAt" = @p3
+      WHERE "Id" = @p4;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (119ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = DateTime), @p2='?' (DbType = Guid), @p3='?', @p4='?' (DbType = Boolean), @p5='?', @p6='?' (DbType = DateTime), @p7='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "ResourceCategories" ("Id", "CreatedAt", "CreatedByUserId", "Description", "IsDeleted", "Name", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (99ms) [Parameters=[@__request_ResourceCategoryId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "ResourceCategories" AS r
+          WHERE r."Id" = @__request_ResourceCategoryId_0 AND NOT (r."IsDeleted"))
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (117ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = DateTime), @p2='?' (DbType = Guid), @p3='?' (DbType = Boolean), @p4='?' (DbType = Boolean), @p5='?', @p6='?' (DbType = Guid), @p7='?' (DbType = Guid), @p8='?', @p9='?' (DbType = DateTime), @p10='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "Resources" ("Id", "CreatedAt", "CreatedByUserId", "IsActive", "IsDeleted", "Name", "ResourceCategoryId", "SupplierId", "Unit", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (95ms) [Parameters=[@__request_ResourceId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "Resources" AS r
+          WHERE r."Id" = @__request_ResourceId_0 AND r."IsActive" AND NOT (r."IsDeleted"))
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (114ms) [Parameters=[@__request_ResourceId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT i."Id", i."CreatedAt", i."CreatedByUserId", i."IsDeleted", i."LowStockThreshold", i."QuantityOnHand", i."ReservedQuantity", i."ResourceId", i."RowVersion", i."UpdatedAt", i."UpdatedByUserId"
+      FROM "InventoryStocks" AS i
+      WHERE i."ResourceId" = @__request_ResourceId_0
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (115ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = DateTime), @p2='?' (DbType = Guid), @p3='?' (DbType = Boolean), @p4='?' (DbType = Decimal), @p5='?' (DbType = Decimal), @p6='?' (DbType = Decimal), @p7='?' (DbType = Guid), @p8='?' (DbType = Binary), @p9='?' (DbType = DateTime), @p10='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "InventoryStocks" ("Id", "CreatedAt", "CreatedByUserId", "IsDeleted", "LowStockThreshold", "QuantityOnHand", "ReservedQuantity", "ResourceId", "RowVersion", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (105ms) [Parameters=[@__request_InventoryStockId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT i."Id", i."CreatedAt", i."CreatedByUserId", i."IsDeleted", i."LowStockThreshold", i."QuantityOnHand", i."ReservedQuantity", i."ResourceId", i."RowVersion", i."UpdatedAt", i."UpdatedByUserId"
+      FROM "InventoryStocks" AS i
+      WHERE i."Id" = @__request_InventoryStockId_0 AND NOT (i."IsDeleted")
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (150ms) [Parameters=[@p1='?' (DbType = Guid), @p0='?' (DbType = Decimal), @p2='?' (DbType = Binary), @p3='?' (DbType = Guid), @p4='?' (DbType = DateTime), @p5='?' (DbType = Guid), @p6='?' (DbType = Guid), @p7='?' (DbType = Boolean), @p8='?', @p9='?' (DbType = Decimal), @p10='?' (DbType = DateTime), @p11='?' (DbType = Guid), @p12='?', @p13='?' (DbType = DateTime), @p14='?' (DbType = Guid), @p15='?' (DbType = Guid), @p16='?' (DbType = DateTime), @p17='?' (DbType = Guid), @p18='?' (DbType = Guid), @p19='?' (DbType = Boolean), @p20='?', @p21='?' (DbType = Decimal), @p22='?', @p23='?' (DbType = DateTime), @p24='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      UPDATE "InventoryStocks" SET "ReservedQuantity" = @p0
+      WHERE "Id" = @p1 AND "RowVersion" = @p2;
+      INSERT INTO "ResourceReservations" ("Id", "CreatedAt", "CreatedByUserId", "InventoryStockId", "IsDeleted", "Purpose", "Quantity", "ReleasedAt", "RequestedByUserId", "Status", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11, @p12, @p13, @p14);
+      INSERT INTO "StockTransactions" ("Id", "CreatedAt", "CreatedByUserId", "InventoryStockId", "IsDeleted", "Note", "Quantity", "Type", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p15, @p16, @p17, @p18, @p19, @p20, @p21, @p22, @p23, @p24);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (111ms) [Parameters=[@__request_InventoryStockId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT i."Id", i."CreatedAt", i."CreatedByUserId", i."IsDeleted", i."LowStockThreshold", i."QuantityOnHand", i."ReservedQuantity", i."ResourceId", i."RowVersion", i."UpdatedAt", i."UpdatedByUserId"
+      FROM "InventoryStocks" AS i
+      WHERE i."Id" = @__request_InventoryStockId_0 AND NOT (i."IsDeleted")
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (101ms) [Parameters=[@__reservationId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT r."Id", r."CreatedAt", r."CreatedByUserId", r."InventoryStockId", r."IsDeleted", r."Purpose", r."Quantity", r."ReleasedAt", r."RequestedByUserId", r."Status", r."UpdatedAt", r."UpdatedByUserId", i."Id", i."CreatedAt", i."CreatedByUserId", i."IsDeleted", i."LowStockThreshold", i."QuantityOnHand", i."ReservedQuantity", i."ResourceId", i."RowVersion", i."UpdatedAt", i."UpdatedByUserId"
+      FROM "ResourceReservations" AS r
+      INNER JOIN "InventoryStocks" AS i ON r."InventoryStockId" = i."Id"
+      WHERE r."Id" = @__reservationId_0 AND NOT (r."IsDeleted")
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (87ms) [Parameters=[@p1='?' (DbType = Guid), @p0='?' (DbType = Decimal), @p2='?' (DbType = Binary), @p5='?' (DbType = Guid), @p3='?' (DbType = DateTime), @p4='?', @p6='?' (DbType = Guid), @p7='?' (DbType = DateTime), @p8='?' (DbType = Guid), @p9='?' (DbType = Guid), @p10='?' (DbType = Boolean), @p11='?', @p12='?' (DbType = Decimal), @p13='?', @p14='?' (DbType = DateTime), @p15='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      UPDATE "InventoryStocks" SET "ReservedQuantity" = @p0
+      WHERE "Id" = @p1 AND "RowVersion" = @p2;
+      UPDATE "ResourceReservations" SET "ReleasedAt" = @p3, "Status" = @p4
+      WHERE "Id" = @p5;
+      INSERT INTO "StockTransactions" ("Id", "CreatedAt", "CreatedByUserId", "InventoryStockId", "IsDeleted", "Note", "Quantity", "Type", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p6, @p7, @p8, @p9, @p10, @p11, @p12, @p13, @p14, @p15);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (120ms) [Parameters=[@__reservationId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT r."Id", r."CreatedAt", r."CreatedByUserId", r."InventoryStockId", r."IsDeleted", r."Purpose", r."Quantity", r."ReleasedAt", r."RequestedByUserId", r."Status", r."UpdatedAt", r."UpdatedByUserId", i."Id", i."CreatedAt", i."CreatedByUserId", i."IsDeleted", i."LowStockThreshold", i."QuantityOnHand", i."ReservedQuantity", i."ResourceId", i."RowVersion", i."UpdatedAt", i."UpdatedByUserId"
+      FROM "ResourceReservations" AS r
+      INNER JOIN "InventoryStocks" AS i ON r."InventoryStockId" = i."Id"
+      WHERE r."Id" = @__reservationId_0 AND NOT (r."IsDeleted")
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (93ms) [Parameters=[@__request_InventoryStockId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT i."Id", i."CreatedAt", i."CreatedByUserId", i."IsDeleted", i."LowStockThreshold", i."QuantityOnHand", i."ReservedQuantity", i."ResourceId", i."RowVersion", i."UpdatedAt", i."UpdatedByUserId"
+      FROM "InventoryStocks" AS i
+      WHERE i."Id" = @__request_InventoryStockId_0 AND NOT (i."IsDeleted")
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (106ms) [Parameters=[@p1='?' (DbType = Guid), @p0='?' (DbType = Decimal), @p2='?' (DbType = Binary), @p3='?' (DbType = Guid), @p4='?' (DbType = DateTime), @p5='?' (DbType = Guid), @p6='?' (DbType = Guid), @p7='?' (DbType = Boolean), @p8='?', @p9='?' (DbType = Decimal), @p10='?' (DbType = DateTime), @p11='?' (DbType = Guid), @p12='?', @p13='?' (DbType = DateTime), @p14='?' (DbType = Guid), @p15='?' (DbType = Guid), @p16='?' (DbType = DateTime), @p17='?' (DbType = Guid), @p18='?' (DbType = Guid), @p19='?' (DbType = Boolean), @p20='?', @p21='?' (DbType = Decimal), @p22='?', @p23='?' (DbType = DateTime), @p24='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      UPDATE "InventoryStocks" SET "ReservedQuantity" = @p0
+      WHERE "Id" = @p1 AND "RowVersion" = @p2;
+      INSERT INTO "ResourceReservations" ("Id", "CreatedAt", "CreatedByUserId", "InventoryStockId", "IsDeleted", "Purpose", "Quantity", "ReleasedAt", "RequestedByUserId", "Status", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11, @p12, @p13, @p14);
+      INSERT INTO "StockTransactions" ("Id", "CreatedAt", "CreatedByUserId", "InventoryStockId", "IsDeleted", "Note", "Quantity", "Type", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p15, @p16, @p17, @p18, @p19, @p20, @p21, @p22, @p23, @p24);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (122ms) [Parameters=[@__reservationId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT r."Id", r."CreatedAt", r."CreatedByUserId", r."InventoryStockId", r."IsDeleted", r."Purpose", r."Quantity", r."ReleasedAt", r."RequestedByUserId", r."Status", r."UpdatedAt", r."UpdatedByUserId", i."Id", i."CreatedAt", i."CreatedByUserId", i."IsDeleted", i."LowStockThreshold", i."QuantityOnHand", i."ReservedQuantity", i."ResourceId", i."RowVersion", i."UpdatedAt", i."UpdatedByUserId"
+      FROM "ResourceReservations" AS r
+      INNER JOIN "InventoryStocks" AS i ON r."InventoryStockId" = i."Id"
+      WHERE r."Id" = @__reservationId_0 AND NOT (r."IsDeleted")
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (114ms) [Parameters=[@p2='?' (DbType = Guid), @p0='?' (DbType = Decimal), @p1='?' (DbType = Binary), @p3='?' (DbType = Binary), @p6='?' (DbType = Guid), @p4='?' (DbType = DateTime), @p5='?', @p7='?' (DbType = Guid), @p8='?' (DbType = DateTime), @p9='?' (DbType = Guid), @p10='?' (DbType = Guid), @p11='?' (DbType = Boolean), @p12='?', @p13='?' (DbType = Decimal), @p14='?', @p15='?' (DbType = DateTime), @p16='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      UPDATE "InventoryStocks" SET "ReservedQuantity" = @p0, "RowVersion" = @p1
+      WHERE "Id" = @p2 AND "RowVersion" = @p3;
+      UPDATE "ResourceReservations" SET "ReleasedAt" = @p4, "Status" = @p5
+      WHERE "Id" = @p6;
+      INSERT INTO "StockTransactions" ("Id", "CreatedAt", "CreatedByUserId", "InventoryStockId", "IsDeleted", "Note", "Quantity", "Type", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p7, @p8, @p9, @p10, @p11, @p12, @p13, @p14, @p15, @p16);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (110ms) [Parameters=[@__stockId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT s."Id", s."CreatedAt", s."CreatedByUserId", s."InventoryStockId", s."IsDeleted", s."Note", s."Quantity", s."Type", s."UpdatedAt", s."UpdatedByUserId"
+      FROM "StockTransactions" AS s
+      WHERE s."InventoryStockId" = @__stockId_0
+      ORDER BY s."CreatedAt"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (90ms) [Parameters=[@__request_FarmId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "Farms" AS f
+          WHERE f."Id" = @__request_FarmId_0 AND NOT (f."IsDeleted"))
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (131ms) [Parameters=[@__request_AssignedToUserId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "Users" AS u
+          WHERE u."Id" = @__request_AssignedToUserId_0 AND u."IsActive")
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (136ms) [Parameters=[@__normalizedEmail_0='?'], CommandType='Text', CommandTimeout='30']
+      SELECT u."Id", u."CreatedAt", u."CreatedByUserId", u."Email", u."FullName", u."IsActive", u."IsDeleted", u."LastLoginAt", u."PasswordHash", u."Role", u."UpdatedAt", u."UpdatedByUserId"
+      FROM "Users" AS u
+      WHERE u."Email" = @__normalizedEmail_0
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (105ms) [Parameters=[@p2='?' (DbType = Guid), @p0='?' (DbType = DateTime), @p1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      UPDATE "Users" SET "LastLoginAt" = @p0, "UpdatedAt" = @p1
+      WHERE "Id" = @p2;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (100ms) [Parameters=[@__normalizedEmail_0='?'], CommandType='Text', CommandTimeout='30']
+      SELECT u."Id", u."CreatedAt", u."CreatedByUserId", u."Email", u."FullName", u."IsActive", u."IsDeleted", u."LastLoginAt", u."PasswordHash", u."Role", u."UpdatedAt", u."UpdatedByUserId"
+      FROM "Users" AS u
+      WHERE u."Email" = @__normalizedEmail_0
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (104ms) [Parameters=[@p2='?' (DbType = Guid), @p0='?' (DbType = DateTime), @p1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      UPDATE "Users" SET "LastLoginAt" = @p0, "UpdatedAt" = @p1
+      WHERE "Id" = @p2;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (85ms) [Parameters=[@__normalizedEmail_0='?'], CommandType='Text', CommandTimeout='30']
+      SELECT u."Id", u."CreatedAt", u."CreatedByUserId", u."Email", u."FullName", u."IsActive", u."IsDeleted", u."LastLoginAt", u."PasswordHash", u."Role", u."UpdatedAt", u."UpdatedByUserId"
+      FROM "Users" AS u
+      WHERE u."Email" = @__normalizedEmail_0
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (98ms) [Parameters=[@p2='?' (DbType = Guid), @p0='?' (DbType = DateTime), @p1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      UPDATE "Users" SET "LastLoginAt" = @p0, "UpdatedAt" = @p1
+      WHERE "Id" = @p2;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (90ms) [Parameters=[@__normalizedEmail_0='?'], CommandType='Text', CommandTimeout='30']
+      SELECT u."Id", u."CreatedAt", u."CreatedByUserId", u."Email", u."FullName", u."IsActive", u."IsDeleted", u."LastLoginAt", u."PasswordHash", u."Role", u."UpdatedAt", u."UpdatedByUserId"
+      FROM "Users" AS u
+      WHERE u."Email" = @__normalizedEmail_0
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (103ms) [Parameters=[@p2='?' (DbType = Guid), @p0='?' (DbType = DateTime), @p1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      UPDATE "Users" SET "LastLoginAt" = @p0, "UpdatedAt" = @p1
+      WHERE "Id" = @p2;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (87ms) [Parameters=[@__normalizedEmail_0='?'], CommandType='Text', CommandTimeout='30']
+      SELECT u."Id", u."CreatedAt", u."CreatedByUserId", u."Email", u."FullName", u."IsActive", u."IsDeleted", u."LastLoginAt", u."PasswordHash", u."Role", u."UpdatedAt", u."UpdatedByUserId"
+      FROM "Users" AS u
+      WHERE u."Email" = @__normalizedEmail_0
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (91ms) [Parameters=[@p2='?' (DbType = Guid), @p0='?' (DbType = DateTime), @p1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      UPDATE "Users" SET "LastLoginAt" = @p0, "UpdatedAt" = @p1
+      WHERE "Id" = @p2;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (97ms) [Parameters=[@__userId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT u."Id", u."CreatedAt", u."CreatedByUserId", u."Email", u."FullName", u."IsActive", u."IsDeleted", u."LastLoginAt", u."PasswordHash", u."Role", u."UpdatedAt", u."UpdatedByUserId"
+      FROM "Users" AS u
+      WHERE u."Id" = @__userId_0
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (95ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT count(*)::int
+      FROM "Users" AS u
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (104ms) [Parameters=[@__p_1='?' (DbType = Int32), @__p_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT u."Id", u."FullName", u."Email", u."Role", u."IsActive", u."CreatedAt", u."LastLoginAt"
+      FROM "Users" AS u
+      ORDER BY u."FullName"
+      LIMIT @__p_1 OFFSET @__p_0
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (86ms) [Parameters=[@__normalizedEmail_0='?'], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "Users" AS u
+          WHERE u."Email" = @__normalizedEmail_0)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (96ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = DateTime), @p2='?' (DbType = Guid), @p3='?', @p4='?', @p5='?' (DbType = Boolean), @p6='?' (DbType = Boolean), @p7='?' (DbType = DateTime), @p8='?', @p9='?', @p10='?' (DbType = DateTime), @p11='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "Users" ("Id", "CreatedAt", "CreatedByUserId", "Email", "FullName", "IsActive", "IsDeleted", "LastLoginAt", "PasswordHash", "Role", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (106ms) [Parameters=[@__id_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT u."Id", u."CreatedAt", u."CreatedByUserId", u."Email", u."FullName", u."IsActive", u."IsDeleted", u."LastLoginAt", u."PasswordHash", u."Role", u."UpdatedAt", u."UpdatedByUserId"
+      FROM "Users" AS u
+      WHERE u."Id" = @__id_0
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (194ms) [Parameters=[@__id_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT u."Id", u."CreatedAt", u."CreatedByUserId", u."Email", u."FullName", u."IsActive", u."IsDeleted", u."LastLoginAt", u."PasswordHash", u."Role", u."UpdatedAt", u."UpdatedByUserId"
+      FROM "Users" AS u
+      WHERE u."Id" = @__id_0
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (180ms) [Parameters=[@p2='?' (DbType = Guid), @p0='?', @p1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      UPDATE "Users" SET "Role" = @p0, "UpdatedAt" = @p1
+      WHERE "Id" = @p2;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (90ms) [Parameters=[@__id_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT u."Id", u."CreatedAt", u."CreatedByUserId", u."Email", u."FullName", u."IsActive", u."IsDeleted", u."LastLoginAt", u."PasswordHash", u."Role", u."UpdatedAt", u."UpdatedByUserId"
+      FROM "Users" AS u
+      WHERE u."Id" = @__id_0
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (102ms) [Parameters=[@p2='?' (DbType = Guid), @p0='?' (DbType = Boolean), @p1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      UPDATE "Users" SET "IsActive" = @p0, "UpdatedAt" = @p1
+      WHERE "Id" = @p2;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (92ms) [Parameters=[@__id_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT u."Id", u."CreatedAt", u."CreatedByUserId", u."Email", u."FullName", u."IsActive", u."IsDeleted", u."LastLoginAt", u."PasswordHash", u."Role", u."UpdatedAt", u."UpdatedByUserId"
+      FROM "Users" AS u
+      WHERE u."Id" = @__id_0
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (110ms) [Parameters=[@p2='?' (DbType = Guid), @p0='?' (DbType = Boolean), @p1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      UPDATE "Users" SET "IsActive" = @p0, "UpdatedAt" = @p1
+      WHERE "Id" = @p2;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (141ms) [Parameters=[@__ownerId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "Users" AS u
+          WHERE u."Id" = @__ownerId_0 AND u."Role" = 'Farmer' AND u."IsActive")
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (177ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = DateTime), @p2='?' (DbType = Guid), @p3='?' (DbType = Boolean), @p4='?', @p5='?', @p6='?' (DbType = Guid), @p7='?' (DbType = Decimal), @p8='?' (DbType = DateTime), @p9='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "Farms" ("Id", "CreatedAt", "CreatedByUserId", "IsDeleted", "Location", "Name", "OwnerUserId", "TotalArea", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (182ms) [Parameters=[@__P_UserId_0='?' (DbType = Guid), @__request_FarmId_1='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT f."Id", f."CreatedAt", f."CreatedByUserId", f."IsDeleted", f."Location", f."Name", f."OwnerUserId", f."TotalArea", f."UpdatedAt", f."UpdatedByUserId"
+      FROM "Farms" AS f
+      WHERE NOT (f."IsDeleted") AND f."OwnerUserId" = @__P_UserId_0 AND f."Id" = @__request_FarmId_1
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (122ms) [Parameters=[@__request_FarmId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT COALESCE(sum(f."Area"), 0.0)
+      FROM "Fields" AS f
+      WHERE f."FarmId" = @__request_FarmId_0 AND NOT (f."IsDeleted")
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (131ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = Decimal), @p2='?' (DbType = DateTime), @p3='?' (DbType = Guid), @p4='?' (DbType = Guid), @p5='?' (DbType = Boolean), @p6='?' (DbType = Boolean), @p7='?', @p8='?', @p9='?' (DbType = DateTime), @p10='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "Fields" ("Id", "Area", "CreatedAt", "CreatedByUserId", "FarmId", "IsActive", "IsDeleted", "Name", "SoilType", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (285ms) [Parameters=[@__P_UserId_0='?' (DbType = Guid), @__request_FarmId_1='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT f."Id", f."CreatedAt", f."CreatedByUserId", f."IsDeleted", f."Location", f."Name", f."OwnerUserId", f."TotalArea", f."UpdatedAt", f."UpdatedByUserId"
+      FROM "Farms" AS f
+      WHERE NOT (f."IsDeleted") AND f."OwnerUserId" = @__P_UserId_0 AND f."Id" = @__request_FarmId_1
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (159ms) [Parameters=[@__request_FarmId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT COALESCE(sum(f."Area"), 0.0)
+      FROM "Fields" AS f
+      WHERE f."FarmId" = @__request_FarmId_0 AND NOT (f."IsDeleted")
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (133ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT count(*)::int
+      FROM "CropTypes" AS c
+      WHERE NOT (c."IsDeleted")
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (330ms) [Parameters=[@__p_1='?' (DbType = Int32), @__p_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT c."Id", c."CreatedAt", c."CreatedByUserId", c."Description", c."IsActive", c."IsDeleted", c."Name", c."UpdatedAt", c."UpdatedByUserId"
+      FROM "CropTypes" AS c
+      WHERE NOT (c."IsDeleted")
+      ORDER BY c."Name"
+      LIMIT @__p_1 OFFSET @__p_0
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (196ms) [Parameters=[@__P_UserId_0='?' (DbType = Guid), @__farmId_1='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "Farms" AS f
+          WHERE NOT (f."IsDeleted") AND f."OwnerUserId" = @__P_UserId_0 AND f."Id" = @__farmId_1)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (158ms) [Parameters=[@__P_UserId_0='?' (DbType = Guid), @__fieldId_1='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "Fields" AS f
+          INNER JOIN "Farms" AS f0 ON f."FarmId" = f0."Id"
+          WHERE NOT (f."IsDeleted") AND NOT (f0."IsDeleted") AND f0."OwnerUserId" = @__P_UserId_0 AND f."Id" = @__fieldId_1)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (130ms) [Parameters=[@__cropTypeId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "CropTypes" AS c
+          WHERE c."Id" = @__cropTypeId_0 AND c."IsActive" AND NOT (c."IsDeleted"))
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (100ms) [Parameters=[@__request_FarmId_0='?' (DbType = Guid), @__request_FieldId_1='?' (DbType = Guid), @__request_CropTypeId_2='?' (DbType = Guid), @__activeStatuses_3='?' (DbType = Object)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "CropPlanRequests" AS c
+          WHERE c."FarmId" = @__request_FarmId_0 AND c."FieldId" = @__request_FieldId_1 AND c."CropTypeId" = @__request_CropTypeId_2 AND c."Status" = ANY (@__activeStatuses_3) AND NOT (c."IsDeleted"))
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (113ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = Decimal), @p2='?' (DbType = DateTime), @p3='?' (DbType = Guid), @p4='?' (DbType = Guid), @p5='?' (DbType = Guid), @p6='?' (DbType = Guid), @p7='?' (DbType = Boolean), @p8='?', @p9='?' (DbType = Date), @p10='?' (DbType = Date), @p11='?' (DbType = Guid), @p12='?', @p13='?' (DbType = DateTime), @p14='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "CropPlanRequests" ("Id", "Budget", "CreatedAt", "CreatedByUserId", "CropTypeId", "FarmId", "FieldId", "IsDeleted", "Objective", "PreferredEndDate", "PreferredStartDate", "RequestedByUserId", "Status", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11, @p12, @p13, @p14);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (105ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = Guid), @p2='?' (DbType = DateTime), @p3='?' (DbType = Guid), @p4='?' (DbType = Guid), @p5='?', @p6='?' (DbType = Boolean), @p7='?', @p8='?', @p9='?' (DbType = DateTime), @p10='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "CropPlanRequestHistories" ("Id", "ChangedByUserId", "CreatedAt", "CreatedByUserId", "CropPlanRequestId", "FromStatus", "IsDeleted", "Note", "ToStatus", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (96ms) [Parameters=[@__P_UserId_0='?' (DbType = Guid), @__farmId_1='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "Farms" AS f
+          WHERE NOT (f."IsDeleted") AND f."OwnerUserId" = @__P_UserId_0 AND f."Id" = @__farmId_1)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (95ms) [Parameters=[@__P_UserId_0='?' (DbType = Guid), @__fieldId_1='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "Fields" AS f
+          INNER JOIN "Farms" AS f0 ON f."FarmId" = f0."Id"
+          WHERE NOT (f."IsDeleted") AND NOT (f0."IsDeleted") AND f0."OwnerUserId" = @__P_UserId_0 AND f."Id" = @__fieldId_1)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (233ms) [Parameters=[@__cropTypeId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "CropTypes" AS c
+          WHERE c."Id" = @__cropTypeId_0 AND c."IsActive" AND NOT (c."IsDeleted"))
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (284ms) [Parameters=[@__request_FarmId_0='?' (DbType = Guid), @__request_FieldId_1='?' (DbType = Guid), @__request_CropTypeId_2='?' (DbType = Guid), @__activeStatuses_3='?' (DbType = Object)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "CropPlanRequests" AS c
+          WHERE c."FarmId" = @__request_FarmId_0 AND c."FieldId" = @__request_FieldId_1 AND c."CropTypeId" = @__request_CropTypeId_2 AND c."Status" = ANY (@__activeStatuses_3) AND NOT (c."IsDeleted"))
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (267ms) [Parameters=[@__P_UserId_0='?' (DbType = Guid), @__requestId_1='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "CropPlanRequests" AS c
+          INNER JOIN "Farms" AS f ON c."FarmId" = f."Id"
+          WHERE NOT (c."IsDeleted") AND f."OwnerUserId" = @__P_UserId_0 AND c."Id" = @__requestId_1)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (576ms) [Parameters=[@__requestId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT c."Id", c."CropPlanRequestId", c."FromStatus", c."ToStatus", c."Note", c."ChangedByUserId", c."CreatedAt"
+      FROM "CropPlanRequestHistories" AS c
+      WHERE c."CropPlanRequestId" = @__requestId_0
+      ORDER BY c."CreatedAt"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (714ms) [Parameters=[@__fieldId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "Fields" AS f
+          INNER JOIN "Farms" AS f0 ON f."FarmId" = f0."Id"
+          WHERE NOT (f."IsDeleted") AND NOT (f0."IsDeleted") AND f."Id" = @__fieldId_0)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1,418ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = DateTime), @p2='?' (DbType = DateTime), @p3='?' (DbType = Guid), @p4='?' (DbType = Guid), @p5='?' (DbType = Guid), @p6='?' (DbType = Boolean), @p7='?' (DbType = DateTime), @p8='?', @p9='?', @p10='?' (DbType = DateTime), @p11='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "FieldInspections" ("Id", "CompletedAt", "CreatedAt", "CreatedByUserId", "FieldId", "InspectorUserId", "IsDeleted", "ScheduledAt", "Status", "Summary", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1,653ms) [Parameters=[@__inspectionId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "FieldInspections" AS f
+          WHERE NOT (f."IsDeleted") AND f."Id" = @__inspectionId_0)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1,032ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = DateTime), @p2='?' (DbType = Guid), @p3='?' (DbType = Guid), @p4='?' (DbType = Boolean), @p5='?', @p6='?', @p7='?' (DbType = DateTime), @p8='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "InspectionObservations" ("Id", "CreatedAt", "CreatedByUserId", "FieldInspectionId", "IsDeleted", "Notes", "ObservationType", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (399ms) [Parameters=[@__inspectionId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "FieldInspections" AS f
+          WHERE NOT (f."IsDeleted") AND f."Id" = @__inspectionId_0)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (3,490ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = DateTime), @p2='?' (DbType = Guid), @p3='?', @p4='?' (DbType = DateTime), @p5='?' (DbType = Guid), @p6='?' (DbType = Guid), @p7='?' (DbType = Boolean), @p8='?', @p9='?', @p10='?', @p11='?' (DbType = DateTime), @p12='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "CropIssues" ("Id", "CreatedAt", "CreatedByUserId", "Description", "EscalatedAt", "EscalatedToUserId", "FieldInspectionId", "IsDeleted", "Severity", "Status", "Title", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11, @p12);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (3,885ms) [Parameters=[@__issueId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT c."Id", c."CreatedAt", c."CreatedByUserId", c."Description", c."EscalatedAt", c."EscalatedToUserId", c."FieldInspectionId", c."IsDeleted", c."Severity", c."Status", c."Title", c."UpdatedAt", c."UpdatedByUserId", f."Id", f."CompletedAt", f."CreatedAt", f."CreatedByUserId", f."FieldId", f."InspectorUserId", f."IsDeleted", f."ScheduledAt", f."Status", f."Summary", f."UpdatedAt", f."UpdatedByUserId", f0."Id", f0."Area", f0."CreatedAt", f0."CreatedByUserId", f0."FarmId", f0."IsActive", f0."IsDeleted", f0."Name", f0."SoilType", f0."UpdatedAt", f0."UpdatedByUserId", f1."Id", f1."CreatedAt", f1."CreatedByUserId", f1."IsDeleted", f1."Location", f1."Name", f1."OwnerUserId", f1."TotalArea", f1."UpdatedAt", f1."UpdatedByUserId"
+      FROM "CropIssues" AS c
+      INNER JOIN "FieldInspections" AS f ON c."FieldInspectionId" = f."Id"
+      INNER JOIN "Fields" AS f0 ON f."FieldId" = f0."Id"
+      INNER JOIN "Farms" AS f1 ON f0."FarmId" = f1."Id"
+      WHERE NOT (c."IsDeleted") AND c."Id" = @__issueId_0
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (94ms) [Parameters=[@p4='?' (DbType = Guid), @p0='?' (DbType = DateTime), @p1='?' (DbType = Guid), @p2='?', @p3='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      UPDATE "CropIssues" SET "EscalatedAt" = @p0, "EscalatedToUserId" = @p1, "Status" = @p2, "UpdatedAt" = @p3
+      WHERE "Id" = @p4;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1,056ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = DateTime), @p2='?' (DbType = Guid), @p3='?', @p4='?' (DbType = Boolean), @p5='?', @p6='?' (DbType = DateTime), @p7='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "ResourceCategories" ("Id", "CreatedAt", "CreatedByUserId", "Description", "IsDeleted", "Name", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1,496ms) [Parameters=[@__request_ResourceCategoryId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "ResourceCategories" AS r
+          WHERE r."Id" = @__request_ResourceCategoryId_0 AND NOT (r."IsDeleted"))
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (362ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = DateTime), @p2='?' (DbType = Guid), @p3='?' (DbType = Boolean), @p4='?' (DbType = Boolean), @p5='?', @p6='?' (DbType = Guid), @p7='?' (DbType = Guid), @p8='?', @p9='?' (DbType = DateTime), @p10='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "Resources" ("Id", "CreatedAt", "CreatedByUserId", "IsActive", "IsDeleted", "Name", "ResourceCategoryId", "SupplierId", "Unit", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (406ms) [Parameters=[@__request_ResourceId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "Resources" AS r
+          WHERE r."Id" = @__request_ResourceId_0 AND r."IsActive" AND NOT (r."IsDeleted"))
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (673ms) [Parameters=[@__request_ResourceId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT i."Id", i."CreatedAt", i."CreatedByUserId", i."IsDeleted", i."LowStockThreshold", i."QuantityOnHand", i."ReservedQuantity", i."ResourceId", i."RowVersion", i."UpdatedAt", i."UpdatedByUserId"
+      FROM "InventoryStocks" AS i
+      WHERE i."ResourceId" = @__request_ResourceId_0
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (768ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = DateTime), @p2='?' (DbType = Guid), @p3='?' (DbType = Boolean), @p4='?' (DbType = Decimal), @p5='?' (DbType = Decimal), @p6='?' (DbType = Decimal), @p7='?' (DbType = Guid), @p8='?' (DbType = Binary), @p9='?' (DbType = DateTime), @p10='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "InventoryStocks" ("Id", "CreatedAt", "CreatedByUserId", "IsDeleted", "LowStockThreshold", "QuantityOnHand", "ReservedQuantity", "ResourceId", "RowVersion", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (228ms) [Parameters=[@__request_InventoryStockId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT i."Id", i."CreatedAt", i."CreatedByUserId", i."IsDeleted", i."LowStockThreshold", i."QuantityOnHand", i."ReservedQuantity", i."ResourceId", i."RowVersion", i."UpdatedAt", i."UpdatedByUserId"
+      FROM "InventoryStocks" AS i
+      WHERE i."Id" = @__request_InventoryStockId_0 AND NOT (i."IsDeleted")
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (123ms) [Parameters=[@p1='?' (DbType = Guid), @p0='?' (DbType = Decimal), @p2='?' (DbType = Binary), @p3='?' (DbType = Guid), @p4='?' (DbType = DateTime), @p5='?' (DbType = Guid), @p6='?' (DbType = Guid), @p7='?' (DbType = Boolean), @p8='?', @p9='?' (DbType = Decimal), @p10='?' (DbType = DateTime), @p11='?' (DbType = Guid), @p12='?', @p13='?' (DbType = DateTime), @p14='?' (DbType = Guid), @p15='?' (DbType = Guid), @p16='?' (DbType = DateTime), @p17='?' (DbType = Guid), @p18='?' (DbType = Guid), @p19='?' (DbType = Boolean), @p20='?', @p21='?' (DbType = Decimal), @p22='?', @p23='?' (DbType = DateTime), @p24='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      UPDATE "InventoryStocks" SET "ReservedQuantity" = @p0
+      WHERE "Id" = @p1 AND "RowVersion" = @p2;
+      INSERT INTO "ResourceReservations" ("Id", "CreatedAt", "CreatedByUserId", "InventoryStockId", "IsDeleted", "Purpose", "Quantity", "ReleasedAt", "RequestedByUserId", "Status", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11, @p12, @p13, @p14);
+      INSERT INTO "StockTransactions" ("Id", "CreatedAt", "CreatedByUserId", "InventoryStockId", "IsDeleted", "Note", "Quantity", "Type", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p15, @p16, @p17, @p18, @p19, @p20, @p21, @p22, @p23, @p24);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (662ms) [Parameters=[@__request_InventoryStockId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT i."Id", i."CreatedAt", i."CreatedByUserId", i."IsDeleted", i."LowStockThreshold", i."QuantityOnHand", i."ReservedQuantity", i."ResourceId", i."RowVersion", i."UpdatedAt", i."UpdatedByUserId"
+      FROM "InventoryStocks" AS i
+      WHERE i."Id" = @__request_InventoryStockId_0 AND NOT (i."IsDeleted")
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1,125ms) [Parameters=[@__reservationId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT r."Id", r."CreatedAt", r."CreatedByUserId", r."InventoryStockId", r."IsDeleted", r."Purpose", r."Quantity", r."ReleasedAt", r."RequestedByUserId", r."Status", r."UpdatedAt", r."UpdatedByUserId", i."Id", i."CreatedAt", i."CreatedByUserId", i."IsDeleted", i."LowStockThreshold", i."QuantityOnHand", i."ReservedQuantity", i."ResourceId", i."RowVersion", i."UpdatedAt", i."UpdatedByUserId"
+      FROM "ResourceReservations" AS r
+      INNER JOIN "InventoryStocks" AS i ON r."InventoryStockId" = i."Id"
+      WHERE r."Id" = @__reservationId_0 AND NOT (r."IsDeleted")
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (252ms) [Parameters=[@p1='?' (DbType = Guid), @p0='?' (DbType = Decimal), @p2='?' (DbType = Binary), @p5='?' (DbType = Guid), @p3='?' (DbType = DateTime), @p4='?', @p6='?' (DbType = Guid), @p7='?' (DbType = DateTime), @p8='?' (DbType = Guid), @p9='?' (DbType = Guid), @p10='?' (DbType = Boolean), @p11='?', @p12='?' (DbType = Decimal), @p13='?', @p14='?' (DbType = DateTime), @p15='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      UPDATE "InventoryStocks" SET "ReservedQuantity" = @p0
+      WHERE "Id" = @p1 AND "RowVersion" = @p2;
+      UPDATE "ResourceReservations" SET "ReleasedAt" = @p3, "Status" = @p4
+      WHERE "Id" = @p5;
+      INSERT INTO "StockTransactions" ("Id", "CreatedAt", "CreatedByUserId", "InventoryStockId", "IsDeleted", "Note", "Quantity", "Type", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p6, @p7, @p8, @p9, @p10, @p11, @p12, @p13, @p14, @p15);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (400ms) [Parameters=[@__reservationId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT r."Id", r."CreatedAt", r."CreatedByUserId", r."InventoryStockId", r."IsDeleted", r."Purpose", r."Quantity", r."ReleasedAt", r."RequestedByUserId", r."Status", r."UpdatedAt", r."UpdatedByUserId", i."Id", i."CreatedAt", i."CreatedByUserId", i."IsDeleted", i."LowStockThreshold", i."QuantityOnHand", i."ReservedQuantity", i."ResourceId", i."RowVersion", i."UpdatedAt", i."UpdatedByUserId"
+      FROM "ResourceReservations" AS r
+      INNER JOIN "InventoryStocks" AS i ON r."InventoryStockId" = i."Id"
+      WHERE r."Id" = @__reservationId_0 AND NOT (r."IsDeleted")
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (105ms) [Parameters=[@__request_InventoryStockId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT i."Id", i."CreatedAt", i."CreatedByUserId", i."IsDeleted", i."LowStockThreshold", i."QuantityOnHand", i."ReservedQuantity", i."ResourceId", i."RowVersion", i."UpdatedAt", i."UpdatedByUserId"
+      FROM "InventoryStocks" AS i
+      WHERE i."Id" = @__request_InventoryStockId_0 AND NOT (i."IsDeleted")
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (957ms) [Parameters=[@p1='?' (DbType = Guid), @p0='?' (DbType = Decimal), @p2='?' (DbType = Binary), @p3='?' (DbType = Guid), @p4='?' (DbType = DateTime), @p5='?' (DbType = Guid), @p6='?' (DbType = Guid), @p7='?' (DbType = Boolean), @p8='?', @p9='?' (DbType = Decimal), @p10='?' (DbType = DateTime), @p11='?' (DbType = Guid), @p12='?', @p13='?' (DbType = DateTime), @p14='?' (DbType = Guid), @p15='?' (DbType = Guid), @p16='?' (DbType = DateTime), @p17='?' (DbType = Guid), @p18='?' (DbType = Guid), @p19='?' (DbType = Boolean), @p20='?', @p21='?' (DbType = Decimal), @p22='?', @p23='?' (DbType = DateTime), @p24='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      UPDATE "InventoryStocks" SET "ReservedQuantity" = @p0
+      WHERE "Id" = @p1 AND "RowVersion" = @p2;
+      INSERT INTO "ResourceReservations" ("Id", "CreatedAt", "CreatedByUserId", "InventoryStockId", "IsDeleted", "Purpose", "Quantity", "ReleasedAt", "RequestedByUserId", "Status", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11, @p12, @p13, @p14);
+      INSERT INTO "StockTransactions" ("Id", "CreatedAt", "CreatedByUserId", "InventoryStockId", "IsDeleted", "Note", "Quantity", "Type", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p15, @p16, @p17, @p18, @p19, @p20, @p21, @p22, @p23, @p24);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (246ms) [Parameters=[@__reservationId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT r."Id", r."CreatedAt", r."CreatedByUserId", r."InventoryStockId", r."IsDeleted", r."Purpose", r."Quantity", r."ReleasedAt", r."RequestedByUserId", r."Status", r."UpdatedAt", r."UpdatedByUserId", i."Id", i."CreatedAt", i."CreatedByUserId", i."IsDeleted", i."LowStockThreshold", i."QuantityOnHand", i."ReservedQuantity", i."ResourceId", i."RowVersion", i."UpdatedAt", i."UpdatedByUserId"
+      FROM "ResourceReservations" AS r
+      INNER JOIN "InventoryStocks" AS i ON r."InventoryStockId" = i."Id"
+      WHERE r."Id" = @__reservationId_0 AND NOT (r."IsDeleted")
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (188ms) [Parameters=[@p2='?' (DbType = Guid), @p0='?' (DbType = Decimal), @p1='?' (DbType = Binary), @p3='?' (DbType = Binary), @p6='?' (DbType = Guid), @p4='?' (DbType = DateTime), @p5='?', @p7='?' (DbType = Guid), @p8='?' (DbType = DateTime), @p9='?' (DbType = Guid), @p10='?' (DbType = Guid), @p11='?' (DbType = Boolean), @p12='?', @p13='?' (DbType = Decimal), @p14='?', @p15='?' (DbType = DateTime), @p16='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      UPDATE "InventoryStocks" SET "ReservedQuantity" = @p0, "RowVersion" = @p1
+      WHERE "Id" = @p2 AND "RowVersion" = @p3;
+      UPDATE "ResourceReservations" SET "ReleasedAt" = @p4, "Status" = @p5
+      WHERE "Id" = @p6;
+      INSERT INTO "StockTransactions" ("Id", "CreatedAt", "CreatedByUserId", "InventoryStockId", "IsDeleted", "Note", "Quantity", "Type", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p7, @p8, @p9, @p10, @p11, @p12, @p13, @p14, @p15, @p16);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (513ms) [Parameters=[@__stockId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT s."Id", s."CreatedAt", s."CreatedByUserId", s."InventoryStockId", s."IsDeleted", s."Note", s."Quantity", s."Type", s."UpdatedAt", s."UpdatedByUserId"
+      FROM "StockTransactions" AS s
+      WHERE s."InventoryStockId" = @__stockId_0
+      ORDER BY s."CreatedAt"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (95ms) [Parameters=[@__request_FarmId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "Farms" AS f
+          WHERE f."Id" = @__request_FarmId_0 AND NOT (f."IsDeleted"))
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (248ms) [Parameters=[@__request_AssignedToUserId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "Users" AS u
+          WHERE u."Id" = @__request_AssignedToUserId_0 AND u."IsActive")
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (942ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = Guid), @p2='?' (DbType = DateTime), @p3='?' (DbType = Guid), @p4='?', @p5='?' (DbType = DateTime), @p6='?' (DbType = Guid), @p7='?' (DbType = Boolean), @p8='?', @p9='?', @p10='?' (DbType = DateTime), @p11='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "FarmTasks" ("Id", "AssignedToUserId", "CreatedAt", "CreatedByUserId", "Description", "DueAt", "FarmId", "IsDeleted", "Status", "Title", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (637ms) [Parameters=[@__taskId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT f."Id", f."AssignedToUserId", f."CreatedAt", f."CreatedByUserId", f."Description", f."DueAt", f."FarmId", f."IsDeleted", f."Status", f."Title", f."UpdatedAt", f."UpdatedByUserId"
+      FROM "FarmTasks" AS f
+      WHERE f."Id" = @__taskId_0 AND NOT (f."IsDeleted")
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1,636ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = Guid), @p2='?', @p3='?' (DbType = DateTime), @p4='?' (DbType = Guid), @p5='?' (DbType = Guid), @p6='?', @p7='?' (DbType = Guid), @p8='?' (DbType = Guid), @p9='?' (DbType = Boolean), @p10='?' (DbType = DateTime), @p11='?' (DbType = Guid), @p14='?' (DbType = Guid), @p12='?', @p13='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "ApprovalDecisions" ("Id", "AgentWorkflowId", "Comment", "CreatedAt", "CreatedByUserId", "DecidedByUserId", "Decision", "FarmTaskId", "IrrigationScheduleId", "IsDeleted", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11);
+      UPDATE "FarmTasks" SET "Status" = @p12, "UpdatedAt" = @p13
+      WHERE "Id" = @p14;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (417ms) [Parameters=[@__taskId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT f."Id", f."AssignedToUserId", f."CreatedAt", f."CreatedByUserId", f."Description", f."DueAt", f."FarmId", f."IsDeleted", f."Status", f."Title", f."UpdatedAt", f."UpdatedByUserId"
+      FROM "FarmTasks" AS f
+      WHERE f."Id" = @__taskId_0 AND NOT (f."IsDeleted")
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (344ms) [Parameters=[@__request_FieldId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "Fields" AS f
+          WHERE f."Id" = @__request_FieldId_0 AND NOT (f."IsDeleted"))
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (117ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = DateTime), @p2='?' (DbType = Guid), @p3='?' (DbType = Int32), @p4='?' (DbType = Guid), @p5='?' (DbType = Boolean), @p6='?', @p7='?' (DbType = DateTime), @p8='?', @p9='?' (DbType = DateTime), @p10='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "IrrigationSchedules" ("Id", "CreatedAt", "CreatedByUserId", "DurationMinutes", "FieldId", "IsDeleted", "Notes", "ScheduledAt", "Status", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (165ms) [Parameters=[@__scheduleId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT i."Id", i."CreatedAt", i."CreatedByUserId", i."DurationMinutes", i."FieldId", i."IsDeleted", i."Notes", i."ScheduledAt", i."Status", i."UpdatedAt", i."UpdatedByUserId"
+      FROM "IrrigationSchedules" AS i
+      WHERE i."Id" = @__scheduleId_0 AND NOT (i."IsDeleted")
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (339ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = Guid), @p2='?', @p3='?' (DbType = DateTime), @p4='?' (DbType = Guid), @p5='?' (DbType = Guid), @p6='?', @p7='?' (DbType = Guid), @p8='?' (DbType = Guid), @p9='?' (DbType = Boolean), @p10='?' (DbType = DateTime), @p11='?' (DbType = Guid), @p14='?' (DbType = Guid), @p12='?', @p13='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "ApprovalDecisions" ("Id", "AgentWorkflowId", "Comment", "CreatedAt", "CreatedByUserId", "DecidedByUserId", "Decision", "FarmTaskId", "IrrigationScheduleId", "IsDeleted", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11);
+      UPDATE "IrrigationSchedules" SET "Status" = @p12, "UpdatedAt" = @p13
+      WHERE "Id" = @p14;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (324ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT count(*)::int
+      FROM "ApprovalDecisions" AS a
+      WHERE NOT (a."IsDeleted")
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (337ms) [Parameters=[@__p_1='?' (DbType = Int32), @__p_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT a."Id", a."AgentWorkflowId", a."Comment", a."CreatedAt", a."CreatedByUserId", a."DecidedByUserId", a."Decision", a."FarmTaskId", a."IrrigationScheduleId", a."IsDeleted", a."UpdatedAt", a."UpdatedByUserId"
+      FROM "ApprovalDecisions" AS a
+      WHERE NOT (a."IsDeleted")
+      ORDER BY a."CreatedAt" DESC
+      LIMIT @__p_1 OFFSET @__p_0
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (204ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT u."Role", count(*)::int
+      FROM "Users" AS u
+      WHERE NOT (u."IsDeleted")
+      GROUP BY u."Role"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (218ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT count(*)::int
+      FROM "Farms" AS f
+      WHERE NOT (f."IsDeleted")
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (72ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT count(*)::int
+      FROM "CropPlanRequests" AS c
+      WHERE NOT (c."IsDeleted") AND c."Status" IN ('Submitted', 'PreliminaryGenerated', 'Approved')
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (88ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT count(*)::int
+      FROM "CropIssues" AS c
+      WHERE NOT (c."IsDeleted") AND c."Status" IN ('Open', 'Escalated')
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (106ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT count(*)::int
+      FROM "InventoryStocks" AS i
+      WHERE NOT (i."IsDeleted") AND i."QuantityOnHand" - i."ReservedQuantity" <= i."LowStockThreshold"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (82ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT count(*)::int
+      FROM "FarmTasks" AS f
+      WHERE NOT (f."IsDeleted") AND f."Status" = 'PendingApproval'
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (118ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT count(*)::int
+      FROM "IrrigationSchedules" AS i
+      WHERE NOT (i."IsDeleted") AND i."Status" = 'PendingApproval'
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (286ms) [Parameters=[@__normalizedEmail_0='?'], CommandType='Text', CommandTimeout='30']
+      SELECT u."Id", u."CreatedAt", u."CreatedByUserId", u."Email", u."FullName", u."IsActive", u."IsDeleted", u."LastLoginAt", u."PasswordHash", u."Role", u."UpdatedAt", u."UpdatedByUserId"
+      FROM "Users" AS u
+      WHERE u."Email" = @__normalizedEmail_0
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (144ms) [Parameters=[@p2='?' (DbType = Guid), @p0='?' (DbType = DateTime), @p1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      UPDATE "Users" SET "LastLoginAt" = @p0, "UpdatedAt" = @p1
+      WHERE "Id" = @p2;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (158ms) [Parameters=[@__normalizedEmail_0='?'], CommandType='Text', CommandTimeout='30']
+      SELECT u."Id", u."CreatedAt", u."CreatedByUserId", u."Email", u."FullName", u."IsActive", u."IsDeleted", u."LastLoginAt", u."PasswordHash", u."Role", u."UpdatedAt", u."UpdatedByUserId"
+      FROM "Users" AS u
+      WHERE u."Email" = @__normalizedEmail_0
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (133ms) [Parameters=[@p2='?' (DbType = Guid), @p0='?' (DbType = DateTime), @p1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      UPDATE "Users" SET "LastLoginAt" = @p0, "UpdatedAt" = @p1
+      WHERE "Id" = @p2;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (75ms) [Parameters=[@__ownerId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "Users" AS u
+          WHERE u."Id" = @__ownerId_0 AND u."Role" = 'Farmer' AND u."IsActive")
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (148ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = DateTime), @p2='?' (DbType = Guid), @p3='?' (DbType = Boolean), @p4='?', @p5='?', @p6='?' (DbType = Guid), @p7='?' (DbType = Decimal), @p8='?' (DbType = DateTime), @p9='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "Farms" ("Id", "CreatedAt", "CreatedByUserId", "IsDeleted", "Location", "Name", "OwnerUserId", "TotalArea", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (119ms) [Parameters=[@__P_UserId_0='?' (DbType = Guid), @__request_FarmId_1='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT f."Id", f."CreatedAt", f."CreatedByUserId", f."IsDeleted", f."Location", f."Name", f."OwnerUserId", f."TotalArea", f."UpdatedAt", f."UpdatedByUserId"
+      FROM "Farms" AS f
+      WHERE NOT (f."IsDeleted") AND f."OwnerUserId" = @__P_UserId_0 AND f."Id" = @__request_FarmId_1
+      LIMIT 2
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (99ms) [Parameters=[@__request_FarmId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT COALESCE(sum(f."Area"), 0.0)
+      FROM "Fields" AS f
+      WHERE f."FarmId" = @__request_FarmId_0 AND NOT (f."IsDeleted")
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (98ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = Decimal), @p2='?' (DbType = DateTime), @p3='?' (DbType = Guid), @p4='?' (DbType = Guid), @p5='?' (DbType = Boolean), @p6='?' (DbType = Boolean), @p7='?', @p8='?', @p9='?' (DbType = DateTime), @p10='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "Fields" ("Id", "Area", "CreatedAt", "CreatedByUserId", "FarmId", "IsActive", "IsDeleted", "Name", "SoilType", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (77ms) [Parameters=[@__fieldId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "Fields" AS f
+          INNER JOIN "Farms" AS f0 ON f."FarmId" = f0."Id"
+          WHERE NOT (f."IsDeleted") AND NOT (f0."IsDeleted") AND f."Id" = @__fieldId_0)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (111ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = DateTime), @p2='?' (DbType = DateTime), @p3='?' (DbType = Guid), @p4='?' (DbType = Guid), @p5='?' (DbType = Guid), @p6='?' (DbType = Boolean), @p7='?' (DbType = DateTime), @p8='?', @p9='?', @p10='?' (DbType = DateTime), @p11='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "FieldInspections" ("Id", "CompletedAt", "CreatedAt", "CreatedByUserId", "FieldId", "InspectorUserId", "IsDeleted", "ScheduledAt", "Status", "Summary", "UpdatedAt", "UpdatedByUserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11);
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (110ms) [Parameters=[@__inspectionId_0='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "FieldInspections" AS f
+          WHERE NOT (f."IsDeleted") AND f."Id" = @__inspectionId_0)
+warn: AgriAssist.Api.ExternalServices.Cloudinary.CloudinaryService[0]
+      Cloudinary upload failed: [prodenv:16bdf8d3f49d1cddff48926929ef76] Request forbidden due to missing permissions (actions=["create"])
