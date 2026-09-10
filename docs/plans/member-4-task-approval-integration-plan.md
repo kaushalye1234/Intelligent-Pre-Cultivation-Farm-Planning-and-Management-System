@@ -1,7 +1,7 @@
 ﻿# Member 4: Task/Approval and Final Integration Plan
 
 Date: 2026-09-09
-Status: Milestone 1 manual Task/Approval hardening implemented in the local foundation on 2026-09-10; shared AI and team integration remain pending.
+Status: Milestone 1 manual Task/Approval hardening implemented and merged with `origin/main` foundation commit `71f5d17` on 2026-09-10; shared AI and four-agent integration remain pending.
 Assignment source: `05_FINAL_MEMBER_4_TASK_APPROVAL_INTEGRATION.md`, supplied by the user from Downloads.
 
 ## Progress update — 2026-09-10
@@ -9,6 +9,8 @@ Assignment source: `05_FINAL_MEMBER_4_TASK_APPROVAL_INTEGRATION.md`, supplied by
 Milestone 1 now includes task/schedule detail APIs, schedule update, draft/revision submission, auditable cancellation, restricted soft deletion, scoped filters/history, stable sorting, date/reference validation, task-time and irrigation-overlap conflict checks, and server-owned approval transitions. The React page now supports editing, resubmission, cancellation, and officer-entered decision reasons. Cancellation reuses immutable `ApprovalDecision` records with a new append-only `Cancelled = 4` enum value, so this milestone does not require a schema migration.
 
 Verified locally: backend build passed with no warnings; seven focused Task/Approval and regression tests passed; React production build passed; 12 frontend tests passed; lint completed with existing hook/fast-refresh warnings and no errors. The full backend suite passed 10 of 11 tests, with the unrelated auth integration test blocked by Windows Event Log permissions in the sandbox. PostgreSQL concurrency and the four-agent workflow remain unverified and are part of later milestones.
+
+After that verification, the Member 4 branch pulled the complete foundation from `origin/main`. The combined tree now includes the ASP.NET Core project, React application, shared workflow models, and `mobile/flutter_app`. The combined backend build, seven focused tests, frontend lint, frontend production build, and all 12 frontend tests pass. The separate `ai-service` and the persisted outputs/contracts from Members 1-3 are still absent, so M2-M5 cannot be implemented faithfully yet. Flutter checks remain unavailable because the Flutter SDK is not installed in this environment.
 
 ## 1. Your responsibility
 
@@ -29,7 +31,7 @@ Direct existing files are under `backend/AgriAssist.Api/{Controllers,Services,Dt
 
 ## 2. Verified current state and gaps
 
-This local folder is a foundation snapshot, not the complete post-Prompts-01-04 integration base. `git status` and `git remote -v` both report that it is not a Git repository. No team remote or contribution history can be established here. `ai-service/` and `mobile/flutter_app/` are absent; the AgenticAI client throws NotSupportedException. The existing shared workflow model and steps must be reused and extended, not duplicated.
+The initial local folder reviewed for this plan was a foundation snapshot rather than the complete post-Prompts-01-04 integration base, and it was not itself a Git checkout. The contribution is now tracked on `member4/task-approval-foundation` in the team repository and has pulled foundation commit `71f5d17` from `origin/main`. The merged branch includes `mobile/flutter_app`, but `ai-service/` is still absent and the AgenticAI client remains disabled. The existing shared workflow model and steps must be reused and extended when the missing team AI contracts arrive, rather than duplicated.
 
 | Area | Present | Gap to address |
 | --- | --- | --- |
@@ -53,11 +55,11 @@ Use one shared PostgreSQL database and one backend-owned final transaction. Keep
 
 Before AI integration, obtain from the team:
 
-- The team Git URL, base branch and existing member branch convention, plus Prompts 01-04 or their agreed contracts.
+- Prompts 01-04 or their agreed persisted contracts and shared AI-service implementation. The team Git URL, `main` base, and Member 4 branch are now established.
 - Member 1: persisted crop-plan/planning output shape, crop-reference IDs/version/freshness policy, shared workflow versioning and coordinator rerun API.
 - Member 2: field-analysis shape, freshness and missing-data/error semantics; shared FastAPI/provider/graph implementation and Dockerfile from its owner.
 - Member 3: weather/resource output shape, units/currency, authoritative cost inputs, reservation availability query and transaction-enlistment contract.
-- Flutter owner: actual mobile source, auth/state-management conventions and workflow status endpoint expectations.
+- Flutter owner: confirm the now-present mobile source's auth/state-management conventions and workflow status endpoint expectations.
 
 Do not infer exact shared wire schemas from this foundation. Confirm them in the team checkout before coding cross-member contracts. Local test fixtures can exercise agreed contracts, but must be labelled fixtures and must not be presented as real integrated agent execution.
 

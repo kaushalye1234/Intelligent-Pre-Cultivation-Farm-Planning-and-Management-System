@@ -1,0 +1,59 @@
+name: AgriAssist CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore backend
+        run: dotnet restore backend/AgriAssist.Api/AgriAssist.Api.csproj
+      - name: Build backend
+        run: dotnet build backend/AgriAssist.Api/AgriAssist.Api.csproj --configuration Release --no-restore
+      - name: Test backend
+        run: dotnet test backend/AgriAssist.Api.Tests/AgriAssist.Api.Tests.csproj --configuration Release --no-build
+
+  react:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend/react-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/react-app/package-lock.json
+      - name: Install React dependencies
+        run: npm ci
+      - name: Build React app
+        run: npm run build
+      - name: Test React app
+        run: npm test
+
+  flutter:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile/flutter_app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Install Flutter dependencies
+        run: flutter pub get
+      - name: Analyze Flutter app
+        run: flutter analyze
+      - name: Test Flutter app
+        run: flutter test

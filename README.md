@@ -1,54 +1,74 @@
-# Member 4 - Task/Approval implementation
+# AgriAssist AI - Basic Foundation
 
-This branch contains the existing Member 4 Task/Approval component plus the completed Milestone 1 manual workflow hardening. It is a source handoff for the four-member integration and is not a standalone runnable application while the shared foundation is absent from the remote repository.
+AgriAssist is an ASP.NET Core, React, and Flutter foundation for farm operations. This repository contains:
 
-The branch is based on the team's existing initial commit. Existing snapshot files are imported as one honest contribution; prior authorship and development history are not reconstructed.
+- ASP.NET Core 8 Web API backend with EF Core 8 and PostgreSQL/Supabase support
+- React + Vite staff/admin console
+- Flutter + Provider farmer mobile app
+- Shared AgentWorkflow schema and disabled AgenticAI client placeholder
+- Cloudinary integration path for inspection images
 
-## Included
+No LLM or agent execution is enabled in this foundation. The AI-facing schema and interfaces exist so later prompts can build on them.
 
-- TaskApproval controller, service/interface, DTOs and validators.
-- FarmTask, IrrigationSchedule and ApprovalDecision models.
-- React TaskApprovalPage with task/schedule lists, create/edit actions, explicit submission and cancellation, and officer-entered approval comments.
-- Focused backend business-rule tests and a frontend decision-dialog test.
-- [Member 4 implementation and integration plan](docs/plans/member-4-task-approval-integration-plan.md).
+## Project Structure
 
-The backend now supports filtered and paged task/schedule/history reads, detail endpoints, create/update/submit/cancel/soft-delete flows, approval decisions, ownership-scoped farmer history, deterministic task/schedule conflict checks, and audit metadata updates. Final decision endpoints restrict access to AgriculturalOfficer/Admin. Direct client-supplied status transitions are rejected, and reject/revision/cancellation actions require a reason.
+```text
+backend/AgriAssist.Api/          ASP.NET Core API
+backend/AgriAssist.Api.Tests/    xUnit backend tests
+frontend/react-app/              React + Vite web console
+mobile/flutter_app/              Flutter farmer app
+docs/                            ERD, ADRs, test notes, AI usage notes
+performance/                     k6 baseline script
+.github/workflows/               CI workflow YAML
+```
 
-## Required team foundation
+## Member 4 Task/Approval Status
 
-The remote main branch contained only LICENSE when this handoff was prepared. These component files require the shared application to be merged before they can compile or run:
+The `member4/task-approval-foundation` branch adds the completed first milestone of the Member 4 Task/Approval work:
 
-- ASP.NET Core 8 project/package files, Program.cs registration, AppDbContext/mappings/migrations, shared DTOs, validators, error/current-user services, auth and CropPlanning models.
-- React project/package files, API client, auth context, routing, shared types, formatting/labels and UI components imported by TaskApprovalPage.
-- Shared workflow models and database schema. Register `ITaskApprovalService -> TaskApprovalService` and all TaskApproval request validators in the shared backend composition root.
-- Shared test projects and fixtures. The local snapshot's `AuditRegressionTests` includes a sequential repeated-task-approval test, but also contains Member 3 coverage; that mixed file is not imported as a Member 4-only file.
+- Filtered and paged task, irrigation-schedule, and approval-history reads
+- Detail, create, update, submit, cancel, and restricted soft-delete operations
+- Server-owned workflow transitions and officer-only final decisions
+- Required rejection, revision, and cancellation reasons
+- Farmer-scoped approval history and deterministic conflict checks
+- React create/edit/submit/cancel and officer decision flows
+- Focused backend business-rule and frontend decision-dialog tests
 
-When the shared foundation is merged, replay these integration edits from the verified local workspace rather than replacing shared files wholesale:
+See the [Member 4 implementation and integration plan](docs/plans/member-4-task-approval-integration-plan.md) for the remaining scheduling-agent and final-integration milestones.
 
-- Register `IRequestValidator<CancellationRequest>, CancellationRequestValidator` in `Program.cs`.
-- Add `ApprovalDecisionType.Cancelled = 4` to the shared frontend decision labels.
-- Let the shared API client extract messages from the backend `{ error: { message } }` response shape.
-- Pass `CancellationRequestValidator` to the TaskApproval service constructor in the existing mixed `AuditRegressionTests` fixture.
+## Local Commands
 
-Merge these files into their existing paths when the team foundation is available. Do not replace shared application setup with a second implementation. This upload deliberately does not include other members' modules, environment files, personal Codex skills, local logs or build artifacts.
+```powershell
+dotnet build backend\AgriAssist.Api\AgriAssist.Api.csproj
+dotnet test backend\AgriAssist.Api.Tests\AgriAssist.Api.Tests.csproj
 
-## Remaining integration work
+cd frontend\react-app
+npm install
+npm run build
+npm test
 
-Milestone 1 covers the manual Task/Approval lifecycle. The scheduling agent, deterministic candidate validation, workflow-level approval transaction, resource-reservation coordination, concurrency enforcement at the PostgreSQL boundary, and final workflow review UI remain for later milestones.
+cd ..\..\mobile\flutter_app
+flutter pub get
+flutter analyze
+flutter test
+```
 
-The assignment mentions Flutter integration, but `mobile/flutter_app` is absent from the verified checkout. That work remains unavailable until the team supplies the mobile project. See the plan for the complete milestone sequence and verification limits.
+## Runtime Notes
 
-## Verification for Milestone 1
+- Backend secrets live in ignored `.env` files.
+- React reads `VITE_API_BASE_URL`.
+- Flutter defaults to `http://10.0.2.2:5000/api` for Android emulator use and can be overridden with `--dart-define AGRIASSIST_API_BASE_URL=...`.
+- Cloudinary uploads require backend Cloudinary environment values.
+- The AgenticAI client remains disabled until the shared AI service from the later team prompts is integrated.
 
-All 10 Member 4 source, test, and plan files were byte-compared with the verified local originals before staging.
+## Member 4 Verification
 
-- Backend test-project build: passed with 0 warnings and 0 errors.
-- Focused TaskApproval/Audit tests: 7 passed.
-- Full backend suite: 10 passed and 1 unrelated Auth integration test was blocked by Windows Event Log access in the sandbox.
-- Frontend lint: passed with warnings and no errors.
-- Frontend production build: passed.
-- Frontend tests: 12 passed across 2 files.
+The Milestone 1 changes were verified again after merging the shared foundation:
 
-The upload diff is checked for whitespace errors and accidental credential patterns before commit. The remote branch cannot be compiled by itself until the shared application foundation is merged; the successful checks above were run in the complete local workspace.
+- Backend test-project build passed with 0 warnings and 0 errors.
+- Seven focused TaskApproval and regression tests passed.
+- The frontend production build passed.
+- Twelve frontend tests passed across two files.
+- Frontend lint completed with warnings and no errors.
 
-The plan's no-Git finding describes the original local snapshot at inspection time. This handoff branch now preserves the actual team Git history; it does not retroactively give that snapshot an authorship history.
+The earlier full backend run passed 10 of 11 tests; the unrelated Auth integration test was blocked by Windows Event Log access in the sandbox. Flutter verification is unavailable because the Flutter SDK is not installed in this environment.

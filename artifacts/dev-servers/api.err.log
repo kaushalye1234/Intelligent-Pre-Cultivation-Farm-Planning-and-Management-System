@@ -1,0 +1,16 @@
+=Testing : The term '=Testing' is not recognized as the name of a cmdlet, function, script file, or operable program. 
+Check the spelling of the name, or if a path was included, verify that the path is correct and try again.
+At line:1 char:1
++ ='Testing'; ='Testing'; dotnet run --urls http://localhost:5000
++ ~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (=Testing:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+ 
+=Testing : The term '=Testing' is not recognized as the name of a cmdlet, function, script file, or operable program. 
+Check the spelling of the name, or if a path was included, verify that the path is correct and try again.
+At line:1 char:13
++ ='Testing'; ='Testing'; dotnet run --urls http://localhost:5000
++             ~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (=Testing:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+ 
