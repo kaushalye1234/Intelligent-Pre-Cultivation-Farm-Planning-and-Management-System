@@ -20,8 +20,8 @@ export function setAuthToken(token: string | null) {
 
 export function getErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
-    const axiosError = error as AxiosError<{ message?: string; title?: string }>
-    return axiosError.response?.data?.message ?? axiosError.response?.data?.title ?? axiosError.message
+    const axiosError = error as AxiosError<{ message?: string; title?: string; error?: { message?: string } }>
+    return axiosError.response?.data?.error?.message ?? axiosError.response?.data?.message ?? axiosError.response?.data?.title ?? axiosError.message
   }
 
   if (error instanceof Error) {

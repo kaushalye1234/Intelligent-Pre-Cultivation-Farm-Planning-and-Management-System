@@ -75,6 +75,7 @@ builder.Services.AddScoped<IResourceService, ResourceService>();
 builder.Services.AddScoped<IRequestValidator<FarmTaskRequest>, FarmTaskRequestValidator>();
 builder.Services.AddScoped<IRequestValidator<IrrigationScheduleRequest>, IrrigationScheduleRequestValidator>();
 builder.Services.AddScoped<IRequestValidator<ApprovalActionRequest>, ApprovalActionRequestValidator>();
+builder.Services.AddScoped<IRequestValidator<CancellationRequest>, CancellationRequestValidator>();
 builder.Services.AddScoped<ITaskApprovalService, TaskApprovalService>();
 builder.Services.AddScoped<IAgenticAIClient, AgenticAIClient>();
 

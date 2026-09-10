@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace AgriAssist.Api.Controllers.Inspections;
 
+
 [ApiController]
 [Route("api/inspections")]
 [Authorize]
