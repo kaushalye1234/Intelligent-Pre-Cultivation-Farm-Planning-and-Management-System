@@ -22,7 +22,7 @@ class ApiClient {
     String? baseUrl,
   })  : _httpClient = httpClient ?? http.Client(),
         _secureStorage = secureStorage ?? const FlutterSecureStorage(),
-        baseUrl = baseUrl ?? const String.fromEnvironment('AGRIASSIST_API_BASE_URL', defaultValue: 'http://10.0.2.2:5000/api');
+        baseUrl = baseUrl ?? const String.fromEnvironment('AGRIASSIST_API_BASE_URL', defaultValue: 'http://10.0.2.2:5087/api');
 
   final http.Client _httpClient;
   final FlutterSecureStorage _secureStorage;

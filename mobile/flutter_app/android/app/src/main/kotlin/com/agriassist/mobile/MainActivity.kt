@@ -1,4 +1,4 @@
-package com.example.agriassist_mobile
+﻿package com.agriassist.mobile
 
 import io.flutter.embedding.android.FlutterActivity
 
