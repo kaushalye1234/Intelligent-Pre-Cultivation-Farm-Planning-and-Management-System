@@ -57,7 +57,7 @@ flutter test
 
 - Backend secrets live in ignored `.env` files.
 - React reads `VITE_API_BASE_URL`.
-- Flutter defaults to `http://10.0.2.2:5000/api` for Android emulator use and can be overridden with `--dart-define AGRIASSIST_API_BASE_URL=...`.
+- Flutter defaults to `http://10.0.2.2:5087/api` for Android emulator use and can be overridden with `--dart-define AGRIASSIST_API_BASE_URL=...`.
 - Cloudinary uploads require backend Cloudinary environment values.
 - The AgenticAI client remains disabled until the shared AI service from the later team prompts is integrated.
 
