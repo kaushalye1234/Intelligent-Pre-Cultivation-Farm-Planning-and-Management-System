@@ -1,0 +1,102 @@
+(!) Failed to run dependency scan. Skipping dependency pre-bundling. Error:   Failed to scan for dependencies from entries:
+  C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/index.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/ghbmnnjooekpmoecnnnilnnbdlolhkhi/1.110.1_0/offscreendocument.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/oombnmpbbhbakfpfgdflaajkhicgfaam/1.2.5_0/notification.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/oombnmpbbhbakfpfgdflaajkhicgfaam/1.2.5_0/action/aiConversationSecurity.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/oombnmpbbhbakfpfgdflaajkhicgfaam/1.2.5_0/action/alert_connection_lost.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/oombnmpbbhbakfpfgdflaajkhicgfaam/1.2.5_0/action/alert_expired_license.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/oombnmpbbhbakfpfgdflaajkhicgfaam/1.2.5_0/action/alert_missing_product.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/oombnmpbbhbakfpfgdflaajkhicgfaam/1.2.5_0/action/alert_unsupported_browser.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/oombnmpbbhbakfpfgdflaajkhicgfaam/1.2.5_0/action/browsingprivacy.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/oombnmpbbhbakfpfgdflaajkhicgfaam/1.2.5_0/action/exifcleaner.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/oombnmpbbhbakfpfgdflaajkhicgfaam/1.2.5_0/action/popup.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/oombnmpbbhbakfpfgdflaajkhicgfaam/1.2.5_0/action/regular_cleanup_settings.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/oombnmpbbhbakfpfgdflaajkhicgfaam/1.2.5_0/action/securesearch.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/oombnmpbbhbakfpfgdflaajkhicgfaam/1.2.5_0/action/settings.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/oombnmpbbhbakfpfgdflaajkhicgfaam/1.2.5_0/action/websiteSecurityInspector.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/nmmhkkegccagdldgiimedpiccmgmieda/1.0.0.6_0/html/craw_window.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/fheoggkfdfchfphceeifdbepaooicaho/8.1.0.9909_0/html/about.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/fheoggkfdfchfphceeifdbepaooicaho/8.1.0.9909_0/html/activate_banner_mb.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/fheoggkfdfchfphceeifdbepaooicaho/8.1.0.9909_0/html/dfd_landing_page.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/fheoggkfdfchfphceeifdbepaooicaho/8.1.0.9909_0/html/foreground_sidebar_main.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/fheoggkfdfchfphceeifdbepaooicaho/8.1.0.9909_0/html/how_it_works.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/fheoggkfdfchfphceeifdbepaooicaho/8.1.0.9909_0/html/iframe_block_page.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/fheoggkfdfchfphceeifdbepaooicaho/8.1.0.9909_0/html/nps_survey.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/fheoggkfdfchfphceeifdbepaooicaho/8.1.0.9909_0/html/page_banner_mb.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/fheoggkfdfchfphceeifdbepaooicaho/8.1.0.9909_0/html/preference.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/fheoggkfdfchfphceeifdbepaooicaho/8.1.0.9909_0/html/settings.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/fheoggkfdfchfphceeifdbepaooicaho/8.1.0.9909_0/html/site_status_block_page.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/fheoggkfdfchfphceeifdbepaooicaho/8.1.0.9909_0/html/site_status_site_report.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/fheoggkfdfchfphceeifdbepaooicaho/8.1.0.9909_0/html/site_status_typosquatting.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/fheoggkfdfchfphceeifdbepaooicaho/8.1.0.9909_0/html/statistics.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/fheoggkfdfchfphceeifdbepaooicaho/8.1.0.9909_0/html/whitelist.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/fheoggkfdfchfphceeifdbepaooicaho/8.1.0.9909_0/html/sidebar/sidebar_rat_detection.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/fheoggkfdfchfphceeifdbepaooicaho/8.1.0.9909_0/html/balloon_message/advanced_protection_signal.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/fheoggkfdfchfphceeifdbepaooicaho/8.1.0.9909_0/html/balloon_message/advanced_protection_signal_toast.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/fheoggkfdfchfphceeifdbepaooicaho/8.1.0.9909_0/html/balloon_message/download_scan_popup.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/fheoggkfdfchfphceeifdbepaooicaho/8.1.0.9909_0/html/balloon_message/dws.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/fheoggkfdfchfphceeifdbepaooicaho/8.1.0.9909_0/html/balloon_message/esd_enrolled_detection_toast.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/fheoggkfdfchfphceeifdbepaooicaho/8.1.0.9909_0/html/balloon_message/esd_enrolled_intro_toast.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/fheoggkfdfchfphceeifdbepaooicaho/8.1.0.9909_0/html/balloon_message/esd_toast.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/fheoggkfdfchfphceeifdbepaooicaho/8.1.0.9909_0/html/balloon_message/no_native_toast.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/fheoggkfdfchfphceeifdbepaooicaho/8.1.0.9909_0/html/topbar/topbar_iframe_block.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/oombnmpbbhbakfpfgdflaajkhicgfaam/1.2.5_0/action/pages/getMore/index.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/oombnmpbbhbakfpfgdflaajkhicgfaam/1.2.5_0/action/pages/blockingPage/index.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/oombnmpbbhbakfpfgdflaajkhicgfaam/1.2.5_0/action/pages/dataCollectionConsent/index.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/oombnmpbbhbakfpfgdflaajkhicgfaam/1.2.5_0/action/pages/whatsNew/index.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/oombnmpbbhbakfpfgdflaajkhicgfaam/1.2.5_0/action/pages/welcome/index.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/fheoggkfdfchfphceeifdbepaooicaho/8.1.0.9909_0/html/sidebar/sidebar_main/sidebar_esd.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/fheoggkfdfchfphceeifdbepaooicaho/8.1.0.9909_0/html/sidebar/sidebar_main/sidebar_home.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/fheoggkfdfchfphceeifdbepaooicaho/8.1.0.9909_0/html/sidebar/sidebar_main/sidebar_main.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/fheoggkfdfchfphceeifdbepaooicaho/8.1.0.9909_0/html/sidebar/sidebar_main/sidebar_mb.html
+C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/artifacts/chrome-profile/Default/Extensions/fheoggkfdfchfphceeifdbepaooicaho/8.1.0.9909_0/html/sidebar/sidebar_main/sidebar_mb_faq.html
+
+  Build failed with 50 errors:
+
+[plugin vite:dep-scan:load:html]
+Error: EPERM: operation not permitted, open 'C:\Users\sanet\Desktop\new-farm-paln\frontend\react-app\artifacts\chrome-profile\Default\Extensions\ghbmnnjooekpmoecnnnilnnbdlolhkhi\1.110.1_0\offscreendocument.html'
+    at async open (node:internal/fs/promises:636:25)
+    at async Object.readFile (node:internal/fs/promises:1235:14)
+    at async htmlTypeOnLoadCallback (file:///C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/node_modules/vite/dist/node/chunks/node.js:31575:13)
+    at async LoadPluginContextImpl.handler (file:///C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/node_modules/vite/dist/node/chunks/node.js:31707:13)
+    at async plugin (file:///C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/node_modules/rolldown/dist/shared/bindingify-input-options-DrImMHKQ.mjs:1571:16)
+    at async plugin.<computed> (file:///C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/node_modules/rolldown/dist/shared/bindingify-input-options-DrImMHKQ.mjs:2127:12)
+[plugin vite:dep-scan:load:html]
+Error: EPERM: operation not permitted, open 'C:\Users\sanet\Desktop\new-farm-paln\frontend\react-app\artifacts\chrome-profile\Default\Extensions\oombnmpbbhbakfpfgdflaajkhicgfaam\1.2.5_0\action\alert_missing_product.html'
+    at async open (node:internal/fs/promises:636:25)
+    at async Object.readFile (node:internal/fs/promises:1235:14)
+    at async htmlTypeOnLoadCallback (file:///C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/node_modules/vite/dist/node/chunks/node.js:31575:13)
+    at async LoadPluginContextImpl.handler (file:///C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/node_modules/vite/dist/node/chunks/node.js:31707:13)
+    at async plugin (file:///C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/node_modules/rolldown/dist/shared/bindingify-input-options-DrImMHKQ.mjs:1571:16)
+    at async plugin.<computed> (file:///C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/node_modules/rolldown/dist/shared/bindingify-input-options-DrImMHKQ.mjs:2127:12)
+[plugin vite:dep-scan:load:html]
+Error: EPERM: operation not permitted, open 'C:\Users\sanet\Desktop\new-farm-paln\frontend\react-app\artifacts\chrome-profile\Default\Extensions\nmmhkkegccagdldgiimedpiccmgmieda\1.0.0.6_0\html\craw_window.html'
+    at async open (node:internal/fs/promises:636:25)
+    at async Object.readFile (node:internal/fs/promises:1235:14)
+    at async htmlTypeOnLoadCallback (file:///C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/node_modules/vite/dist/node/chunks/node.js:31575:13)
+    at async LoadPluginContextImpl.handler (file:///C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/node_modules/vite/dist/node/chunks/node.js:31707:13)
+    at async plugin (file:///C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/node_modules/rolldown/dist/shared/bindingify-input-options-DrImMHKQ.mjs:1571:16)
+    at async plugin.<computed> (file:///C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/node_modules/rolldown/dist/shared/bindingify-input-options-DrImMHKQ.mjs:2127:12)
+[plugin vite:dep-scan:load:html]
+Error: EPERM: operation not permitted, open 'C:\Users\sanet\Desktop\new-farm-paln\frontend\react-app\artifacts\chrome-profile\Default\Extensions\oombnmpbbhbakfpfgdflaajkhicgfaam\1.2.5_0\action\alert_expired_license.html'
+    at async open (node:internal/fs/promises:636:25)
+    at async Object.readFile (node:internal/fs/promises:1235:14)
+    at async htmlTypeOnLoadCallback (file:///C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/node_modules/vite/dist/node/chunks/node.js:31575:13)
+    at async LoadPluginContextImpl.handler (file:///C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/node_modules/vite/dist/node/chunks/node.js:31707:13)
+    at async plugin (file:///C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/node_modules/rolldown/dist/shared/bindingify-input-options-DrImMHKQ.mjs:1571:16)
+    at async plugin.<computed> (file:///C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/node_modules/rolldown/dist/shared/bindingify-input-options-DrImMHKQ.mjs:2127:12)
+[plugin vite:dep-scan:load:html]
+Error: EPERM: operation not permitted, open 'C:\Users\sanet\Desktop\new-farm-paln\frontend\react-app\artifacts\chrome-profile\Default\Extensions\fheoggkfdfchfphceeifdbepaooicaho\8.1.0.9909_0\html\activate_banner_mb.html'
+    at async open (node:internal/fs/promises:636:25)
+    at async Object.readFile (node:internal/fs/promises:1235:14)
+    at async htmlTypeOnLoadCallback (file:///C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/node_modules/vite/dist/node/chunks/node.js:31575:13)
+    at async LoadPluginContextImpl.handler (file:///C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/node_modules/vite/dist/node/chunks/node.js:31707:13)
+    at async plugin (file:///C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/node_modules/rolldown/dist/shared/bindingify-input-options-DrImMHKQ.mjs:1571:16)
+    at async plugin.<computed> (file:///C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/node_modules/rolldown/dist/shared/bindingify-input-options-DrImMHKQ.mjs:2127:12)
+...
+    at aggregateBindingErrorsIntoJsError (file:///C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/node_modules/rolldown/dist/shared/error-BP8lJHle.mjs:48:18)
+    at unwrapBindingResult (file:///C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/node_modules/rolldown/dist/shared/error-BP8lJHle.mjs:18:128)
+    at scan (file:///C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/node_modules/rolldown/dist/experimental-index.mjs:237:3)
+    at async Object.build (file:///C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/node_modules/vite/dist/node/chunks/node.js:31493:3)
+    at async scan (file:///C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/node_modules/vite/dist/node/chunks/node.js:31432:4)
+    at async file:///C:/Users/sanet/Desktop/new-farm-paln/frontend/react-app/node_modules/vite/dist/node/chunks/node.js:34462:15
