@@ -1,4 +1,4 @@
-export type ApplicationRole = 1 | 2 | 3 | 4 | 5
+﻿export type ApplicationRole = 1 | 2 | 3 | 4 | 5
 
 export type UserProfile = {
   id: string
@@ -97,6 +97,57 @@ export type CropIssue = {
   escalatedAt?: string
 }
 
+export type InspectionImage = {
+  id: string
+  fieldInspectionId: string
+  url: string
+  publicId: string
+  contentType: string
+  sizeBytes: number
+}
+
+export type FollowUpRecommendation = {
+  id: string
+  cropIssueId: string
+  recommendation: string
+  dueAt?: string
+  isCompleted: boolean
+}
+
+export type InspectionDetail = Inspection & {
+  observations: Observation[]
+  issues: CropIssue[]
+  images: InspectionImage[]
+}
+
+export type InspectionHistoryEvent = {
+  occurredAt: string
+  eventType: string
+  summary: string
+  relatedId?: string
+}
+
+export type FieldAnalysisFieldCondition = {
+  summary: string
+  evidenceInspectionIds: string[]
+}
+
+export type FieldAnalysisOpenIssue = {
+  issueId: string
+  severity: string
+  status: string
+  evidenceInspectionId?: string
+}
+
+export type FieldAnalysisResult = {
+  workflowId: string
+  status: string
+  requiresHumanReview: boolean
+  warnings: string[]
+  fieldCondition: FieldAnalysisFieldCondition
+  openIssues: FieldAnalysisOpenIssue[]
+  priority: string
+}
 export type ResourceCategory = {
   id: string
   name: string
@@ -215,3 +266,5 @@ export type CropPlanningWorkflowStart = {
   requiresHumanReview: boolean
   warnings: string[]
 }
+
+
