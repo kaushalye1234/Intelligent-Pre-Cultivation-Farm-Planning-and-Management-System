@@ -119,3 +119,122 @@ class InventoryStock {
     );
   }
 }
+class CropPlanningDelegatedStep {
+  const CropPlanningDelegatedStep({
+    required this.sequence,
+    required this.stepType,
+    required this.assignedAgent,
+  });
+
+  final int sequence;
+  final String stepType;
+  final String assignedAgent;
+
+  factory CropPlanningDelegatedStep.fromJson(Map<String, dynamic> json) {
+    return CropPlanningDelegatedStep(
+      sequence: json['sequence'] as int? ?? 0,
+      stepType: json['stepType'] as String? ?? '',
+      assignedAgent: json['assignedAgent'] as String? ?? '',
+    );
+  }
+}
+
+class CropPlanningResult {
+  const CropPlanningResult({
+    required this.workflowId,
+    required this.status,
+    required this.requiresHumanReview,
+    required this.warnings,
+    required this.referenceDataStatus,
+    required this.objectiveSummary,
+    required this.steps,
+  });
+
+  final String workflowId;
+  final String status;
+  final bool requiresHumanReview;
+  final List<String> warnings;
+  final String referenceDataStatus;
+  final String objectiveSummary;
+  final List<CropPlanningDelegatedStep> steps;
+
+  factory CropPlanningResult.fromJson(Map<String, dynamic> json) {
+    final warnings = json['warnings'] as List<dynamic>? ?? const [];
+    final steps = json['steps'] as List<dynamic>? ?? const [];
+    return CropPlanningResult(
+      workflowId: json['workflowId'] as String? ?? '',
+      status: json['status'] as String? ?? 'Unknown',
+      requiresHumanReview: json['requiresHumanReview'] as bool? ?? false,
+      warnings: warnings.map((item) => item.toString()).toList(),
+      referenceDataStatus: json['referenceDataStatus'] as String? ?? 'Unknown',
+      objectiveSummary: json['objectiveSummary'] as String? ?? '',
+      steps: steps.cast<Map<String, dynamic>>().map(CropPlanningDelegatedStep.fromJson).toList(),
+    );
+  }
+}
+
+class CropPlanningWorkflowStatus {
+  const CropPlanningWorkflowStatus({
+    required this.workflowId,
+    required this.cropPlanRequestId,
+    required this.status,
+    required this.currentStep,
+    required this.warnings,
+  });
+
+  final String workflowId;
+  final String cropPlanRequestId;
+  final int status;
+  final String currentStep;
+  final List<String> warnings;
+
+  factory CropPlanningWorkflowStatus.fromJson(Map<String, dynamic> json) {
+    final warnings = json['warnings'] as List<dynamic>? ?? const [];
+    return CropPlanningWorkflowStatus(
+      workflowId: json['workflowId'] as String? ?? '',
+      cropPlanRequestId: json['cropPlanRequestId'] as String? ?? '',
+      status: json['status'] as int? ?? 0,
+      currentStep: json['currentStep'] as String? ?? '',
+      warnings: warnings.map((item) => item.toString()).toList(),
+    );
+  }
+
+  String get statusLabel {
+    return switch (status) {
+      1 => 'Not started',
+      2 => 'Pending',
+      3 => 'Running',
+      4 => 'Completed',
+      5 => 'Failed',
+      6 => 'Cancelled',
+      _ => 'Unknown',
+    };
+  }
+}
+
+class CropPlanningWorkflowStart {
+  const CropPlanningWorkflowStart({
+    required this.workflowId,
+    required this.cropPlanRequestId,
+    required this.status,
+    required this.requiresHumanReview,
+    required this.warnings,
+  });
+
+  final String workflowId;
+  final String cropPlanRequestId;
+  final String status;
+  final bool requiresHumanReview;
+  final List<String> warnings;
+
+  factory CropPlanningWorkflowStart.fromJson(Map<String, dynamic> json) {
+    final warnings = json['warnings'] as List<dynamic>? ?? const [];
+    return CropPlanningWorkflowStart(
+      workflowId: json['workflowId'] as String? ?? '',
+      cropPlanRequestId: json['cropPlanRequestId'] as String? ?? '',
+      status: json['status'] as String? ?? 'Unknown',
+      requiresHumanReview: json['requiresHumanReview'] as bool? ?? false,
+      warnings: warnings.map((item) => item.toString()).toList(),
+    );
+  }
+}

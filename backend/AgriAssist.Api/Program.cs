@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using AgriAssist.Api.Data;
 using AgriAssist.Api.Dtos.Shared;
 using AgriAssist.Api.Dtos.CropPlanning;
@@ -77,7 +77,7 @@ builder.Services.AddScoped<IRequestValidator<IrrigationScheduleRequest>, Irrigat
 builder.Services.AddScoped<IRequestValidator<ApprovalActionRequest>, ApprovalActionRequestValidator>();
 builder.Services.AddScoped<IRequestValidator<CancellationRequest>, CancellationRequestValidator>();
 builder.Services.AddScoped<ITaskApprovalService, TaskApprovalService>();
-builder.Services.AddScoped<IAgenticAIClient, AgenticAIClient>();
+builder.Services.AddHttpClient<IAgenticAIClient, AgenticAIClient>();
 
 var jwtSecret = builder.Configuration["Jwt:Secret"];
 if (!string.IsNullOrWhiteSpace(jwtSecret))
@@ -191,9 +191,3 @@ app.MapControllers();
 app.Run();
 
 public partial class Program;
-
-
-
-
-
-

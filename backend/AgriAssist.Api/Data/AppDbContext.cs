@@ -1,4 +1,4 @@
-using AgriAssist.Api.Models.CropPlanning;
+﻿using AgriAssist.Api.Models.CropPlanning;
 using AgriAssist.Api.Models.Inspections;
 using AgriAssist.Api.Models.Resources;
 using AgriAssist.Api.Models.Shared;
@@ -16,6 +16,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<CropCycle> CropCycles => Set<CropCycle>();
     public DbSet<CropPlanRequest> CropPlanRequests => Set<CropPlanRequest>();
     public DbSet<CropPlanRequestHistory> CropPlanRequestHistories => Set<CropPlanRequestHistory>();
+    public DbSet<CropReferenceProfile> CropReferenceProfiles => Set<CropReferenceProfile>();
+    public DbSet<CropStageReference> CropStageReferences => Set<CropStageReference>();
+    public DbSet<CropRuleReference> CropRuleReferences => Set<CropRuleReference>();
     public DbSet<FieldInspection> FieldInspections => Set<FieldInspection>();
     public DbSet<InspectionObservation> InspectionObservations => Set<InspectionObservation>();
     public DbSet<CropIssue> CropIssues => Set<CropIssue>();
@@ -111,6 +114,39 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.HasIndex(history => history.CropPlanRequestId);
         });
 
+        modelBuilder.Entity<CropReferenceProfile>(entity =>
+        {
+            entity.Property(profile => profile.VarietyName).HasMaxLength(120);
+            entity.Property(profile => profile.Region).HasMaxLength(120);
+            entity.Property(profile => profile.SourceName).IsRequired().HasMaxLength(180);
+            entity.Property(profile => profile.SourceUrl).HasMaxLength(1000);
+            entity.Property(profile => profile.SourceVersion).IsRequired().HasMaxLength(120);
+            entity.HasOne(profile => profile.CropType).WithMany().HasForeignKey(profile => profile.CropTypeId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(profile => new { profile.CropTypeId, profile.VarietyName, profile.Region, profile.IsActive });
+            entity.HasIndex(profile => profile.VerifiedAt);
+        });
+
+        modelBuilder.Entity<CropStageReference>(entity =>
+        {
+            entity.Property(stage => stage.StageName).IsRequired().HasMaxLength(120);
+            entity.Property(stage => stage.Notes).HasMaxLength(1000);
+            entity.Property(stage => stage.SourceName).IsRequired().HasMaxLength(180);
+            entity.Property(stage => stage.SourceUrl).HasMaxLength(1000);
+            entity.HasOne(stage => stage.CropReferenceProfile).WithMany(profile => profile.Stages).HasForeignKey(stage => stage.CropReferenceProfileId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(stage => new { stage.CropReferenceProfileId, stage.Sequence });
+        });
+
+        modelBuilder.Entity<CropRuleReference>(entity =>
+        {
+            entity.Property(rule => rule.RuleType).IsRequired().HasMaxLength(120);
+            entity.Property(rule => rule.RuleKey).IsRequired().HasMaxLength(160);
+            entity.Property(rule => rule.StructuredValueJson).HasColumnType("jsonb");
+            entity.Property(rule => rule.SourceName).IsRequired().HasMaxLength(180);
+            entity.Property(rule => rule.SourceUrl).HasMaxLength(1000);
+            entity.HasOne(rule => rule.CropReferenceProfile).WithMany(profile => profile.Rules).HasForeignKey(rule => rule.CropReferenceProfileId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(rule => new { rule.CropReferenceProfileId, rule.RuleType, rule.RuleKey });
+            entity.HasIndex(rule => rule.VerifiedAt);
+        });
         modelBuilder.Entity<FieldInspection>(entity =>
         {
             entity.Property(inspection => inspection.Status).HasConversion<string>().HasMaxLength(40);

@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+﻿import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -19,6 +19,10 @@ class AppState extends ChangeNotifier {
   List<FieldOption> fields = [];
   List<CropTypeOption> cropTypes = [];
   List<InventoryStock> stocks = [];
+  String? lastCropPlanRequestId;
+  CropPlanningWorkflowStart? lastWorkflowStart;
+  CropPlanningWorkflowStatus? lastWorkflowStatus;
+  CropPlanningResult? lastPlanningResult;
   String? error;
   bool isBusy = false;
   String? lastPhotoName;
@@ -65,6 +69,32 @@ class AppState extends ChangeNotifier {
     stocks = await _apiClient.stocks();
   }
 
+  Future<void> createAndStartAiCropPlan({
+    required String farmId,
+    required String? fieldId,
+    required String cropTypeId,
+    required String startDate,
+    required String endDate,
+    required num budget,
+    required String objective,
+  }) async {
+    await _guard(() async {
+      final requestId = await _apiClient.createPreliminaryCropPlan(
+        farmId: farmId,
+        fieldId: fieldId,
+        cropTypeId: cropTypeId,
+        preferredStartDate: startDate,
+        preferredEndDate: endDate,
+        budget: budget,
+        objective: objective,
+      );
+      lastCropPlanRequestId = requestId;
+      lastWorkflowStart = await _apiClient.startCropPlanningWorkflow(requestId);
+      await refreshLastCropPlanningWorkflow();
+      await refresh();
+    });
+  }
+
   Future<void> createPreliminaryCropPlan({
     required String farmId,
     required String? fieldId,
@@ -75,7 +105,7 @@ class AppState extends ChangeNotifier {
     required String objective,
   }) async {
     await _guard(() async {
-      await _apiClient.createPreliminaryCropPlan(
+      lastCropPlanRequestId = await _apiClient.createPreliminaryCropPlan(
         farmId: farmId,
         fieldId: fieldId,
         cropTypeId: cropTypeId,
@@ -88,6 +118,13 @@ class AppState extends ChangeNotifier {
     });
   }
 
+  Future<void> refreshLastCropPlanningWorkflow() async {
+    final requestId = lastCropPlanRequestId;
+    if (requestId == null) return;
+    lastWorkflowStatus = await _apiClient.cropPlanningWorkflowStatus(requestId);
+    lastPlanningResult = await _apiClient.cropPlanningResult(requestId);
+    notifyListeners();
+  }
   Future<void> reserveResource({required String stockId, required num quantity, required String purpose}) async {
     await _guard(() async {
       await _apiClient.reserveResource(inventoryStockId: stockId, quantity: quantity, purpose: purpose);
