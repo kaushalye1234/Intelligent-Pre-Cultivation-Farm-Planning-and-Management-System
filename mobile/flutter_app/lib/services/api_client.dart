@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -77,7 +77,7 @@ class ApiClient {
     return _items(response).map(InventoryStock.fromJson).toList();
   }
 
-  Future<void> createPreliminaryCropPlan({
+  Future<String> createPreliminaryCropPlan({
     required String farmId,
     required String? fieldId,
     required String cropTypeId,
@@ -86,7 +86,7 @@ class ApiClient {
     required num budget,
     required String objective,
   }) async {
-    await _post('/crop-planning/requests/preliminary', {
+    final response = await _post('/crop-planning/requests/preliminary', {
       'farmId': farmId,
       'fieldId': fieldId,
       'cropTypeId': cropTypeId,
@@ -95,6 +95,22 @@ class ApiClient {
       'budget': budget,
       'objective': objective,
     });
+    return response['id'] as String;
+  }
+
+  Future<CropPlanningWorkflowStart> startCropPlanningWorkflow(String cropPlanRequestId) async {
+    final response = await _post('/crop-plans/$cropPlanRequestId/start-ai-workflow', {});
+    return CropPlanningWorkflowStart.fromJson(response);
+  }
+
+  Future<CropPlanningWorkflowStatus> cropPlanningWorkflowStatus(String cropPlanRequestId) async {
+    final response = await _get('/crop-plans/$cropPlanRequestId/workflow-status');
+    return CropPlanningWorkflowStatus.fromJson(response);
+  }
+
+  Future<CropPlanningResult> cropPlanningResult(String cropPlanRequestId) async {
+    final response = await _get('/crop-plans/$cropPlanRequestId/planning-result');
+    return CropPlanningResult.fromJson(response);
   }
 
   Future<void> reserveResource({required String inventoryStockId, required num quantity, required String purpose}) async {
@@ -141,7 +157,8 @@ class ApiClient {
   Map<String, dynamic> _decode(http.Response response) {
     final body = response.body.isEmpty ? <String, dynamic>{} : jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw ApiException((body['message'] ?? body['title'] ?? 'Request failed') as String);
+      final error = body['error'] as Map<String, dynamic>?;
+      throw ApiException((error?['message'] ?? body['message'] ?? body['title'] ?? 'Request failed') as String);
     }
     return body;
   }

@@ -1,7 +1,9 @@
-using System.Net;
+﻿using System.Net;
+using System.Text.Json;
 using AgriAssist.Api.Data;
 using AgriAssist.Api.Dtos.CropPlanning;
 using AgriAssist.Api.Dtos.Shared;
+using AgriAssist.Api.ExternalServices.AgenticAI;
 using AgriAssist.Api.Models.CropPlanning;
 using AgriAssist.Api.Models.Shared;
 using AgriAssist.Api.Services.Shared;
@@ -18,8 +20,26 @@ public sealed class CropPlanningService(
     IRequestValidator<CropTypeRequest> cropTypeValidator,
     IRequestValidator<CropCycleRequest> cropCycleValidator,
     IRequestValidator<CropPlanRequestCreate> createRequestValidator,
-    IRequestValidator<CropPlanRequestUpdate> updateRequestValidator) : ICropPlanningService
+    IRequestValidator<CropPlanRequestUpdate> updateRequestValidator,
+    IAgenticAIClient agenticAIClient) : ICropPlanningService
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private const string CoordinatorAgentName = "CropPlanningCoordinatorAgent";
+    private const string CoordinatorStepName = "CropPlanningCoordinator";
+
+    public CropPlanningService(
+        AppDbContext dbContext,
+        ICurrentUserService currentUser,
+        IRequestValidator<FarmRequest> farmValidator,
+        IRequestValidator<FieldRequest> fieldValidator,
+        IRequestValidator<CropTypeRequest> cropTypeValidator,
+        IRequestValidator<CropCycleRequest> cropCycleValidator,
+        IRequestValidator<CropPlanRequestCreate> createRequestValidator,
+        IRequestValidator<CropPlanRequestUpdate> updateRequestValidator)
+        : this(dbContext, currentUser, farmValidator, fieldValidator, cropTypeValidator, cropCycleValidator, createRequestValidator, updateRequestValidator, new UnavailableAgenticAIClient())
+    {
+    }
+
     public async Task<PagedResult<FarmResponse>> SearchFarmsAsync(PagedQuery query, CancellationToken cancellationToken)
     {
         query.Normalize();
@@ -249,6 +269,204 @@ public sealed class CropPlanningService(
             .ToListAsync(cancellationToken);
     }
 
+
+    public async Task<CropPlanningWorkflowStartResponse> StartAiWorkflowAsync(Guid requestId, CancellationToken cancellationToken)
+    {
+        var request = await ApplyPlanRequestAccess(dbContext.CropPlanRequests)
+            .Include(item => item.Farm)
+            .Include(item => item.Field)
+            .Include(item => item.CropType)
+            .SingleOrDefaultAsync(item => item.Id == requestId, cancellationToken)
+            ?? throw NotFound("Crop plan request");
+
+        if (request.Status is CropPlanRequestStatus.Rejected or CropPlanRequestStatus.Cancelled or CropPlanRequestStatus.Approved)
+        {
+            throw new ApiException(HttpStatusCode.BadRequest, "CROP_PLAN_STATE_NOT_ALLOWED", "Only submitted or preliminary crop plan requests can start AI planning.");
+        }
+
+        var hasRunningWorkflow = await dbContext.AgentWorkflows.AsNoTracking().AnyAsync(workflow =>
+            workflow.CropPlanRequestId == request.Id &&
+            (workflow.Status == AgentWorkflowStatus.Pending || workflow.Status == AgentWorkflowStatus.Running),
+            cancellationToken);
+        if (hasRunningWorkflow)
+        {
+            throw new ApiException(HttpStatusCode.Conflict, "AI_WORKFLOW_ALREADY_ACTIVE", "An AI workflow is already active for this crop plan request.");
+        }
+
+        var userId = RequireUser();
+        var cropCycleId = request.FieldId.HasValue
+            ? await dbContext.CropCycles.AsNoTracking()
+                .Where(cycle => cycle.FieldId == request.FieldId.Value && cycle.CropTypeId == request.CropTypeId && !cycle.IsDeleted)
+                .OrderByDescending(cycle => cycle.CreatedAt)
+                .Select(cycle => (Guid?)cycle.Id)
+                .FirstOrDefaultAsync(cancellationToken)
+            : null;
+
+        var workflow = new AgentWorkflow
+        {
+            CropPlanRequestId = request.Id,
+            InitiatedByUserId = userId,
+            Objective = request.Objective,
+            Status = AgentWorkflowStatus.Running,
+            CurrentStep = CoordinatorAgentName,
+            CreatedByUserId = userId
+        };
+
+        var input = new CropPlanningCoordinatorInput(
+            workflow.Id,
+            request.Id,
+            request.RequestedByUserId,
+            request.FarmId,
+            request.FieldId,
+            cropCycleId,
+            request.CropTypeId,
+            request.Objective,
+            request.Budget,
+            request.PreferredStartDate);
+
+        var step = new AgentStep
+        {
+            AgentWorkflowId = workflow.Id,
+            AgentName = CoordinatorAgentName,
+            StepName = CoordinatorStepName,
+            Sequence = 1,
+            InputJson = JsonSerializer.Serialize(input, JsonOptions),
+            Status = AgentStepStatus.Running,
+            StartedAt = DateTime.UtcNow,
+            CreatedByUserId = userId
+        };
+
+        dbContext.AgentWorkflows.Add(workflow);
+        dbContext.AgentSteps.Add(step);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        try
+        {
+            var output = await agenticAIClient.RunCropPlanningCoordinatorAsync(input, cancellationToken);
+            var validationErrors = ValidateCoordinatorOutput(workflow.Id, output);
+            var isValid = validationErrors.Count == 0;
+
+            step.OutputJson = isValid
+                ? JsonSerializer.Serialize(output, JsonOptions)
+                : JsonSerializer.Serialize(CreateSafeFailureOutput(workflow.Id, validationErrors), JsonOptions);
+            step.Status = isValid && !output.Status.Equals("SafeFailure", StringComparison.OrdinalIgnoreCase) ? AgentStepStatus.Completed : AgentStepStatus.Failed;
+            step.CompletedAt = DateTime.UtcNow;
+            step.ErrorCode = isValid ? (output.Status.Equals("SafeFailure", StringComparison.OrdinalIgnoreCase) ? "AI_SAFE_FAILURE" : null) : "AI_RESPONSE_INVALID";
+            step.ErrorMessageSafe = isValid ? (output.Status.Equals("SafeFailure", StringComparison.OrdinalIgnoreCase) ? output.Warnings.FirstOrDefault() : null) : "The AI service returned a response that failed validation.";
+
+            dbContext.AgentValidationResults.Add(new AgentValidationResult
+            {
+                AgentWorkflowId = workflow.Id,
+                ValidatorName = "CropPlanningCoordinatorOutputValidator",
+                IsValid = isValid,
+                ErrorsJson = JsonSerializer.Serialize(validationErrors, JsonOptions),
+                CreatedByUserId = userId
+            });
+
+            if (!isValid)
+            {
+                workflow.Status = AgentWorkflowStatus.Failed;
+                workflow.CurrentStep = "SafeFailure";
+                workflow.CompletedAt = DateTime.UtcNow;
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return new CropPlanningWorkflowStartResponse(workflow.Id, request.Id, step.Id, "SafeFailure", true, validationErrors);
+            }
+
+            if (output.Status.Equals("SafeFailure", StringComparison.OrdinalIgnoreCase))
+            {
+                workflow.Status = AgentWorkflowStatus.Failed;
+                workflow.CurrentStep = "SafeFailure";
+                workflow.CompletedAt = DateTime.UtcNow;
+            }
+            else if (output.Status.Equals("Planned", StringComparison.OrdinalIgnoreCase))
+            {
+                AddDownstreamSteps(workflow.Id, output.Steps ?? [], userId);
+                workflow.Status = AgentWorkflowStatus.Pending;
+                workflow.CurrentStep = "CropFieldAnalysisAgent";
+                if (request.Status == CropPlanRequestStatus.Submitted)
+                {
+                    AddHistory(request.Id, request.Status, CropPlanRequestStatus.PreliminaryGenerated, "AI crop planning coordinator completed.");
+                    request.Status = CropPlanRequestStatus.PreliminaryGenerated;
+                }
+            }
+            else
+            {
+                workflow.Status = AgentWorkflowStatus.Pending;
+                workflow.CurrentStep = output.RequiresHumanReview ? "HumanReview" : CoordinatorAgentName;
+            }
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return new CropPlanningWorkflowStartResponse(workflow.Id, request.Id, step.Id, output.Status, output.RequiresHumanReview, output.Warnings);
+        }
+        catch (Exception)
+        {
+            var warnings = new[] { "AI service is unavailable or timed out. No crop facts were generated." };
+            var safeOutput = CreateSafeFailureOutput(workflow.Id, warnings);
+            step.Status = AgentStepStatus.Failed;
+            step.OutputJson = JsonSerializer.Serialize(safeOutput, JsonOptions);
+            step.CompletedAt = DateTime.UtcNow;
+            step.ErrorCode = "AI_SERVICE_UNAVAILABLE";
+            step.ErrorMessageSafe = warnings[0];
+            workflow.Status = AgentWorkflowStatus.Failed;
+            workflow.CurrentStep = "SafeFailure";
+            workflow.CompletedAt = DateTime.UtcNow;
+            dbContext.AgentValidationResults.Add(new AgentValidationResult
+            {
+                AgentWorkflowId = workflow.Id,
+                ValidatorName = "CropPlanningCoordinatorAvailability",
+                IsValid = false,
+                ErrorsJson = JsonSerializer.Serialize(warnings, JsonOptions),
+                CreatedByUserId = userId
+            });
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return new CropPlanningWorkflowStartResponse(workflow.Id, request.Id, step.Id, safeOutput.Status, true, warnings);
+        }
+    }
+
+    public async Task<CropPlanningWorkflowStatusResponse> GetWorkflowStatusAsync(Guid requestId, CancellationToken cancellationToken)
+    {
+        await EnsurePlanRequestAccessAsync(requestId, cancellationToken);
+        var workflow = await LatestWorkflowQuery(requestId)
+            .Include(item => item.Steps)
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw NotFound("AI workflow");
+
+        var warnings = ExtractWarnings(workflow.Steps.FirstOrDefault(step => step.StepName == CoordinatorStepName)?.OutputJson);
+        var steps = workflow.Steps
+            .OrderBy(step => step.Sequence)
+            .Select(step => new AgentStepStatusResponse(step.Id, step.AgentName, step.StepName, step.Sequence, step.Status, step.StartedAt, step.CompletedAt, step.ErrorCode, step.ErrorMessageSafe))
+            .ToList();
+
+        return new CropPlanningWorkflowStatusResponse(workflow.Id, requestId, workflow.Status, workflow.CurrentStep, workflow.CreatedAt, workflow.CompletedAt, steps, warnings);
+    }
+
+    public async Task<CropPlanningResultResponse> GetPlanningResultAsync(Guid requestId, CancellationToken cancellationToken)
+    {
+        await EnsurePlanRequestAccessAsync(requestId, cancellationToken);
+        var workflow = await LatestWorkflowQuery(requestId)
+            .Include(item => item.Steps)
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw NotFound("AI workflow");
+        var coordinatorOutput = workflow.Steps
+            .OrderBy(step => step.Sequence)
+            .FirstOrDefault(step => step.StepName == CoordinatorStepName)?.OutputJson;
+
+        if (string.IsNullOrWhiteSpace(coordinatorOutput))
+        {
+            return CreateResultResponse(workflow.Id, CreateSafeFailureOutput(workflow.Id, new[] { "Coordinator output is not available yet." }));
+        }
+
+        try
+        {
+            var output = JsonSerializer.Deserialize<CropPlanningCoordinatorOutput>(coordinatorOutput, JsonOptions)
+                ?? CreateSafeFailureOutput(workflow.Id, new[] { "Coordinator output is empty." });
+            return CreateResultResponse(workflow.Id, output);
+        }
+        catch (JsonException)
+        {
+            return CreateResultResponse(workflow.Id, CreateSafeFailureOutput(workflow.Id, new[] { "Coordinator output could not be read safely." }));
+        }
+    }
     private async Task<CropPlanRequestResponse> CreateRequestCoreAsync(CropPlanRequestCreate request, CropPlanRequestStatus status, string note, CancellationToken cancellationToken)
     {
         Validate(createRequestValidator.Validate(request));
@@ -326,6 +544,117 @@ public sealed class CropPlanningService(
         if (!await dbContext.CropTypes.AsNoTracking().AnyAsync(item => item.Id == cropTypeId && item.IsActive && !item.IsDeleted, cancellationToken)) throw NotFound("Crop type");
     }
 
+
+    private async Task EnsurePlanRequestAccessAsync(Guid requestId, CancellationToken cancellationToken)
+    {
+        if (!await ApplyPlanRequestAccess(dbContext.CropPlanRequests.AsNoTracking()).AnyAsync(item => item.Id == requestId, cancellationToken)) throw NotFound("Crop plan request");
+    }
+
+    private IQueryable<AgentWorkflow> LatestWorkflowQuery(Guid requestId) =>
+        dbContext.AgentWorkflows
+            .Where(workflow => workflow.CropPlanRequestId == requestId && !workflow.IsDeleted)
+            .OrderByDescending(workflow => workflow.CreatedAt)
+            .ThenByDescending(workflow => workflow.Id)
+            .Take(1);
+
+    private void AddDownstreamSteps(Guid workflowId, IReadOnlyList<CropPlanningDelegatedStepResponse> steps, Guid userId)
+    {
+        foreach (var delegatedStep in steps.OrderBy(item => item.Sequence))
+        {
+            dbContext.AgentSteps.Add(new AgentStep
+            {
+                AgentWorkflowId = workflowId,
+                AgentName = delegatedStep.AssignedAgent,
+                StepName = delegatedStep.StepType,
+                Sequence = delegatedStep.Sequence + 1,
+                InputJson = JsonSerializer.Serialize(new { workflowId, delegatedStep.StepType }, JsonOptions),
+                Status = AgentStepStatus.Pending,
+                CreatedByUserId = userId
+            });
+        }
+    }
+
+    private static IReadOnlyList<string> ValidateCoordinatorOutput(Guid workflowId, CropPlanningCoordinatorOutput output)
+    {
+        var errors = new List<string>();
+        if (output.WorkflowId != workflowId) errors.Add("Coordinator workflowId does not match the persisted workflow.");
+        if (string.IsNullOrWhiteSpace(output.Status)) errors.Add("Coordinator status is required.");
+        if (output.Warnings is null) errors.Add("Coordinator warnings array is required.");
+
+        if (output.Status.Equals("SafeFailure", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!output.RequiresHumanReview) errors.Add("Safe failures must require human review.");
+            return errors;
+        }
+
+        if (output.Status.Equals("ReferenceDataUnavailable", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!output.RequiresHumanReview) errors.Add("Missing reference data must require human review.");
+            return errors;
+        }
+
+        if (!output.Status.Equals("Planned", StringComparison.OrdinalIgnoreCase))
+        {
+            errors.Add("Coordinator status must be Planned, ReferenceDataUnavailable, or SafeFailure.");
+        }
+
+        var expectedSteps = new[]
+        {
+            ("FieldAnalysis", "CropFieldAnalysisAgent"),
+            ("WeatherResourceAnalysis", "WeatherResourceAgent"),
+            ("Scheduling", "SchedulingValidationAgent")
+        };
+        var steps = output.Steps ?? [];
+        if (steps.Count != expectedSteps.Length)
+        {
+            errors.Add("Coordinator must delegate exactly three downstream analysis steps.");
+            return errors;
+        }
+
+        for (var index = 0; index < expectedSteps.Length; index++)
+        {
+            var expected = expectedSteps[index];
+            var actual = steps[index];
+            if (actual.Sequence != index + 1 || actual.StepType != expected.Item1 || actual.AssignedAgent != expected.Item2)
+            {
+                errors.Add($"Coordinator step {index + 1} must delegate {expected.Item1} to {expected.Item2}.");
+            }
+        }
+
+        return errors;
+    }
+
+    private static CropPlanningCoordinatorOutput CreateSafeFailureOutput(Guid workflowId, IEnumerable<string> warnings) =>
+        new(workflowId, "SafeFailure", true, warnings.ToArray(), "Unknown", string.Empty, []);
+
+    private static CropPlanningResultResponse CreateResultResponse(Guid workflowId, CropPlanningCoordinatorOutput output) =>
+        new(
+            workflowId,
+            output.Status,
+            output.RequiresHumanReview,
+            output.Warnings,
+            output.ReferenceDataStatus ?? "Unknown",
+            output.ObjectiveSummary ?? string.Empty,
+            output.Steps ?? []);
+
+    private static IReadOnlyList<string> ExtractWarnings(string? outputJson)
+    {
+        if (string.IsNullOrWhiteSpace(outputJson)) return [];
+        try
+        {
+            using var document = JsonDocument.Parse(outputJson);
+            if (!document.RootElement.TryGetProperty("warnings", out var warnings) || warnings.ValueKind != JsonValueKind.Array) return [];
+            return warnings.EnumerateArray()
+                .Where(item => item.ValueKind == JsonValueKind.String)
+                .Select(item => item.GetString() ?? string.Empty)
+                .Where(item => !string.IsNullOrWhiteSpace(item))
+                .ToArray();
+        }
+        catch (JsonException)
+        {
+            return ["Stored coordinator warnings could not be read safely."];
+        }
+    }
     private void AddHistory(Guid requestId, CropPlanRequestStatus from, CropPlanRequestStatus to, string note)
     {
         dbContext.CropPlanRequestHistories.Add(new CropPlanRequestHistory { CropPlanRequestId = requestId, FromStatus = from, ToStatus = to, Note = note, ChangedByUserId = RequireUser(), CreatedByUserId = currentUser.UserId });
@@ -346,6 +675,12 @@ public sealed class CropPlanningService(
     private static void Validate(IReadOnlyList<string> errors)
     {
         if (errors.Count > 0) throw new ApiException(HttpStatusCode.BadRequest, "VALIDATION_ERROR", string.Join(" ", errors));
+    }
+
+    private sealed class UnavailableAgenticAIClient : IAgenticAIClient
+    {
+        public Task<CropPlanningCoordinatorOutput> RunCropPlanningCoordinatorAsync(CropPlanningCoordinatorInput input, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("AI service is not configured for this service instance.");
     }
 
     private static FarmResponse MapFarm(Farm farm) => new(farm.Id, farm.Name, farm.Location, farm.TotalArea, farm.OwnerUserId, farm.CreatedAt);
