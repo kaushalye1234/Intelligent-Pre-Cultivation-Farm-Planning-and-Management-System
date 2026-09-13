@@ -1,4 +1,4 @@
-using AgriAssist.Api.Models.Shared;
+﻿using AgriAssist.Api.Models.Shared;
 
 namespace AgriAssist.Api.Dtos.CropPlanning;
 
@@ -62,3 +62,52 @@ public sealed record CropPlanningCoordinatorOutput(
     string? ReferenceDataStatus,
     string? ObjectiveSummary,
     IReadOnlyList<CropPlanningDelegatedStepResponse>? Steps);
+
+public sealed record FieldAnalysisInput(
+    Guid WorkflowId,
+    Guid FieldId,
+    Guid? CropCycleId,
+    IReadOnlyList<string> RequestedAnalysis,
+    Guid? CropReferenceProfileId,
+    Guid? AgentStepId);
+
+public sealed record FieldAnalysisFieldConditionResponse(
+    string Summary,
+    IReadOnlyList<Guid> EvidenceInspectionIds);
+
+public sealed record FieldAnalysisOpenIssueResponse(
+    Guid IssueId,
+    string Severity,
+    string Status,
+    Guid? EvidenceInspectionId);
+
+public sealed record FieldAnalysisOutput(
+    Guid WorkflowId,
+    string Status,
+    bool RequiresHumanReview,
+    IReadOnlyList<string> Warnings,
+    FieldAnalysisFieldConditionResponse FieldCondition,
+    IReadOnlyList<FieldAnalysisOpenIssueResponse> OpenIssues,
+    string Priority);
+
+public sealed record FieldAnalysisRunResponse(
+    Guid WorkflowId,
+    Guid CropPlanRequestId,
+    Guid FieldAnalysisStepId,
+    string Status,
+    bool RequiresHumanReview,
+    IReadOnlyList<string> Warnings);
+
+public sealed record Member3HandoffResponse(
+    Guid WorkflowId,
+    Guid CropPlanRequestId,
+    Guid? FieldId,
+    Guid? CropCycleId,
+    string FieldLocationContext,
+    DateOnly PreferredStartDate,
+    DateOnly PreferredEndDate,
+    string FieldAnalysisSummary,
+    string Priority,
+    IReadOnlyList<Guid> EvidenceInspectionIds,
+    IReadOnlyList<FieldAnalysisOpenIssueResponse> OpenIssues,
+    IReadOnlyList<string> Warnings);
