@@ -1,6 +1,9 @@
 using AgriAssist.Api.Dtos.CropPlanning;
+using AgriAssist.Api.Dtos.Inspections;
 using AgriAssist.Api.Dtos.Resources;
+using AgriAssist.Api.Models.Inspections;
 using AgriAssist.Api.Validators.CropPlanning;
+using AgriAssist.Api.Validators.Inspections;
 using AgriAssist.Api.Validators.Resources;
 
 namespace AgriAssist.Api.Tests;
@@ -29,5 +32,19 @@ public sealed class ValidatorTests
         var errors = validator.Validate(request);
 
         Assert.Contains(errors, error => error.Contains("positive"));
+    }
+
+    [Fact]
+    public void Inspection_validators_reject_invalid_enum_values()
+    {
+        var inspectionValidator = new FieldInspectionRequestValidator();
+        var issueValidator = new CropIssueRequestValidator();
+
+        var inspectionErrors = inspectionValidator.Validate(new FieldInspectionRequest(Guid.NewGuid(), DateTime.UtcNow, (InspectionStatus)99, "Summary"));
+        var issueErrors = issueValidator.Validate(new CropIssueRequest(Guid.NewGuid(), "Issue", "Description", (CropIssueSeverity)99, (CropIssueStatus)99));
+
+        Assert.Contains(inspectionErrors, error => error.Contains("status"));
+        Assert.Contains(issueErrors, error => error.Contains("severity"));
+        Assert.Contains(issueErrors, error => error.Contains("status"));
     }
 }

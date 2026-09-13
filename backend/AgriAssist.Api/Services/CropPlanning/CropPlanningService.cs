@@ -26,6 +26,9 @@ public sealed class CropPlanningService(
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private const string CoordinatorAgentName = "CropPlanningCoordinatorAgent";
     private const string CoordinatorStepName = "CropPlanningCoordinator";
+    private const string FieldAnalysisAgentName = "CropFieldAnalysisAgent";
+    private const string FieldAnalysisStepName = "FieldAnalysis";
+    private const string WeatherResourceAgentName = "WeatherResourceAgent";
 
     public CropPlanningService(
         AppDbContext dbContext,
@@ -423,6 +426,132 @@ public sealed class CropPlanningService(
         }
     }
 
+
+    public async Task<FieldAnalysisRunResponse> RunFieldAnalysisAsync(Guid requestId, CancellationToken cancellationToken)
+    {
+        await EnsurePlanRequestAccessAsync(requestId, cancellationToken);
+        var workflow = await LatestWorkflowQuery(requestId)
+            .Include(item => item.CropPlanRequest)!
+                .ThenInclude(request => request!.Farm)
+            .Include(item => item.CropPlanRequest)!
+                .ThenInclude(request => request!.Field)
+            .Include(item => item.Steps)
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw NotFound("AI workflow");
+
+        var planRequest = workflow.CropPlanRequest ?? throw NotFound("Crop plan request");
+        if (!planRequest.FieldId.HasValue)
+        {
+            throw new ApiException(HttpStatusCode.BadRequest, "FIELD_ANALYSIS_REQUIRES_FIELD", "Field analysis requires a crop plan request with a field.");
+        }
+
+        var step = workflow.Steps
+            .OrderBy(item => item.Sequence)
+            .FirstOrDefault(item => item.AgentName == FieldAnalysisAgentName && item.StepName == FieldAnalysisStepName)
+            ?? throw NotFound("Field analysis step");
+
+        if (step.Status == AgentStepStatus.Completed)
+        {
+            var completedOutput = ReadFieldAnalysisOutput(step.OutputJson, workflow.Id, ["Field analysis was already completed."]);
+            return new FieldAnalysisRunResponse(workflow.Id, planRequest.Id, step.Id, completedOutput.Status, completedOutput.RequiresHumanReview, completedOutput.Warnings);
+        }
+
+        if (step.Status == AgentStepStatus.Running)
+        {
+            throw new ApiException(HttpStatusCode.Conflict, "FIELD_ANALYSIS_ALREADY_RUNNING", "Field analysis is already running for this workflow.");
+        }
+
+        var cropCycleId = await dbContext.CropCycles.AsNoTracking()
+            .Where(cycle => cycle.FieldId == planRequest.FieldId.Value && cycle.CropTypeId == planRequest.CropTypeId && !cycle.IsDeleted)
+            .OrderByDescending(cycle => cycle.CreatedAt)
+            .Select(cycle => (Guid?)cycle.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var cropReferenceProfileId = await dbContext.CropReferenceProfiles.AsNoTracking()
+            .Where(profile => profile.CropTypeId == planRequest.CropTypeId && profile.IsActive && !profile.IsDeleted)
+            .OrderByDescending(profile => profile.VerifiedAt)
+            .Select(profile => (Guid?)profile.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var input = new FieldAnalysisInput(
+            workflow.Id,
+            planRequest.FieldId.Value,
+            cropCycleId,
+            ["FieldCondition", "OpenIssues", "InspectionEvidence"],
+            cropReferenceProfileId,
+            step.Id);
+
+        var userId = RequireUser();
+        step.InputJson = JsonSerializer.Serialize(input, JsonOptions);
+        step.Status = AgentStepStatus.Running;
+        step.StartedAt = DateTime.UtcNow;
+        step.ErrorCode = null;
+        step.ErrorMessageSafe = null;
+        workflow.Status = AgentWorkflowStatus.Running;
+        workflow.CurrentStep = FieldAnalysisAgentName;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        try
+        {
+            var output = await agenticAIClient.RunFieldAnalysisAsync(input, cancellationToken);
+            var validationErrors = await ValidateFieldAnalysisOutputAsync(workflow.Id, planRequest.FieldId.Value, output, cancellationToken);
+            var isValid = validationErrors.Count == 0;
+            var safeOutput = isValid ? output : CreateFieldAnalysisSafeFailureOutput(workflow.Id, validationErrors);
+
+            step.OutputJson = JsonSerializer.Serialize(safeOutput, JsonOptions);
+            step.Status = isValid && !safeOutput.Status.Equals("SafeFailure", StringComparison.OrdinalIgnoreCase) ? AgentStepStatus.Completed : AgentStepStatus.Failed;
+            step.CompletedAt = DateTime.UtcNow;
+            step.ErrorCode = isValid ? (safeOutput.Status.Equals("SafeFailure", StringComparison.OrdinalIgnoreCase) ? "AI_SAFE_FAILURE" : null) : "AI_RESPONSE_INVALID";
+            step.ErrorMessageSafe = isValid ? (safeOutput.Status.Equals("SafeFailure", StringComparison.OrdinalIgnoreCase) ? safeOutput.Warnings.FirstOrDefault() : null) : "The field-analysis response failed validation.";
+
+            dbContext.AgentValidationResults.Add(new AgentValidationResult
+            {
+                AgentWorkflowId = workflow.Id,
+                ValidatorName = "CropFieldAnalysisOutputValidator",
+                IsValid = isValid,
+                ErrorsJson = JsonSerializer.Serialize(validationErrors, JsonOptions),
+                CreatedByUserId = userId
+            });
+
+            if (step.Status == AgentStepStatus.Completed)
+            {
+                workflow.Status = AgentWorkflowStatus.Pending;
+                workflow.CurrentStep = WeatherResourceAgentName;
+            }
+            else
+            {
+                workflow.Status = AgentWorkflowStatus.Failed;
+                workflow.CurrentStep = "SafeFailure";
+                workflow.CompletedAt = DateTime.UtcNow;
+            }
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return new FieldAnalysisRunResponse(workflow.Id, planRequest.Id, step.Id, safeOutput.Status, safeOutput.RequiresHumanReview, safeOutput.Warnings);
+        }
+        catch (Exception)
+        {
+            var warnings = new[] { "AI service is unavailable or timed out during field analysis. No field conclusions were generated." };
+            var safeOutput = CreateFieldAnalysisSafeFailureOutput(workflow.Id, warnings);
+            step.Status = AgentStepStatus.Failed;
+            step.OutputJson = JsonSerializer.Serialize(safeOutput, JsonOptions);
+            step.CompletedAt = DateTime.UtcNow;
+            step.ErrorCode = "AI_SERVICE_UNAVAILABLE";
+            step.ErrorMessageSafe = warnings[0];
+            workflow.Status = AgentWorkflowStatus.Failed;
+            workflow.CurrentStep = "SafeFailure";
+            workflow.CompletedAt = DateTime.UtcNow;
+            dbContext.AgentValidationResults.Add(new AgentValidationResult
+            {
+                AgentWorkflowId = workflow.Id,
+                ValidatorName = "CropFieldAnalysisAvailability",
+                IsValid = false,
+                ErrorsJson = JsonSerializer.Serialize(warnings, JsonOptions),
+                CreatedByUserId = userId
+            });
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return new FieldAnalysisRunResponse(workflow.Id, planRequest.Id, step.Id, safeOutput.Status, true, warnings);
+        }
+    }
     public async Task<CropPlanningWorkflowStatusResponse> GetWorkflowStatusAsync(Guid requestId, CancellationToken cancellationToken)
     {
         await EnsurePlanRequestAccessAsync(requestId, cancellationToken);
@@ -466,6 +595,66 @@ public sealed class CropPlanningService(
         {
             return CreateResultResponse(workflow.Id, CreateSafeFailureOutput(workflow.Id, new[] { "Coordinator output could not be read safely." }));
         }
+    }
+
+    public async Task<FieldAnalysisOutput> GetFieldAnalysisResultAsync(Guid requestId, CancellationToken cancellationToken)
+    {
+        await EnsurePlanRequestAccessAsync(requestId, cancellationToken);
+        var workflow = await LatestWorkflowQuery(requestId)
+            .Include(item => item.Steps)
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw NotFound("AI workflow");
+
+        var outputJson = workflow.Steps
+            .OrderBy(step => step.Sequence)
+            .FirstOrDefault(step => step.AgentName == FieldAnalysisAgentName && step.StepName == FieldAnalysisStepName)?.OutputJson;
+
+        return ReadFieldAnalysisOutput(outputJson, workflow.Id, ["Field analysis output is not available yet."]);
+    }
+
+    public async Task<Member3HandoffResponse> GetMember3HandoffAsync(Guid requestId, CancellationToken cancellationToken)
+    {
+        await EnsurePlanRequestAccessAsync(requestId, cancellationToken);
+        var workflow = await LatestWorkflowQuery(requestId)
+            .Include(item => item.CropPlanRequest)!
+                .ThenInclude(request => request!.Farm)
+            .Include(item => item.CropPlanRequest)!
+                .ThenInclude(request => request!.Field)
+            .Include(item => item.Steps)
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw NotFound("AI workflow");
+
+        var planRequest = workflow.CropPlanRequest ?? throw NotFound("Crop plan request");
+        var fieldAnalysis = ReadFieldAnalysisOutput(
+            workflow.Steps.OrderBy(step => step.Sequence).FirstOrDefault(step => step.AgentName == FieldAnalysisAgentName && step.StepName == FieldAnalysisStepName)?.OutputJson,
+            workflow.Id,
+            ["Field analysis output is not available yet."]);
+
+        var cropCycleId = planRequest.FieldId.HasValue
+            ? await dbContext.CropCycles.AsNoTracking()
+                .Where(cycle => cycle.FieldId == planRequest.FieldId.Value && cycle.CropTypeId == planRequest.CropTypeId && !cycle.IsDeleted)
+                .OrderByDescending(cycle => cycle.CreatedAt)
+                .Select(cycle => (Guid?)cycle.Id)
+                .FirstOrDefaultAsync(cancellationToken)
+            : null;
+
+        var fieldLocation = planRequest.Field is null
+            ? planRequest.Farm?.Location ?? string.Empty
+            : $"{planRequest.Field.Name} at {planRequest.Farm?.Location ?? "unknown location"}";
+
+        return new Member3HandoffResponse(
+            workflow.Id,
+            planRequest.Id,
+            planRequest.FieldId,
+            cropCycleId,
+            fieldLocation,
+            planRequest.PreferredStartDate,
+            planRequest.PreferredEndDate,
+            fieldAnalysis.FieldCondition.Summary,
+            fieldAnalysis.Priority,
+            fieldAnalysis.FieldCondition.EvidenceInspectionIds,
+            fieldAnalysis.OpenIssues,
+            fieldAnalysis.Warnings);
     }
     private async Task<CropPlanRequestResponse> CreateRequestCoreAsync(CropPlanRequestCreate request, CropPlanRequestStatus status, string note, CancellationToken cancellationToken)
     {
@@ -574,6 +763,48 @@ public sealed class CropPlanningService(
         }
     }
 
+
+    private async Task<IReadOnlyList<string>> ValidateFieldAnalysisOutputAsync(Guid workflowId, Guid fieldId, FieldAnalysisOutput output, CancellationToken cancellationToken)
+    {
+        var errors = new List<string>();
+        if (output.WorkflowId != workflowId) errors.Add("FieldAnalysis workflowId does not match the persisted workflow.");
+        if (string.IsNullOrWhiteSpace(output.Status)) errors.Add("FieldAnalysis status is required.");
+        if (output.Warnings is null) errors.Add("FieldAnalysis warnings array is required.");
+        if (output.FieldCondition is null) errors.Add("FieldAnalysis fieldCondition is required.");
+        if (output.OpenIssues is null) errors.Add("FieldAnalysis openIssues array is required.");
+        if (output.FieldCondition is null || output.OpenIssues is null) return errors;
+
+        if (output.Status.Equals("SafeFailure", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!output.RequiresHumanReview) errors.Add("FieldAnalysis safe failures must require human review.");
+            return errors;
+        }
+
+        if (!output.Status.Equals("Analyzed", StringComparison.OrdinalIgnoreCase))
+        {
+            errors.Add("FieldAnalysis status must be Analyzed or SafeFailure.");
+        }
+
+        var knownInspectionIds = await dbContext.FieldInspections.AsNoTracking()
+            .Where(inspection => inspection.FieldId == fieldId && !inspection.IsDeleted)
+            .Select(inspection => inspection.Id)
+            .ToListAsync(cancellationToken);
+        foreach (var inspectionId in output.FieldCondition.EvidenceInspectionIds)
+        {
+            if (!knownInspectionIds.Contains(inspectionId)) errors.Add($"FieldAnalysis referenced unknown inspection evidence ID {inspectionId}.");
+        }
+
+        var knownIssueIds = await dbContext.CropIssues.AsNoTracking()
+            .Where(issue => issue.FieldInspection != null && issue.FieldInspection.FieldId == fieldId && !issue.IsDeleted)
+            .Select(issue => issue.Id)
+            .ToListAsync(cancellationToken);
+        foreach (var issue in output.OpenIssues)
+        {
+            if (!knownIssueIds.Contains(issue.IssueId)) errors.Add($"FieldAnalysis referenced unknown crop issue ID {issue.IssueId}.");
+        }
+
+        return errors;
+    }
     private static IReadOnlyList<string> ValidateCoordinatorOutput(Guid workflowId, CropPlanningCoordinatorOutput output)
     {
         var errors = new List<string>();
@@ -624,6 +855,23 @@ public sealed class CropPlanningService(
         return errors;
     }
 
+
+    private static FieldAnalysisOutput CreateFieldAnalysisSafeFailureOutput(Guid workflowId, IEnumerable<string> warnings) =>
+        new(workflowId, "SafeFailure", true, warnings.ToArray(), new FieldAnalysisFieldConditionResponse(string.Empty, []), [], "Unknown");
+
+    private static FieldAnalysisOutput ReadFieldAnalysisOutput(string? outputJson, Guid workflowId, IEnumerable<string> emptyWarnings)
+    {
+        if (string.IsNullOrWhiteSpace(outputJson)) return CreateFieldAnalysisSafeFailureOutput(workflowId, emptyWarnings);
+        try
+        {
+            return JsonSerializer.Deserialize<FieldAnalysisOutput>(outputJson, JsonOptions)
+                ?? CreateFieldAnalysisSafeFailureOutput(workflowId, ["Field analysis output is empty."]);
+        }
+        catch (JsonException)
+        {
+            return CreateFieldAnalysisSafeFailureOutput(workflowId, ["Field analysis output could not be read safely."]);
+        }
+    }
     private static CropPlanningCoordinatorOutput CreateSafeFailureOutput(Guid workflowId, IEnumerable<string> warnings) =>
         new(workflowId, "SafeFailure", true, warnings.ToArray(), "Unknown", string.Empty, []);
 
@@ -681,6 +929,9 @@ public sealed class CropPlanningService(
     {
         public Task<CropPlanningCoordinatorOutput> RunCropPlanningCoordinatorAsync(CropPlanningCoordinatorInput input, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("AI service is not configured for this service instance.");
+
+        public Task<FieldAnalysisOutput> RunFieldAnalysisAsync(FieldAnalysisInput input, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("AI service is not configured for this service instance.");
     }
 
     private static FarmResponse MapFarm(Farm farm) => new(farm.Id, farm.Name, farm.Location, farm.TotalArea, farm.OwnerUserId, farm.CreatedAt);
@@ -689,3 +940,8 @@ public sealed class CropPlanningService(
     private static CropCycleResponse MapCycle(CropCycle cycle) => new(cycle.Id, cycle.FieldId, cycle.CropTypeId, cycle.PlannedStartDate, cycle.PlannedEndDate, cycle.Status);
     private static CropPlanRequestResponse MapRequest(CropPlanRequest request) => new(request.Id, request.FarmId, request.FieldId, request.CropTypeId, request.RequestedByUserId, request.PreferredStartDate, request.PreferredEndDate, request.Budget, request.Objective, request.Status, request.CreatedAt);
 }
+
+
+
+
+

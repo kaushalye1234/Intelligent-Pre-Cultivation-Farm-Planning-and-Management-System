@@ -1,4 +1,4 @@
-class UserProfile {
+﻿class UserProfile {
   const UserProfile({
     required this.id,
     required this.fullName,
@@ -97,6 +97,112 @@ class CropTypeOption {
   }
 }
 
+class InspectionRecord {
+  const InspectionRecord({
+    required this.id,
+    required this.fieldId,
+    required this.scheduledAt,
+    required this.status,
+    required this.summary,
+    this.completedAt,
+  });
+
+  final String id;
+  final String fieldId;
+  final String scheduledAt;
+  final String? completedAt;
+  final int status;
+  final String summary;
+
+  factory InspectionRecord.fromJson(Map<String, dynamic> json) {
+    return InspectionRecord(
+      id: json['id'] as String,
+      fieldId: json['fieldId'] as String,
+      scheduledAt: json['scheduledAt'] as String? ?? '',
+      completedAt: json['completedAt'] as String?,
+      status: json['status'] as int? ?? 0,
+      summary: json['summary'] as String? ?? '',
+    );
+  }
+
+  String get statusLabel {
+    return switch (status) {
+      1 => 'Scheduled',
+      2 => 'In progress',
+      3 => 'Completed',
+      4 => 'Escalated',
+      5 => 'Cancelled',
+      _ => 'Unknown',
+    };
+  }
+}
+
+class CropIssueRecord {
+  const CropIssueRecord({required this.id, required this.fieldInspectionId, required this.title, required this.severity, required this.status});
+
+  final String id;
+  final String fieldInspectionId;
+  final String title;
+  final int severity;
+  final int status;
+
+  factory CropIssueRecord.fromJson(Map<String, dynamic> json) {
+    return CropIssueRecord(
+      id: json['id'] as String,
+      fieldInspectionId: json['fieldInspectionId'] as String,
+      title: json['title'] as String? ?? '',
+      severity: json['severity'] as int? ?? 0,
+      status: json['status'] as int? ?? 0,
+    );
+  }
+
+  String get severityLabel {
+    return switch (severity) {
+      1 => 'Low',
+      2 => 'Medium',
+      3 => 'High',
+      4 => 'Critical',
+      _ => 'Unknown',
+    };
+  }
+}
+
+class FollowUpRecommendationRecord {
+  const FollowUpRecommendationRecord({required this.id, required this.cropIssueId, required this.recommendation, required this.isCompleted, this.dueAt});
+
+  final String id;
+  final String cropIssueId;
+  final String recommendation;
+  final bool isCompleted;
+  final String? dueAt;
+
+  factory FollowUpRecommendationRecord.fromJson(Map<String, dynamic> json) {
+    return FollowUpRecommendationRecord(
+      id: json['id'] as String,
+      cropIssueId: json['cropIssueId'] as String,
+      recommendation: json['recommendation'] as String? ?? '',
+      isCompleted: json['isCompleted'] as bool? ?? false,
+      dueAt: json['dueAt'] as String?,
+    );
+  }
+}
+
+class InspectionHistoryEventRecord {
+  const InspectionHistoryEventRecord({required this.occurredAt, required this.eventType, required this.summary});
+
+  final String occurredAt;
+  final String eventType;
+  final String summary;
+
+  factory InspectionHistoryEventRecord.fromJson(Map<String, dynamic> json) {
+    return InspectionHistoryEventRecord(
+      occurredAt: json['occurredAt'] as String? ?? '',
+      eventType: json['eventType'] as String? ?? '',
+      summary: json['summary'] as String? ?? '',
+    );
+  }
+}
+
 class InventoryStock {
   const InventoryStock({
     required this.id,
@@ -119,6 +225,7 @@ class InventoryStock {
     );
   }
 }
+
 class CropPlanningDelegatedStep {
   const CropPlanningDelegatedStep({
     required this.sequence,

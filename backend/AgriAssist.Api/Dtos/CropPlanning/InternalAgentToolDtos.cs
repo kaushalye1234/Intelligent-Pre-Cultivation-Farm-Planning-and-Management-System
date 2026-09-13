@@ -1,4 +1,4 @@
-namespace AgriAssist.Api.Dtos.CropPlanning;
+﻿namespace AgriAssist.Api.Dtos.CropPlanning;
 
 public sealed record AgentToolResponse<T>(
     Guid? WorkflowId,
@@ -63,3 +63,37 @@ public sealed record CropRuleReferenceSummary(
     string SourceName,
     string? SourceUrl,
     DateTime VerifiedAt);
+
+public sealed record AgentInspectionSummaryResponse(
+    Guid Id,
+    Guid FieldId,
+    Guid InspectorUserId,
+    DateTime ScheduledAt,
+    DateTime? CompletedAt,
+    string Status,
+    string Summary,
+    IReadOnlyList<AgentInspectionObservationSummary> Observations);
+
+public sealed record AgentInspectionObservationSummary(Guid Id, string ObservationType, string Notes, DateTime CreatedAt);
+
+public sealed record AgentCropIssueSummaryResponse(
+    Guid Id,
+    Guid FieldInspectionId,
+    string Title,
+    string Description,
+    string Severity,
+    string Status,
+    DateTime CreatedAt,
+    DateTime? EscalatedAt,
+    IReadOnlyList<AgentFollowUpRecommendationSummary> FollowUps);
+
+public sealed record AgentFollowUpRecommendationSummary(Guid Id, string Recommendation, DateTime? DueAt, bool IsCompleted);
+
+public sealed record AgentInspectionImageMetadataResponse(
+    Guid Id,
+    Guid FieldInspectionId,
+    string Url,
+    string PublicId,
+    string ContentType,
+    long SizeBytes,
+    DateTime CreatedAt);
