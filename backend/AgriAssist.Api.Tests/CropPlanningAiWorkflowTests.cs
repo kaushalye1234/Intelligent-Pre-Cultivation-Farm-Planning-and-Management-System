@@ -1,7 +1,8 @@
-using AgriAssist.Api.Data;
+﻿using AgriAssist.Api.Data;
 using AgriAssist.Api.Dtos.CropPlanning;
 using AgriAssist.Api.ExternalServices.AgenticAI;
 using AgriAssist.Api.Models.CropPlanning;
+using AgriAssist.Api.Models.Inspections;
 using AgriAssist.Api.Models.Shared;
 using AgriAssist.Api.Services.CropPlanning;
 using AgriAssist.Api.Services.Shared;
@@ -28,6 +29,31 @@ public sealed class CropPlanningAiWorkflowTests
         Assert.Equal(CropPlanRequestStatus.PreliminaryGenerated, (await db.CropPlanRequests.SingleAsync()).Status);
         Assert.Contains(workflow.Steps, step => step.Sequence == 1 && step.AgentName == "CropPlanningCoordinatorAgent" && step.Status == AgentStepStatus.Completed);
         Assert.Contains(workflow.Steps, step => step.Sequence == 2 && step.AgentName == "CropFieldAnalysisAgent" && step.Status == AgentStepStatus.Pending);
+    }
+
+    [Fact]
+    public async Task Run_field_analysis_persists_output_and_creates_member3_handoff()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.Submitted);
+        var inspection = new FieldInspection { FieldId = data.Field.Id, InspectorUserId = data.Farmer.Id, ScheduledAt = DateTime.UtcNow.AddDays(-1), CompletedAt = DateTime.UtcNow, Status = InspectionStatus.Completed, Summary = "Yellowing observed near low area." };
+        var issue = new CropIssue { FieldInspection = inspection, Title = "Leaf yellowing", Description = "Yellowing observed.", Severity = CropIssueSeverity.High, Status = CropIssueStatus.Open };
+        db.AddRange(inspection, issue);
+        await db.SaveChangesAsync();
+        var service = NewService(db, data.Farmer.Id, new FieldAnalysisAiClient(inspection.Id, issue.Id));
+        await service.StartAiWorkflowAsync(data.Request.Id, CancellationToken.None);
+
+        var result = await service.RunFieldAnalysisAsync(data.Request.Id, CancellationToken.None);
+        var handoff = await service.GetMember3HandoffAsync(data.Request.Id, CancellationToken.None);
+
+        Assert.Equal("Analyzed", result.Status);
+        var workflow = await db.AgentWorkflows.Include(item => item.Steps).SingleAsync();
+        Assert.Equal(AgentWorkflowStatus.Pending, workflow.Status);
+        Assert.Equal("WeatherResourceAgent", workflow.CurrentStep);
+        Assert.Contains(workflow.Steps, step => step.AgentName == "CropFieldAnalysisAgent" && step.Status == AgentStepStatus.Completed);
+        Assert.Equal("High", handoff.Priority);
+        Assert.Contains(inspection.Id, handoff.EvidenceInspectionIds);
+        Assert.Equal(issue.Id, handoff.OpenIssues.Single().IssueId);
     }
 
     [Fact]
@@ -100,10 +126,10 @@ public sealed class CropPlanningAiWorkflowTests
         };
         db.AddRange(farmer, farm, field, cropType, request);
         await db.SaveChangesAsync();
-        return new SeededPlan(farmer, request);
+        return new SeededPlan(farmer, request, field);
     }
 
-    private sealed record SeededPlan(AppUser Farmer, CropPlanRequest Request);
+    private sealed record SeededPlan(AppUser Farmer, CropPlanRequest Request, Field Field);
 
     private sealed class FixedCurrentUserService(ApplicationRole role, Guid userId) : ICurrentUserService
     {
@@ -112,7 +138,7 @@ public sealed class CropPlanningAiWorkflowTests
         public bool IsInRole(ApplicationRole roleToCheck) => Role == roleToCheck;
     }
 
-    private sealed class PlannedAiClient : IAgenticAIClient
+    private class PlannedAiClient : IAgenticAIClient
     {
         public Task<CropPlanningCoordinatorOutput> RunCropPlanningCoordinatorAsync(CropPlanningCoordinatorInput input, CancellationToken cancellationToken) =>
             Task.FromResult(new CropPlanningCoordinatorOutput(
@@ -127,6 +153,22 @@ public sealed class CropPlanningAiWorkflowTests
                     new CropPlanningDelegatedStepResponse(2, "WeatherResourceAnalysis", "WeatherResourceAgent"),
                     new CropPlanningDelegatedStepResponse(3, "Scheduling", "SchedulingValidationAgent")
                 ]));
+
+        public virtual Task<FieldAnalysisOutput> RunFieldAnalysisAsync(FieldAnalysisInput input, CancellationToken cancellationToken) =>
+            Task.FromResult(new FieldAnalysisOutput(input.WorkflowId, "SafeFailure", true, ["Not configured for this test."], new FieldAnalysisFieldConditionResponse(string.Empty, []), [], "Unknown"));
+    }
+
+    private sealed class FieldAnalysisAiClient(Guid inspectionId, Guid issueId) : PlannedAiClient
+    {
+        public override Task<FieldAnalysisOutput> RunFieldAnalysisAsync(FieldAnalysisInput input, CancellationToken cancellationToken) =>
+            Task.FromResult(new FieldAnalysisOutput(
+                input.WorkflowId,
+                "Analyzed",
+                true,
+                [],
+                new FieldAnalysisFieldConditionResponse("Stored inspection evidence indicates yellowing that needs review.", [inspectionId]),
+                [new FieldAnalysisOpenIssueResponse(issueId, "High", "Open", inspectionId)],
+                "High"));
     }
 
     private sealed class MissingReferenceAiClient : IAgenticAIClient
@@ -140,11 +182,17 @@ public sealed class CropPlanningAiWorkflowTests
                 "Unavailable",
                 string.Empty,
                 []));
+
+        public Task<FieldAnalysisOutput> RunFieldAnalysisAsync(FieldAnalysisInput input, CancellationToken cancellationToken) =>
+            Task.FromResult(new FieldAnalysisOutput(input.WorkflowId, "SafeFailure", true, ["Reference data unavailable."], new FieldAnalysisFieldConditionResponse(string.Empty, []), [], "Unknown"));
     }
 
     private sealed class ThrowingAiClient : IAgenticAIClient
     {
         public Task<CropPlanningCoordinatorOutput> RunCropPlanningCoordinatorAsync(CropPlanningCoordinatorInput input, CancellationToken cancellationToken) =>
+            throw new HttpRequestException("No service.");
+
+        public Task<FieldAnalysisOutput> RunFieldAnalysisAsync(FieldAnalysisInput input, CancellationToken cancellationToken) =>
             throw new HttpRequestException("No service.");
     }
 }
