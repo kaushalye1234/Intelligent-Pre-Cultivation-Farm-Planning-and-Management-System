@@ -4,7 +4,7 @@ from typing import Any
 from uuid import UUID
 
 from providers.base_llm_provider import BaseLLMProvider, LLMProviderError
-from schemas.field_analysis import CropFieldAnalysisOutput, FieldAnalysisInput, FieldCondition, OpenIssueSummary
+from schemas.field_analysis import CropFieldAnalysisOutput, FieldAnalysisInput, FieldCondition, InspectionEvidence, OpenIssueSummary
 from tools.backend_tool_client import ToolClientError
 from tools.inspection_tools import InspectionTools
 
@@ -47,7 +47,9 @@ class CropFieldAnalysisAgent:
                 if request.crop_cycle_id
                 else None
             )
-            inspections = await self._tools.get_recent_inspections(request.field_id, request.workflow_id, request.agent_step_id)
+            inspections = self._normalize_inspections(
+                await self._tools.get_recent_inspections(request.field_id, request.workflow_id, request.agent_step_id)
+            )
             issues = await self._tools.get_open_crop_issues(request.field_id, request.workflow_id, request.agent_step_id)
             images = await self._tools.get_inspection_image_metadata(request.field_id, request.workflow_id, request.agent_step_id)
             reference = await self._tools.get_crop_reference_profile(
@@ -161,7 +163,7 @@ class CropFieldAnalysisAgent:
     @staticmethod
     def _deterministic_output(
         workflow_id: str,
-        inspections: list[Any],
+        inspections: list[InspectionEvidence],
         issues: list[dict[str, Any]],
         images: list[dict[str, Any]],
         warnings: list[str],
@@ -194,6 +196,15 @@ class CropFieldAnalysisAgent:
             openIssues=issue_summaries,
             priority=priority,
         )
+
+    @staticmethod
+    def _normalize_inspections(inspections: list[Any]) -> list[InspectionEvidence]:
+        return [
+            inspection
+            if isinstance(inspection, InspectionEvidence)
+            else InspectionEvidence.model_validate(inspection)
+            for inspection in inspections
+        ]
 
     @staticmethod
     def _validate_evidence(output: CropFieldAnalysisOutput, inspection_ids: list[UUID], issues: list[dict[str, Any]]) -> list[str]:
@@ -239,4 +250,3 @@ class CropFieldAnalysisAgent:
             openIssues=[],
             priority="Unknown",
         )
-

@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertTriangle } from 'lucide-react'
 import { api, getErrorMessage } from '../api/client'
@@ -28,22 +28,22 @@ export function CropIssues({ escalatedOnly = false }: { escalatedOnly?: boolean 
   const [success, setSuccess] = useState('')
   const [escalateId, setEscalateId] = useState<string | null>(null)
 
-  async function loadIssues() {
+  const loadIssues = useCallback(async (nextSearch: string, nextSeverity: string, nextStatus: string) => {
     setIsLoading(true)
     setError('')
     try {
-      const response = await api.get<PagedResult<CropIssue>>('/inspections/issues', { params: { search: search || undefined, severity: severity || undefined, status: escalatedOnly ? 2 : status || undefined, sortBy: 'createdAt', sortDirection: 'desc', pageSize: 50 } })
+      const response = await api.get<PagedResult<CropIssue>>('/inspections/issues', { params: { search: nextSearch || undefined, severity: nextSeverity || undefined, status: escalatedOnly ? 2 : nextStatus || undefined, sortBy: 'createdAt', sortDirection: 'desc', pageSize: 50 } })
       setIssues(response.data.items)
     } catch (err) {
       setError(getErrorMessage(err))
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [escalatedOnly])
 
   useEffect(() => {
-    void loadIssues()
-  }, [escalatedOnly])
+    void loadIssues('', '', escalatedOnly ? '2' : '')
+  }, [escalatedOnly, loadIssues])
 
   async function escalateIssue() {
     if (!escalateId) return
@@ -53,7 +53,7 @@ export function CropIssues({ escalatedOnly = false }: { escalatedOnly?: boolean 
       await api.post(`/inspections/issues/${escalateId}/escalate`)
       setSuccess('Crop issue escalated.')
       setEscalateId(null)
-      await loadIssues()
+      await loadIssues(search, severity, status)
     } catch (err) {
       setError(getErrorMessage(err))
     } finally {
@@ -69,7 +69,7 @@ export function CropIssues({ escalatedOnly = false }: { escalatedOnly?: boolean 
           <TextInput label="Search" value={search} onChange={setSearch} placeholder="Issue title or description" />
           <SelectInput label="Severity" value={severity} onChange={setSeverity} options={[{ value: '', label: 'All severities' }, ...Object.entries(issueSeverity).map(([value, label]) => ({ value, label }))]} />
           <SelectInput label="Status" value={status} onChange={setStatus} options={[{ value: '', label: 'All statuses' }, ...Object.entries(issueStatus).map(([value, label]) => ({ value, label }))]} />
-          <Button variant="secondary" onClick={() => void loadIssues()}>Apply Filters</Button>
+          <Button variant="secondary" onClick={() => void loadIssues(search, severity, status)}>Apply Filters</Button>
           <Link className="ui-button ui-button-secondary" to="/inspections/issues/escalated">Escalated</Link>
         </Toolbar>
       ) : null}

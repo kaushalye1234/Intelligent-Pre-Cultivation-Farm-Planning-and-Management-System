@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { AlertTriangle, Plus } from 'lucide-react'
@@ -29,7 +29,7 @@ export function InspectionDetails() {
   const [observation, setObservation] = useState({ observationType: '', notes: '' })
   const [issue, setIssue] = useState({ title: '', description: '', severity: 1, status: 1 })
 
-  async function loadDetail() {
+  const loadDetail = useCallback(async () => {
     if (!id) return
     setIsLoading(true)
     setError('')
@@ -41,11 +41,11 @@ export function InspectionDetails() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [id])
 
   useEffect(() => {
     void loadDetail()
-  }, [id])
+  }, [loadDetail])
 
   const title = useMemo(() => detail?.summary || 'Inspection details', [detail])
 

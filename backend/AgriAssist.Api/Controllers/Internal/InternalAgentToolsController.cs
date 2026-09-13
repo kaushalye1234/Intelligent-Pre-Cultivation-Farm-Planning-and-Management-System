@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
@@ -134,6 +134,14 @@ public sealed class InternalAgentToolsController(
             new { cropTypeId, cropReferenceProfileId, varietyName, region, workflowId, agentStepId },
             async () =>
             {
+                if (!cropTypeId.HasValue && !cropReferenceProfileId.HasValue && workflowId.HasValue)
+                {
+                    cropTypeId = await dbContext.AgentWorkflows.AsNoTracking()
+                        .Include(item => item.CropPlanRequest)
+                        .Where(item => item.Id == workflowId.Value && item.CropPlanRequest != null)
+                        .Select(item => (Guid?)item.CropPlanRequest!.CropTypeId)
+                        .FirstOrDefaultAsync(cancellationToken);
+                }
                 if (!cropTypeId.HasValue && !cropReferenceProfileId.HasValue) throw Safe(HttpStatusCode.BadRequest, "Crop type or reference profile is required.");
                 if (cropTypeId.HasValue) await EnsureCropTypeScopeAsync(workflowId, cropTypeId.Value, cancellationToken);
                 if (cropReferenceProfileId.HasValue) await EnsureCropReferenceProfileScopeAsync(workflowId, cropReferenceProfileId.Value, cancellationToken);
@@ -462,8 +470,3 @@ public sealed class InternalAgentToolsController(
         public string SafeError { get; } = safeError;
     }
 }
-
-
-
-
-

@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api, getErrorMessage } from '../api/client'
 import { SelectInput, TextAreaInput, TextInput } from '../components/FormControls'
@@ -21,7 +21,7 @@ export function CropIssueDetails() {
   const [followUpForm, setFollowUpForm] = useState({ recommendation: '', dueAt: '', isCompleted: false })
   const [statusForm, setStatusForm] = useState({ severity: 1, status: 1 })
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     if (!id) return
     setIsLoading(true)
     setError('')
@@ -38,11 +38,11 @@ export function CropIssueDetails() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [id])
 
   useEffect(() => {
     void loadData()
-  }, [id])
+  }, [loadData])
 
   async function runAction(action: () => Promise<void>, message: string) {
     setIsSubmitting(true)

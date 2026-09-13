@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { Camera, CheckCircle2, Plus, XCircle } from 'lucide-react'
@@ -40,13 +40,13 @@ export function InspectionsPage() {
   const fieldOptions = fields.map((field) => ({ value: field.id, label: field.name }))
   const fieldNameById = useMemo(() => new Map(fields.map((field) => [field.id, field.name])), [fields])
 
-  async function loadData() {
+  const loadData = useCallback(async (nextSearch: string, nextStatusFilter: string) => {
     setIsLoading(true)
     setError('')
     try {
       const [fieldResult, inspectionResult] = await Promise.all([
         api.get<PagedResult<Field>>('/crop-planning/fields', { params: { sortBy: 'name', pageSize: 100 } }),
-        api.get<PagedResult<Inspection>>('/inspections', { params: { sortBy: 'scheduledAt', sortDirection: 'desc', search: search || undefined, status: statusFilter || undefined, pageSize: 50 } }),
+        api.get<PagedResult<Inspection>>('/inspections', { params: { sortBy: 'scheduledAt', sortDirection: 'desc', search: nextSearch || undefined, status: nextStatusFilter || undefined, pageSize: 50 } }),
       ])
       setFields(fieldResult.data.items)
       setInspections(inspectionResult.data.items)
@@ -55,11 +55,11 @@ export function InspectionsPage() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
-    void loadData()
-  }, [])
+    void loadData('', '')
+  }, [loadData])
 
   async function runAction(action: () => Promise<void>, message: string) {
     setIsSubmitting(true)
@@ -72,7 +72,7 @@ export function InspectionsPage() {
       setImageInspectionId('')
       setImageFile(null)
       setConfirmAction(null)
-      await loadData()
+      await loadData(search, statusFilter)
     } catch (err) {
       setActionError(getErrorMessage(err))
     } finally {
@@ -113,7 +113,7 @@ export function InspectionsPage() {
       <Toolbar>
         <TextInput label="Search" value={search} onChange={setSearch} placeholder="Summary" />
         <SelectInput label="Status" value={statusFilter} onChange={setStatusFilter} options={[{ value: '', label: 'All statuses' }, ...Object.entries(inspectionStatus).map(([value, label]) => ({ value, label }))]} />
-        <Button variant="secondary" onClick={() => void loadData()}>Apply Filters</Button>
+        <Button variant="secondary" onClick={() => void loadData(search, statusFilter)}>Apply Filters</Button>
         <Link className="ui-button ui-button-secondary" to="/inspections/history">History</Link>
       </Toolbar>
 

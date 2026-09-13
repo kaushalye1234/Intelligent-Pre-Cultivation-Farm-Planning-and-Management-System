@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api, getErrorMessage } from '../api/client'
 import { DataTable } from '../components/DataTable'
@@ -14,15 +14,28 @@ export function InspectionHistory() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
 
-  useEffect(() => {
+  const loadHistory = useCallback(async () => {
     setIsLoading(true)
     setError('')
-    const request = id
-      ? api.get<InspectionHistoryEvent[]>(`/inspections/${id}/history`).then((response) => setEvents(response.data))
-      : api.get<PagedResult<Inspection>>('/inspections', { params: { sortBy: 'completedAt', sortDirection: 'desc', pageSize: 50 } }).then((response) => setInspections(response.data.items))
+    try {
+      if (id) {
+        const response = await api.get<InspectionHistoryEvent[]>(`/inspections/${id}/history`)
+        setEvents(response.data)
+        return
+      }
 
-    request.catch((err) => setError(getErrorMessage(err))).finally(() => setIsLoading(false))
+      const response = await api.get<PagedResult<Inspection>>('/inspections', { params: { sortBy: 'completedAt', sortDirection: 'desc', pageSize: 50 } })
+      setInspections(response.data.items)
+    } catch (err) {
+      setError(getErrorMessage(err))
+    } finally {
+      setIsLoading(false)
+    }
   }, [id])
+
+  useEffect(() => {
+    void loadHistory()
+  }, [loadHistory])
 
   if (isLoading) return <LoadingState />
   if (error) return <ErrorState message={error} />

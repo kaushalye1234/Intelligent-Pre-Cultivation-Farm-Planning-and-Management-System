@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, getErrorMessage } from '../api/client'
 import { SelectInput } from '../components/FormControls'
@@ -16,22 +16,22 @@ export function FollowUpRecommendations() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
-  async function loadData() {
+  const loadData = useCallback(async (nextIsCompleted: string) => {
     setIsLoading(true)
     setError('')
     try {
-      const response = await api.get<PagedResult<FollowUpRecommendation>>('/inspections/recommendations', { params: { isCompleted: isCompleted || undefined, pageSize: 50 } })
+      const response = await api.get<PagedResult<FollowUpRecommendation>>('/inspections/recommendations', { params: { isCompleted: nextIsCompleted || undefined, pageSize: 50 } })
       setItems(response.data.items)
     } catch (err) {
       setError(getErrorMessage(err))
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
-    void loadData()
-  }, [])
+    void loadData('')
+  }, [loadData])
 
   async function complete(id: string) {
     setIsSubmitting(true)
@@ -40,7 +40,7 @@ export function FollowUpRecommendations() {
     try {
       await api.patch(`/inspections/recommendations/${id}`, { isCompleted: true })
       setSuccess('Follow-up completed.')
-      await loadData()
+      await loadData(isCompleted)
     } catch (err) {
       setError(getErrorMessage(err))
     } finally {
@@ -53,7 +53,7 @@ export function FollowUpRecommendations() {
       <PageHeader eyebrow="Field Operations" title="Follow-up Recommendations" description="Track follow-up state for crop issues." />
       <Toolbar>
         <SelectInput label="State" value={isCompleted} onChange={setIsCompleted} options={[{ value: '', label: 'All' }, { value: 'false', label: 'Open' }, { value: 'true', label: 'Completed' }]} />
-        <Button variant="secondary" onClick={() => void loadData()}>Apply Filter</Button>
+        <Button variant="secondary" onClick={() => void loadData(isCompleted)}>Apply Filter</Button>
       </Toolbar>
       {success ? <Notice tone="success">{success}</Notice> : null}
       {error ? <ErrorState message={error} /> : null}
