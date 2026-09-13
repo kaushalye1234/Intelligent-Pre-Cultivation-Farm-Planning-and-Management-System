@@ -1,4 +1,4 @@
-using AgriAssist.Api.Dtos.CropPlanning;
+﻿using AgriAssist.Api.Dtos.CropPlanning;
 using AgriAssist.Api.Dtos.Shared;
 
 namespace AgriAssist.Api.Services.CropPlanning;
@@ -27,4 +27,7 @@ public interface ICropPlanningService
     Task<CropPlanRequestResponse> UpdateCropPlanRequestAsync(Guid id, CropPlanRequestUpdate request, CancellationToken cancellationToken);
     Task<CropPlanRequestResponse> GeneratePreliminaryRequestAsync(CropPlanRequestCreate request, CancellationToken cancellationToken);
     Task<IReadOnlyList<CropPlanHistoryResponse>> GetCropPlanHistoryAsync(Guid requestId, CancellationToken cancellationToken);
+    Task<CropPlanningWorkflowStartResponse> StartAiWorkflowAsync(Guid requestId, CancellationToken cancellationToken);
+    Task<CropPlanningWorkflowStatusResponse> GetWorkflowStatusAsync(Guid requestId, CancellationToken cancellationToken);
+    Task<CropPlanningResultResponse> GetPlanningResultAsync(Guid requestId, CancellationToken cancellationToken);
 }

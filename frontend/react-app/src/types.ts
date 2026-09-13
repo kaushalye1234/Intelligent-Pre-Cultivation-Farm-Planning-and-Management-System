@@ -167,3 +167,51 @@ export type ApprovalDecision = {
   comment: string
   createdAt: string
 }
+
+export type AgentStepStatus = {
+  id: string
+  agentName: string
+  stepName: string
+  sequence: number
+  status: number
+  startedAt?: string
+  completedAt?: string
+  errorCode?: string
+  errorMessageSafe?: string
+}
+
+export type CropPlanningWorkflowStatus = {
+  workflowId: string
+  cropPlanRequestId: string
+  status: number
+  currentStep: string
+  createdAt: string
+  completedAt?: string
+  steps: AgentStepStatus[]
+  warnings: string[]
+}
+
+export type CropPlanningDelegatedStep = {
+  sequence: number
+  stepType: string
+  assignedAgent: string
+}
+
+export type CropPlanningResult = {
+  workflowId: string
+  status: string
+  requiresHumanReview: boolean
+  warnings: string[]
+  referenceDataStatus: string
+  objectiveSummary: string
+  steps: CropPlanningDelegatedStep[]
+}
+
+export type CropPlanningWorkflowStart = {
+  workflowId: string
+  cropPlanRequestId: string
+  coordinatorStepId: string
+  status: string
+  requiresHumanReview: boolean
+  warnings: string[]
+}
