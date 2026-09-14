@@ -1,5 +1,6 @@
 using AgriAssist.Api.Dtos.Resources;
 using AgriAssist.Api.Dtos.Shared;
+using AgriAssist.Api.Models.Resources;
 using AgriAssist.Api.Models.Shared;
 using AgriAssist.Api.Services.Resources;
 using Microsoft.AspNetCore.Authorization;
@@ -51,6 +52,10 @@ public sealed class ResourcesController(IResourceService resourceService) : Cont
     [HttpGet("stocks/{id:guid}/history")]
     public async Task<ActionResult<IReadOnlyList<StockTransactionResponse>>> History(Guid id, CancellationToken cancellationToken) =>
         Ok(await resourceService.GetStockHistoryAsync(id, cancellationToken));
+
+    [HttpGet("reservations")]
+    public async Task<ActionResult<PagedResult<ResourceReservationResponse>>> Reservations([FromQuery] PagedQuery query, [FromQuery] ResourceReservationStatus? status, CancellationToken cancellationToken) =>
+        Ok(await resourceService.SearchReservationsAsync(query, status, cancellationToken));
 
     [HttpPost("reservations")]
     public async Task<ActionResult<ResourceReservationResponse>> Reserve(ResourceReservationRequest request, CancellationToken cancellationToken) =>

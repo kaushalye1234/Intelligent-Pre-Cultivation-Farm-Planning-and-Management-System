@@ -1,5 +1,6 @@
 using AgriAssist.Api.Dtos.Resources;
 using AgriAssist.Api.Dtos.Shared;
+using AgriAssist.Api.Models.Resources;
 
 namespace AgriAssist.Api.Services.Resources;
 
@@ -14,6 +15,7 @@ public interface IResourceService
     Task<InventoryStockResponse> UpsertStockAsync(InventoryStockRequest request, CancellationToken cancellationToken);
     Task<PagedResult<InventoryStockResponse>> SearchStocksAsync(PagedQuery query, bool? lowStockOnly, CancellationToken cancellationToken);
     Task<IReadOnlyList<StockTransactionResponse>> GetStockHistoryAsync(Guid stockId, CancellationToken cancellationToken);
+    Task<PagedResult<ResourceReservationResponse>> SearchReservationsAsync(PagedQuery query, ResourceReservationStatus? status, CancellationToken cancellationToken);
     Task<ResourceReservationResponse> ReserveAsync(ResourceReservationRequest request, CancellationToken cancellationToken);
     Task<ResourceReservationResponse> ReleaseAsync(Guid reservationId, CancellationToken cancellationToken);
     Task<ResourceReservationResponse> CancelReservationAsync(Guid reservationId, CancellationToken cancellationToken);

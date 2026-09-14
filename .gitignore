@@ -16,6 +16,12 @@ dist/
 coverage/
 .vite/
 
+# Python AI service
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
 # Flutter
 .dart_tool/
 .packages

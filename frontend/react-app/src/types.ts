@@ -189,6 +189,22 @@ export type Reservation = {
   purpose: string
 }
 
+export type WeatherDay = {
+  date: string
+  minTemperatureC: number
+  maxTemperatureC: number
+  rainMm: number
+  maxWindSpeedMs: number
+  description: string
+}
+
+export type WeatherForecast = {
+  location: string
+  isAvailable: boolean
+  message: string
+  days: WeatherDay[]
+}
+
 export type FarmTask = {
   id: string
   farmId: string

@@ -18,6 +18,7 @@ using AgriAssist.Api.Validators.Inspections;
 using AgriAssist.Api.Validators.Resources;
 using AgriAssist.Api.Validators.TaskApproval;
 using AgriAssist.Api.ExternalServices.Cloudinary;
+using AgriAssist.Api.ExternalServices.Weather;
 using DotNetEnv;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -32,6 +33,7 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddHealthChecks();
 builder.Services.Configure<CloudinaryOptions>(builder.Configuration.GetSection("Cloudinary"));
+builder.Services.Configure<WeatherOptions>(builder.Configuration.GetSection("Weather"));
 builder.Services.AddHttpContextAccessor();
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
@@ -77,7 +79,19 @@ builder.Services.AddScoped<IRequestValidator<IrrigationScheduleRequest>, Irrigat
 builder.Services.AddScoped<IRequestValidator<ApprovalActionRequest>, ApprovalActionRequestValidator>();
 builder.Services.AddScoped<IRequestValidator<CancellationRequest>, CancellationRequestValidator>();
 builder.Services.AddScoped<ITaskApprovalService, TaskApprovalService>();
+<<<<<<< HEAD
+<<<<<<< Updated upstream
+builder.Services.AddScoped<IAgenticAIClient, AgenticAIClient>();
+=======
 builder.Services.AddHttpClient<IAgenticAIClient, AgenticAIClient>();
+builder.Services.AddHttpClient<IWeatherResourceAIClient, AgenticAIClient>();
+// OpenWeatherMap takes the API key as a query parameter, so do not log request URLs for this client.
+builder.Services.AddHttpClient<IWeatherService, WeatherService>().RemoveAllLoggers();
+builder.Services.AddScoped<IWeatherResourceWorkflowService, WeatherResourceWorkflowService>();
+>>>>>>> Stashed changes
+=======
+builder.Services.AddHttpClient<IAgenticAIClient, AgenticAIClient>();
+>>>>>>> 6f5561abf0c8257dafd53abd629d72ab2b783e9a
 
 var jwtSecret = builder.Configuration["Jwt:Secret"];
 if (!string.IsNullOrWhiteSpace(jwtSecret))
