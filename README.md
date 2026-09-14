@@ -1,6 +1,6 @@
 # AgriAssist AI - Basic Foundation
 
-AgriAssist is a BASIC, non-AI foundation for farm operations. This repository contains:
+AgriAssist is an ASP.NET Core, React, and Flutter foundation for farm operations. This repository contains:
 
 - ASP.NET Core 8 Web API backend with EF Core 8 and PostgreSQL/Supabase support
 - React + Vite staff/admin console
@@ -8,7 +8,7 @@ AgriAssist is a BASIC, non-AI foundation for farm operations. This repository co
 - Shared AgentWorkflow schema and disabled AgenticAI client placeholder
 - Cloudinary integration path for inspection images
 
-No LLM or agent execution is enabled in this prompt. The AI-facing schema and interfaces exist only so later prompts can build on them.
+No LLM or agent execution is enabled in this foundation. The AI-facing schema and interfaces exist so later prompts can build on them.
 
 ## Project Structure
 
@@ -21,6 +21,20 @@ docs/                            ERD, ADRs, test notes, AI usage notes
 performance/                     k6 baseline script
 .github/workflows/               CI workflow YAML
 ```
+
+## Member 4 Task/Approval Status
+
+The `member4/task-approval-foundation` branch adds the completed first milestone of the Member 4 Task/Approval work:
+
+- Filtered and paged task, irrigation-schedule, and approval-history reads
+- Detail, create, update, submit, cancel, and restricted soft-delete operations
+- Server-owned workflow transitions and officer-only final decisions
+- Required rejection, revision, and cancellation reasons
+- Farmer-scoped approval history and deterministic conflict checks
+- React create/edit/submit/cancel and officer decision flows
+- Focused backend business-rule and frontend decision-dialog tests
+
+See the [Member 4 implementation and integration plan](docs/plans/member-4-task-approval-integration-plan.md) for the remaining scheduling-agent and final-integration milestones.
 
 ## Local Commands
 
@@ -43,5 +57,18 @@ flutter test
 
 - Backend secrets live in ignored `.env` files.
 - React reads `VITE_API_BASE_URL`.
-- Flutter defaults to `http://10.0.2.2:5000/api` for Android emulator use and can be overridden with `--dart-define AGRIASSIST_API_BASE_URL=...`.
+- Flutter defaults to `http://10.0.2.2:5087/api` for Android emulator use and can be overridden with `--dart-define AGRIASSIST_API_BASE_URL=...`.
 - Cloudinary uploads require backend Cloudinary environment values.
+- The AgenticAI client remains disabled until the shared AI service from the later team prompts is integrated.
+
+## Member 4 Verification
+
+The Milestone 1 changes were verified again after merging the shared foundation:
+
+- Backend test-project build passed with 0 warnings and 0 errors.
+- Seven focused TaskApproval and regression tests passed.
+- The frontend production build passed.
+- Twelve frontend tests passed across two files.
+- Frontend lint completed with warnings and no errors.
+
+The earlier full backend run passed 10 of 11 tests; the unrelated Auth integration test was blocked by Windows Event Log access in the sandbox. Flutter verification is unavailable because the Flutter SDK is not installed in this environment.

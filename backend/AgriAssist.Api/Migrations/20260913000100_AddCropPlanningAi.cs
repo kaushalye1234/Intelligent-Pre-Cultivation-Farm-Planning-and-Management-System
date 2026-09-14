@@ -1,16 +1,22 @@
 using System;
+<<<<<<< HEAD
 using AgriAssist.Api.Data;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+=======
+>>>>>>> 6f5561abf0c8257dafd53abd629d72ab2b783e9a
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace AgriAssist.Api.Migrations
 {
+<<<<<<< HEAD
     // Without these attributes EF Core never discovers this hand-written migration,
     // so the crop reference tables were never created in the database.
     [DbContext(typeof(AppDbContext))]
     [Migration("20260913000100_AddCropPlanningAi")]
+=======
+>>>>>>> 6f5561abf0c8257dafd53abd629d72ab2b783e9a
     public partial class AddCropPlanningAi : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)

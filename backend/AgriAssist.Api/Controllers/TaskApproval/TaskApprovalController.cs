@@ -13,18 +13,43 @@ namespace AgriAssist.Api.Controllers.TaskApproval;
 public sealed class TaskApprovalController(ITaskApprovalService taskApprovalService) : ControllerBase
 {
     [HttpGet("tasks")]
-    public async Task<ActionResult<PagedResult<FarmTaskResponse>>> SearchTasks([FromQuery] PagedQuery query, CancellationToken cancellationToken) =>
+    public async Task<ActionResult<PagedResult<FarmTaskResponse>>> SearchTasks([FromQuery] FarmTaskQuery query, CancellationToken cancellationToken) =>
         Ok(await taskApprovalService.SearchTasksAsync(query, cancellationToken));
+
+    [HttpGet("tasks/{id:guid}")]
+    public async Task<ActionResult<FarmTaskResponse>> GetTask(Guid id, CancellationToken cancellationToken) =>
+        Ok(await taskApprovalService.GetTaskAsync(id, cancellationToken));
 
     [HttpPost("tasks")]
     [Authorize(Roles = $"{nameof(ApplicationRole.FieldOfficer)},{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
-    public async Task<ActionResult<FarmTaskResponse>> CreateTask(FarmTaskRequest request, CancellationToken cancellationToken) =>
-        Ok(await taskApprovalService.CreateTaskAsync(request, cancellationToken));
+    public async Task<ActionResult<FarmTaskResponse>> CreateTask(FarmTaskRequest request, CancellationToken cancellationToken)
+    {
+        var created = await taskApprovalService.CreateTaskAsync(request, cancellationToken);
+        return CreatedAtAction(nameof(GetTask), new { id = created.Id }, created);
+    }
 
     [HttpPut("tasks/{id:guid}")]
     [Authorize(Roles = $"{nameof(ApplicationRole.FieldOfficer)},{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
     public async Task<ActionResult<FarmTaskResponse>> UpdateTask(Guid id, FarmTaskRequest request, CancellationToken cancellationToken) =>
         Ok(await taskApprovalService.UpdateTaskAsync(id, request, cancellationToken));
+
+    [HttpPost("tasks/{id:guid}/submit")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.FieldOfficer)},{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
+    public async Task<ActionResult<FarmTaskResponse>> SubmitTask(Guid id, CancellationToken cancellationToken) =>
+        Ok(await taskApprovalService.SubmitTaskAsync(id, cancellationToken));
+
+    [HttpPost("tasks/{id:guid}/cancel")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.FieldOfficer)},{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
+    public async Task<ActionResult<FarmTaskResponse>> CancelTask(Guid id, CancellationRequest request, CancellationToken cancellationToken) =>
+        Ok(await taskApprovalService.CancelTaskAsync(id, request, cancellationToken));
+
+    [HttpDelete("tasks/{id:guid}")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.FieldOfficer)},{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
+    public async Task<IActionResult> DeleteTask(Guid id, CancellationToken cancellationToken)
+    {
+        await taskApprovalService.DeleteTaskAsync(id, cancellationToken);
+        return NoContent();
+    }
 
     [HttpPost("tasks/{id:guid}/approve")]
     [Authorize(Roles = $"{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
@@ -42,13 +67,43 @@ public sealed class TaskApprovalController(ITaskApprovalService taskApprovalServ
         Ok(await taskApprovalService.RequestTaskRevisionAsync(id, request, cancellationToken));
 
     [HttpGet("schedules")]
-    public async Task<ActionResult<PagedResult<IrrigationScheduleResponse>>> SearchSchedules([FromQuery] PagedQuery query, CancellationToken cancellationToken) =>
+    public async Task<ActionResult<PagedResult<IrrigationScheduleResponse>>> SearchSchedules([FromQuery] IrrigationScheduleQuery query, CancellationToken cancellationToken) =>
         Ok(await taskApprovalService.SearchSchedulesAsync(query, cancellationToken));
+
+    [HttpGet("schedules/{id:guid}")]
+    public async Task<ActionResult<IrrigationScheduleResponse>> GetSchedule(Guid id, CancellationToken cancellationToken) =>
+        Ok(await taskApprovalService.GetScheduleAsync(id, cancellationToken));
 
     [HttpPost("schedules")]
     [Authorize(Roles = $"{nameof(ApplicationRole.FieldOfficer)},{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
-    public async Task<ActionResult<IrrigationScheduleResponse>> CreateSchedule(IrrigationScheduleRequest request, CancellationToken cancellationToken) =>
-        Ok(await taskApprovalService.CreateScheduleAsync(request, cancellationToken));
+    public async Task<ActionResult<IrrigationScheduleResponse>> CreateSchedule(IrrigationScheduleRequest request, CancellationToken cancellationToken)
+    {
+        var created = await taskApprovalService.CreateScheduleAsync(request, cancellationToken);
+        return CreatedAtAction(nameof(GetSchedule), new { id = created.Id }, created);
+    }
+
+    [HttpPut("schedules/{id:guid}")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.FieldOfficer)},{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
+    public async Task<ActionResult<IrrigationScheduleResponse>> UpdateSchedule(Guid id, IrrigationScheduleRequest request, CancellationToken cancellationToken) =>
+        Ok(await taskApprovalService.UpdateScheduleAsync(id, request, cancellationToken));
+
+    [HttpPost("schedules/{id:guid}/submit")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.FieldOfficer)},{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
+    public async Task<ActionResult<IrrigationScheduleResponse>> SubmitSchedule(Guid id, CancellationToken cancellationToken) =>
+        Ok(await taskApprovalService.SubmitScheduleAsync(id, cancellationToken));
+
+    [HttpPost("schedules/{id:guid}/cancel")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.FieldOfficer)},{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
+    public async Task<ActionResult<IrrigationScheduleResponse>> CancelSchedule(Guid id, CancellationRequest request, CancellationToken cancellationToken) =>
+        Ok(await taskApprovalService.CancelScheduleAsync(id, request, cancellationToken));
+
+    [HttpDelete("schedules/{id:guid}")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.FieldOfficer)},{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
+    public async Task<IActionResult> DeleteSchedule(Guid id, CancellationToken cancellationToken)
+    {
+        await taskApprovalService.DeleteScheduleAsync(id, cancellationToken);
+        return NoContent();
+    }
 
     [HttpPost("schedules/{id:guid}/approve")]
     [Authorize(Roles = $"{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
@@ -66,6 +121,6 @@ public sealed class TaskApprovalController(ITaskApprovalService taskApprovalServ
         Ok(await taskApprovalService.RequestScheduleRevisionAsync(id, request, cancellationToken));
 
     [HttpGet("approvals")]
-    public async Task<ActionResult<PagedResult<ApprovalDecisionResponse>>> SearchApprovals([FromQuery] PagedQuery query, CancellationToken cancellationToken) =>
+    public async Task<ActionResult<PagedResult<ApprovalDecisionResponse>>> SearchApprovals([FromQuery] ApprovalHistoryQuery query, CancellationToken cancellationToken) =>
         Ok(await taskApprovalService.SearchApprovalsAsync(query, cancellationToken));
 }

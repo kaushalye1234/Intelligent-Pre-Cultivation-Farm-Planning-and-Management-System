@@ -4,10 +4,15 @@ from langgraph.graph import END, StateGraph
 
 from agents.crop_field_analysis_agent import CropFieldAnalysisAgent
 from agents.crop_planning_coordinator_agent import CropPlanningCoordinatorAgent
+<<<<<<< HEAD
 from agents.weather_resource_agent import WeatherResourceAgent
 from schemas.crop_planning import CoordinatorInput, CropPlanningCoordinatorOutput
 from schemas.field_analysis import CropFieldAnalysisOutput, FieldAnalysisInput
 from schemas.weather_resource import WeatherResourceInput, WeatherResourceOutput
+=======
+from schemas.crop_planning import CoordinatorInput, CropPlanningCoordinatorOutput
+from schemas.field_analysis import CropFieldAnalysisOutput, FieldAnalysisInput
+>>>>>>> 6f5561abf0c8257dafd53abd629d72ab2b783e9a
 
 
 class CoordinatorState(TypedDict):
@@ -42,6 +47,7 @@ def build_field_analysis_graph(agent: CropFieldAnalysisAgent):
     graph.set_entry_point("field_analysis")
     graph.add_edge("field_analysis", END)
     return graph.compile()
+<<<<<<< HEAD
 
 
 class WeatherResourceState(TypedDict):
@@ -59,3 +65,5 @@ def build_weather_resource_graph(agent: WeatherResourceAgent):
     graph.set_entry_point("weather_resource")
     graph.add_edge("weather_resource", END)
     return graph.compile()
+=======
+>>>>>>> 6f5561abf0c8257dafd53abd629d72ab2b783e9a

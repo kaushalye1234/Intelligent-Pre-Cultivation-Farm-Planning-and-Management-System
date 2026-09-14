@@ -1,6 +1,6 @@
-﻿import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import { Plus, Search, Sprout } from 'lucide-react'
+import { AlertTriangle, PlayCircle, Plus, RefreshCw, Search, Sprout } from 'lucide-react'
 import { api, getErrorMessage } from '../api/client'
 import { SelectInput, TextAreaInput, TextInput } from '../components/FormControls'
 import { DataTable } from '../components/DataTable'
@@ -9,10 +9,19 @@ import { StatusPill } from '../components/StatusPill'
 import { Button, MetricCard, Modal, Notice, PageHeader, Tabs, Toolbar } from '../components/Ui'
 import { formatArea, formatDate, formatMoney } from '../format'
 import { cropPlanStatus } from '../labels'
-import type { CropPlan, CropType, Farm, Field, PagedResult } from '../types'
+import type { CropPlan, CropPlanningResult, CropPlanningWorkflowStatus, CropType, Farm, Field, PagedResult } from '../types'
 
 type CropTab = 'overview' | 'farms' | 'fields' | 'cropTypes' | 'requests'
 type CropModal = 'farm' | 'field' | 'plan' | null
+
+const workflowStatusLabel: Record<number, string> = {
+  1: 'Not Started',
+  2: 'Pending',
+  3: 'Running',
+  4: 'Completed',
+  5: 'Failed',
+  6: 'Cancelled',
+}
 
 function getCropPlanTone(status: number) {
   if (status === 4) return 'good'
@@ -21,11 +30,24 @@ function getCropPlanTone(status: number) {
   return 'warn'
 }
 
+function getWorkflowTone(status?: number) {
+  if (status === 4) return 'good'
+  if (status === 5 || status === 6) return 'bad'
+  if (status === 3) return 'info'
+  return 'warn'
+}
+
+function isSafeFailure(result?: CropPlanningResult, status?: CropPlanningWorkflowStatus) {
+  return result?.status === 'SafeFailure' || status?.status === 5
+}
+
 export function CropPlanningPage() {
   const [farms, setFarms] = useState<Farm[]>([])
   const [fields, setFields] = useState<Field[]>([])
   const [cropTypes, setCropTypes] = useState<CropType[]>([])
   const [requests, setRequests] = useState<CropPlan[]>([])
+  const [workflowStatuses, setWorkflowStatuses] = useState<Record<string, CropPlanningWorkflowStatus>>({})
+  const [planningResults, setPlanningResults] = useState<Record<string, CropPlanningResult>>({})
   const [activeTab, setActiveTab] = useState<CropTab>('overview')
   const [activeModal, setActiveModal] = useState<CropModal>(null)
   const [search, setSearch] = useState('')
@@ -34,6 +56,7 @@ export function CropPlanningPage() {
   const [success, setSuccess] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [workflowBusyId, setWorkflowBusyId] = useState<string | null>(null)
   const [farmForm, setFarmForm] = useState({ name: '', location: '', totalArea: '' })
   const [fieldForm, setFieldForm] = useState({ farmId: '', name: '', area: '', soilType: '' })
   const [planForm, setPlanForm] = useState({ farmId: '', fieldId: '', cropTypeId: '', preferredStartDate: '', preferredEndDate: '', budget: '', objective: '' })
@@ -44,6 +67,30 @@ export function CropPlanningPage() {
   const farmNameById = useMemo(() => new Map(farms.map((farm) => [farm.id, farm.name])), [farms])
   const cropNameById = useMemo(() => new Map(cropTypes.map((crop) => [crop.id, crop.name])), [cropTypes])
   const fieldNameById = useMemo(() => new Map(fields.map((field) => [field.id, field.name])), [fields])
+
+  async function loadWorkflowSnapshots(plans: CropPlan[]) {
+    const snapshots = await Promise.all(plans.map(async (plan) => {
+      try {
+        const [statusResult, planningResult] = await Promise.all([
+          api.get<CropPlanningWorkflowStatus>(`/crop-plans/${plan.id}/workflow-status`),
+          api.get<CropPlanningResult>(`/crop-plans/${plan.id}/planning-result`),
+        ])
+        return { planId: plan.id, status: statusResult.data, result: planningResult.data }
+      } catch {
+        return null
+      }
+    }))
+
+    const nextStatuses: Record<string, CropPlanningWorkflowStatus> = {}
+    const nextResults: Record<string, CropPlanningResult> = {}
+    for (const snapshot of snapshots) {
+      if (!snapshot) continue
+      nextStatuses[snapshot.planId] = snapshot.status
+      nextResults[snapshot.planId] = snapshot.result
+    }
+    setWorkflowStatuses(nextStatuses)
+    setPlanningResults(nextResults)
+  }
 
   async function loadData(nextSearch = search) {
     setIsLoading(true)
@@ -59,6 +106,7 @@ export function CropPlanningPage() {
       setFields(fieldResult.data.items)
       setCropTypes(cropTypeResult.data.items)
       setRequests(requestResult.data.items)
+      await loadWorkflowSnapshots(requestResult.data.items)
     } catch (err) {
       setError(getErrorMessage(err))
     } finally {
@@ -73,6 +121,32 @@ export function CropPlanningPage() {
   function closeModal() {
     setActiveModal(null)
     setActionError('')
+  }
+
+  async function refreshWorkflow(planId: string) {
+    const [statusResult, planningResult] = await Promise.all([
+      api.get<CropPlanningWorkflowStatus>(`/crop-plans/${planId}/workflow-status`),
+      api.get<CropPlanningResult>(`/crop-plans/${planId}/planning-result`),
+    ])
+    setWorkflowStatuses((current) => ({ ...current, [planId]: statusResult.data }))
+    setPlanningResults((current) => ({ ...current, [planId]: planningResult.data }))
+  }
+
+  async function startAiWorkflow(plan: CropPlan) {
+    setWorkflowBusyId(plan.id)
+    setActionError('')
+    setSuccess('')
+    try {
+      const response = await api.post(`/crop-plans/${plan.id}/start-ai-workflow`)
+      setSuccess(response.data.requiresHumanReview ? 'AI planning needs review before downstream analysis.' : 'AI planning coordinator completed and Member 2 step is ready.')
+      await refreshWorkflow(plan.id)
+      await loadData()
+      setActiveTab('requests')
+    } catch (err) {
+      setActionError(getErrorMessage(err))
+    } finally {
+      setWorkflowBusyId(null)
+    }
   }
 
   async function runAction(action: () => Promise<void>, message: string) {
@@ -120,6 +194,7 @@ export function CropPlanningPage() {
         objective: planForm.objective,
       })
       setPlanForm({ farmId: '', fieldId: '', cropTypeId: '', preferredStartDate: '', preferredEndDate: '', budget: '', objective: '' })
+      setActiveTab('requests')
     }, 'Planning request created successfully.')
   }
 
@@ -136,7 +211,7 @@ export function CropPlanningPage() {
       <PageHeader
         eyebrow="Crop Planning"
         title="Crop Planning"
-        description="Manage farms, fields, crop types and planning requests."
+        description="Manage farms, fields, crop types and AI-ready planning requests."
         actions={
           <>
             <Button variant="secondary" icon={<Plus size={16} aria-hidden="true" />} onClick={() => setActiveModal('farm')}>Add Farm</Button>
@@ -156,6 +231,7 @@ export function CropPlanningPage() {
 
       <Tabs tabs={tabs} activeTab={activeTab} onChange={(tab) => setActiveTab(tab as CropTab)} ariaLabel="Crop planning sections" />
       {success ? <Notice tone="success">{success}</Notice> : null}
+      {actionError ? <Notice tone="error">{actionError}</Notice> : null}
       {error ? <ErrorState message={error} /> : null}
 
       {isLoading ? <LoadingState /> : (
@@ -165,61 +241,43 @@ export function CropPlanningPage() {
               <MetricCard label="Farms" value={farms.length} description="Farm records returned by the API." icon={<Sprout size={20} aria-hidden="true" />} />
               <MetricCard label="Fields" value={fields.length} description="Fields connected to registered farms." />
               <MetricCard label="Crop Types" value={cropTypes.length} description="Available crop types for planning requests." />
-              <MetricCard label="Plan Requests" value={requests.length} description="Planning requests from the backend." tone={requests.length > 0 ? 'warn' : 'neutral'} />
+              <MetricCard label="AI Workflows" value={Object.keys(workflowStatuses).length} description="Crop plans with coordinator evidence." tone={Object.keys(workflowStatuses).length > 0 ? 'warn' : 'neutral'} />
             </div>
           ) : null}
 
           {activeTab === 'farms' ? (
             <section className="work-section">
               <div className="section-title"><h2>Farms</h2></div>
-              <DataTable
-                rows={farms}
-                emptyTitle="No farms found"
-                emptyMessage="Create a farm record before adding fields or planning requests."
-                getRowKey={(row) => row.id}
-                columns={[
-                  { header: 'Farm Name', render: (row) => row.name },
-                  { header: 'Location', render: (row) => row.location },
-                  { header: 'Area', render: (row) => formatArea(row.totalArea) },
-                  { header: 'Created', render: (row) => formatDate(row.createdAt) },
-                ]}
-              />
+              <DataTable rows={farms} emptyTitle="No farms found" emptyMessage="Create a farm record before adding fields or planning requests." getRowKey={(row) => row.id} columns={[
+                { header: 'Farm Name', render: (row) => row.name },
+                { header: 'Location', render: (row) => row.location },
+                { header: 'Area', render: (row) => formatArea(row.totalArea) },
+                { header: 'Created', render: (row) => formatDate(row.createdAt) },
+              ]} />
             </section>
           ) : null}
 
           {activeTab === 'fields' ? (
             <section className="work-section">
               <div className="section-title"><h2>Fields</h2></div>
-              <DataTable
-                rows={fields}
-                emptyTitle="No fields found"
-                emptyMessage="Add fields to a farm so inspections and planning requests can reference them."
-                getRowKey={(row) => row.id}
-                columns={[
-                  { header: 'Field', render: (row) => row.name },
-                  { header: 'Farm', render: (row) => farmNameById.get(row.farmId) ?? row.farmId.slice(0, 8) },
-                  { header: 'Area', render: (row) => formatArea(row.area) },
-                  { header: 'Soil Type', render: (row) => row.soilType },
-                  { header: 'Status', render: (row) => <StatusPill label={row.isActive ? 'Active' : 'Inactive'} tone={row.isActive ? 'good' : 'bad'} /> },
-                ]}
-              />
+              <DataTable rows={fields} emptyTitle="No fields found" emptyMessage="Add fields to a farm so inspections and planning requests can reference them." getRowKey={(row) => row.id} columns={[
+                { header: 'Field', render: (row) => row.name },
+                { header: 'Farm', render: (row) => farmNameById.get(row.farmId) ?? row.farmId.slice(0, 8) },
+                { header: 'Area', render: (row) => formatArea(row.area) },
+                { header: 'Soil Type', render: (row) => row.soilType },
+                { header: 'Status', render: (row) => <StatusPill label={row.isActive ? 'Active' : 'Inactive'} tone={row.isActive ? 'good' : 'bad'} /> },
+              ]} />
             </section>
           ) : null}
 
           {activeTab === 'cropTypes' ? (
             <section className="work-section">
               <div className="section-title"><h2>Crop Types</h2></div>
-              <DataTable
-                rows={cropTypes}
-                emptyTitle="No crop types found"
-                emptyMessage="Crop type records are managed through the existing API seed/admin flow."
-                getRowKey={(row) => row.id}
-                columns={[
-                  { header: 'Crop Type', render: (row) => row.name },
-                  { header: 'Description', render: (row) => row.description || 'Not provided' },
-                  { header: 'Status', render: (row) => <StatusPill label={row.isActive ? 'Active' : 'Inactive'} tone={row.isActive ? 'good' : 'bad'} /> },
-                ]}
-              />
+              <DataTable rows={cropTypes} emptyTitle="No crop types found" emptyMessage="Crop type records are managed through the existing API seed/admin flow." getRowKey={(row) => row.id} columns={[
+                { header: 'Crop Type', render: (row) => row.name },
+                { header: 'Description', render: (row) => row.description || 'Not provided' },
+                { header: 'Status', render: (row) => <StatusPill label={row.isActive ? 'Active' : 'Inactive'} tone={row.isActive ? 'good' : 'bad'} /> },
+              ]} />
             </section>
           ) : null}
 
@@ -238,6 +296,31 @@ export function CropPlanningPage() {
                   { header: 'Window', render: (row) => `${formatDate(row.preferredStartDate)} to ${formatDate(row.preferredEndDate)}` },
                   { header: 'Budget', render: (row) => formatMoney(row.budget) },
                   { header: 'Status', render: (row) => <StatusPill label={cropPlanStatus[row.status] ?? String(row.status)} tone={getCropPlanTone(row.status)} /> },
+                  {
+                    header: 'AI Workflow',
+                    className: 'wide-column',
+                    render: (row) => {
+                      const status = workflowStatuses[row.id]
+                      const result = planningResults[row.id]
+                      const busy = workflowBusyId === row.id
+                      const retry = isSafeFailure(result, status)
+                      return (
+                        <div className="workflow-cell">
+                          <div className="workflow-cell-top">
+                            <StatusPill label={status ? workflowStatusLabel[status.status] ?? String(status.status) : 'Not Started'} tone={getWorkflowTone(status?.status)} />
+                            {result?.referenceDataStatus === 'Unavailable' ? <span className="reference-warning"><AlertTriangle size={14} aria-hidden="true" /> Missing reference</span> : null}
+                          </div>
+                          {result?.objectiveSummary ? <p>{result.objectiveSummary}</p> : <span className="muted-text">Coordinator output has not been generated.</span>}
+                          {result?.warnings.length ? <ul className="workflow-warnings">{result.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}
+                          {result?.steps.length ? <div className="workflow-step-list">{result.steps.map((step) => <span key={`${step.sequence}-${step.assignedAgent}`}>{step.sequence}. {step.assignedAgent}</span>)}</div> : null}
+                          <div className="row-actions">
+                            <Button icon={<PlayCircle size={16} aria-hidden="true" />} disabled={busy || Boolean(status && !retry)} onClick={() => void startAiWorkflow(row)}>{busy ? 'Working...' : retry ? 'Retry AI' : 'Start AI'}</Button>
+                            <Button variant="secondary" icon={<RefreshCw size={16} aria-hidden="true" />} disabled={busy || !status} onClick={() => void refreshWorkflow(row.id)}>Refresh</Button>
+                          </div>
+                        </div>
+                      )
+                    },
+                  },
                 ]}
               />
             </section>
@@ -264,7 +347,7 @@ export function CropPlanningPage() {
         </form>
       </Modal>
 
-      <Modal open={activeModal === 'plan'} title="Create Planning Request" description="Submit a preliminary crop planning request through the existing API." onClose={closeModal} footer={<><Button variant="secondary" onClick={closeModal} disabled={isSubmitting}>Cancel</Button><Button type="submit" form="plan-form" disabled={isSubmitting}>{isSubmitting ? 'Creating...' : 'Create Request'}</Button></>}>
+      <Modal open={activeModal === 'plan'} title="Create Planning Request" description="Submit a crop planning request before starting the AI coordinator." onClose={closeModal} footer={<><Button variant="secondary" onClick={closeModal} disabled={isSubmitting}>Cancel</Button><Button type="submit" form="plan-form" disabled={isSubmitting}>{isSubmitting ? 'Creating...' : 'Create Request'}</Button></>}>
         <form id="plan-form" className="form-grid" onSubmit={(event) => void createPreliminary(event)}>
           <SelectInput label="Farm" value={planForm.farmId} required options={farmOptions} onChange={(value) => setPlanForm({ ...planForm, farmId: value })} />
           <SelectInput label="Field" value={planForm.fieldId} options={fieldOptions} onChange={(value) => setPlanForm({ ...planForm, fieldId: value })} />

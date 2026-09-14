@@ -89,3 +89,18 @@ Verified with:
 - `flutter test` with 2 passing widget tests
 
 An Android debug APK build was attempted with `flutter build apk --debug`, but the Gradle build stayed running silently after a plugin SDK warning and was stopped. APK compile is not claimed as verified.
+
+## Phase 10 - Member 2 Inspections AI
+
+Verified on 2026-09-14 with:
+
+- `python -m py_compile agents\crop_field_analysis_agent.py schemas\field_analysis.py tools\inspection_tools.py graph\workflow_graph.py main.py` in `ai-service`
+- `.venv\Scripts\python.exe -m pytest -q` in `ai-service` with 18 passing tests
+- `dotnet test backend\AgriAssist.Api.Tests\AgriAssist.Api.Tests.csproj` with 22 passing tests
+- `npm run lint` in `frontend/react-app` exited 0 with non-blocking oxlint warnings for page-loader/AuthContext patterns
+- `npm test` in `frontend/react-app` with 15 passing tests
+- `npm run build` in `frontend/react-app`
+- `flutter analyze` in `mobile/flutter_app` with no issues
+- `flutter test` in `mobile/flutter_app` with 6 passing tests
+
+The AI-service test run used a local `ai-service/.venv` created from `requirements.txt`. Cloudinary image upload is implemented through ASP.NET and covered with fake success/failure tests; real Cloudinary credentials were not used.

@@ -73,7 +73,8 @@ public sealed class AuditRegressionTests
             new AuditCurrentUserService(role),
             new FarmTaskRequestValidator(),
             new IrrigationScheduleRequestValidator(),
-            new ApprovalActionRequestValidator());
+            new ApprovalActionRequestValidator(),
+            new CancellationRequestValidator());
 
     private sealed class AuditCurrentUserService(ApplicationRole role) : ICurrentUserService
     {

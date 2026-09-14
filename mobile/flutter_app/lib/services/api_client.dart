@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -22,7 +22,7 @@ class ApiClient {
     String? baseUrl,
   })  : _httpClient = httpClient ?? http.Client(),
         _secureStorage = secureStorage ?? const FlutterSecureStorage(),
-        baseUrl = baseUrl ?? const String.fromEnvironment('AGRIASSIST_API_BASE_URL', defaultValue: 'http://10.0.2.2:5000/api');
+        baseUrl = baseUrl ?? const String.fromEnvironment('AGRIASSIST_API_BASE_URL', defaultValue: 'http://10.0.2.2:5087/api');
 
   final http.Client _httpClient;
   final FlutterSecureStorage _secureStorage;
@@ -77,7 +77,59 @@ class ApiClient {
     return _items(response).map(InventoryStock.fromJson).toList();
   }
 
-  Future<void> createPreliminaryCropPlan({
+  Future<List<InspectionRecord>> inspections() async {
+    final response = await _get('/inspections?sortBy=scheduledAt&sortDirection=desc&pageSize=50');
+    return _items(response).map(InspectionRecord.fromJson).toList();
+  }
+
+  Future<List<CropIssueRecord>> cropIssues() async {
+    final response = await _get('/inspections/issues?sortBy=createdAt&sortDirection=desc&pageSize=50');
+    return _items(response).map(CropIssueRecord.fromJson).toList();
+  }
+
+  Future<List<FollowUpRecommendationRecord>> followUps() async {
+    final response = await _get('/inspections/recommendations?isCompleted=false&pageSize=50');
+    return _items(response).map(FollowUpRecommendationRecord.fromJson).toList();
+  }
+
+  Future<List<InspectionHistoryEventRecord>> inspectionHistory(String inspectionId) async {
+    final response = await _getList('/inspections/$inspectionId/history');
+    return response.map(InspectionHistoryEventRecord.fromJson).toList();
+  }
+
+  Future<String> createInspection({required String fieldId, required String summary}) async {
+    final response = await _post('/inspections', {
+      'fieldId': fieldId,
+      'scheduledAt': DateTime.now().toUtc().toIso8601String(),
+      'status': 2,
+      'summary': summary,
+    });
+    return response['id'] as String;
+  }
+
+  Future<void> submitInspection(String inspectionId) async {
+    await _post('/inspections/$inspectionId/submit', {});
+  }
+
+  Future<void> createObservation({required String inspectionId, required String observationType, required String notes}) async {
+    await _post('/inspections/observations', {
+      'fieldInspectionId': inspectionId,
+      'observationType': observationType,
+      'notes': notes,
+    });
+  }
+
+  Future<void> createCropIssue({required String inspectionId, required String title, required String description, required int severity}) async {
+    await _post('/inspections/issues', {
+      'fieldInspectionId': inspectionId,
+      'title': title,
+      'description': description,
+      'severity': severity,
+      'status': 1,
+    });
+  }
+
+  Future<String> createPreliminaryCropPlan({
     required String farmId,
     required String? fieldId,
     required String cropTypeId,
@@ -86,7 +138,7 @@ class ApiClient {
     required num budget,
     required String objective,
   }) async {
-    await _post('/crop-planning/requests/preliminary', {
+    final response = await _post('/crop-planning/requests/preliminary', {
       'farmId': farmId,
       'fieldId': fieldId,
       'cropTypeId': cropTypeId,
@@ -95,6 +147,22 @@ class ApiClient {
       'budget': budget,
       'objective': objective,
     });
+    return response['id'] as String;
+  }
+
+  Future<CropPlanningWorkflowStart> startCropPlanningWorkflow(String cropPlanRequestId) async {
+    final response = await _post('/crop-plans/$cropPlanRequestId/start-ai-workflow', {});
+    return CropPlanningWorkflowStart.fromJson(response);
+  }
+
+  Future<CropPlanningWorkflowStatus> cropPlanningWorkflowStatus(String cropPlanRequestId) async {
+    final response = await _get('/crop-plans/$cropPlanRequestId/workflow-status');
+    return CropPlanningWorkflowStatus.fromJson(response);
+  }
+
+  Future<CropPlanningResult> cropPlanningResult(String cropPlanRequestId) async {
+    final response = await _get('/crop-plans/$cropPlanRequestId/planning-result');
+    return CropPlanningResult.fromJson(response);
   }
 
   Future<void> reserveResource({required String inventoryStockId, required num quantity, required String purpose}) async {
@@ -120,6 +188,15 @@ class ApiClient {
     return _decode(response);
   }
 
+  Future<List<Map<String, dynamic>>> _getList(String path) async {
+    final response = await _httpClient.get(Uri.parse('$baseUrl$path'), headers: _headers());
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw const ApiException('Request failed');
+    }
+    final body = response.body.isEmpty ? <dynamic>[] : jsonDecode(response.body) as List<dynamic>;
+    return body.cast<Map<String, dynamic>>();
+  }
+
   Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> body) async {
     final response = await _httpClient.post(Uri.parse('$baseUrl$path'), headers: _headers(), body: jsonEncode(body));
     return _decode(response);
@@ -141,7 +218,8 @@ class ApiClient {
   Map<String, dynamic> _decode(http.Response response) {
     final body = response.body.isEmpty ? <String, dynamic>{} : jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw ApiException((body['message'] ?? body['title'] ?? 'Request failed') as String);
+      final error = body['error'] as Map<String, dynamic>?;
+      throw ApiException((error?['message'] ?? body['message'] ?? body['title'] ?? 'Request failed') as String);
     }
     return body;
   }
