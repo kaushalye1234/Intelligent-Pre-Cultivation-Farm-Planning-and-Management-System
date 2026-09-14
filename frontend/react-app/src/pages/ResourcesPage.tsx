@@ -1,17 +1,17 @@
 ﻿import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import { Package, Plus, Search, Warehouse } from 'lucide-react'
+import { CloudSun, Package, Plus, Search, Warehouse } from 'lucide-react'
 import { api, getErrorMessage } from '../api/client'
 import { SelectInput, TextAreaInput, TextInput } from '../components/FormControls'
 import { DataTable } from '../components/DataTable'
 import { ErrorState, LoadingState } from '../components/States'
 import { StatusPill } from '../components/StatusPill'
 import { Button, ConfirmDialog, MetricCard, Modal, Notice, PageHeader, Tabs, Toolbar } from '../components/Ui'
-import { formatNumber } from '../format'
+import { formatDate, formatNumber } from '../format'
 import { reservationStatus } from '../labels'
-import type { InventoryStock, PagedResult, Reservation, ResourceCategory, ResourceItem, Supplier } from '../types'
+import type { InventoryStock, PagedResult, Reservation, ResourceCategory, ResourceItem, Supplier, WeatherForecast } from '../types'
 
-type ResourceTab = 'inventory' | 'resources' | 'categories' | 'suppliers' | 'reservations'
+type ResourceTab = 'inventory' | 'resources' | 'categories' | 'suppliers' | 'reservations' | 'weather'
 type ResourceModal = 'category' | 'supplier' | 'resource' | 'stock' | 'reserve' | null
 
 type ConfirmAction = {
@@ -56,6 +56,10 @@ export function ResourcesPage() {
   const [resourceForm, setResourceForm] = useState({ resourceCategoryId: '', supplierId: '', name: '', unit: '' })
   const [stockForm, setStockForm] = useState({ resourceId: '', quantityOnHand: '', lowStockThreshold: '' })
   const [reservationForm, setReservationForm] = useState({ inventoryStockId: '', quantity: '', purpose: '' })
+  const [weatherLocation, setWeatherLocation] = useState('')
+  const [forecast, setForecast] = useState<WeatherForecast | null>(null)
+  const [weatherError, setWeatherError] = useState('')
+  const [isWeatherLoading, setIsWeatherLoading] = useState(false)
 
   const categoryOptions = categories.map((category) => ({ value: category.id, label: category.name }))
   const supplierOptions = suppliers.map((supplier) => ({ value: supplier.id, label: supplier.name }))
@@ -69,16 +73,18 @@ export function ResourcesPage() {
     setIsLoading(true)
     setError('')
     try {
-      const [categoryResult, supplierResult, resourceResult, stockResult] = await Promise.all([
+      const [categoryResult, supplierResult, resourceResult, stockResult, reservationResult] = await Promise.all([
         api.get<PagedResult<ResourceCategory>>('/resources/categories', { params: { search: nextSearch, sortBy: 'name' } }),
         api.get<PagedResult<Supplier>>('/resources/suppliers', { params: { search: nextSearch, sortBy: 'name' } }),
         api.get<PagedResult<ResourceItem>>('/resources', { params: { search: nextSearch, sortBy: 'name' } }),
         api.get<PagedResult<InventoryStock>>('/resources/stocks', { params: { search: nextSearch, sortBy: 'createdAt', sortDirection: 'desc', lowStockOnly: nextLowStockOnly || undefined } }),
+        api.get<PagedResult<Reservation>>('/resources/reservations', { params: { pageSize: 100 } }),
       ])
       setCategories(categoryResult.data.items)
       setSuppliers(supplierResult.data.items)
       setResources(resourceResult.data.items)
       setStocks(stockResult.data.items)
+      setReservations(reservationResult.data.items)
     } catch (err) {
       setError(getErrorMessage(err))
     } finally {
@@ -166,19 +172,32 @@ export function ResourcesPage() {
   async function reserve(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     await runAction(async () => {
-      const response = await api.post<Reservation>('/resources/reservations', {
+      await api.post<Reservation>('/resources/reservations', {
         inventoryStockId: reservationForm.inventoryStockId,
         quantity: Number(reservationForm.quantity),
         purpose: reservationForm.purpose,
       })
-      setReservations((current) => [response.data, ...current])
       setReservationForm({ inventoryStockId: '', quantity: '', purpose: '' })
     }, 'Resource reserved successfully.')
   }
 
   async function updateReservation(id: string, action: 'release' | 'cancel') {
-    const response = await api.post<Reservation>(`/resources/reservations/${id}/${action}`)
-    setReservations((current) => current.map((reservation) => reservation.id === id ? response.data : reservation))
+    await api.post<Reservation>(`/resources/reservations/${id}/${action}`)
+  }
+
+  async function loadForecast(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setIsWeatherLoading(true)
+    setWeatherError('')
+    try {
+      const response = await api.get<WeatherForecast>('/weather/forecast', { params: { location: weatherLocation } })
+      setForecast(response.data)
+    } catch (err) {
+      setForecast(null)
+      setWeatherError(getErrorMessage(err))
+    } finally {
+      setIsWeatherLoading(false)
+    }
   }
 
   const tabs = [
@@ -187,6 +206,7 @@ export function ResourcesPage() {
     { id: 'categories', label: 'Categories', count: categories.length },
     { id: 'suppliers', label: 'Suppliers', count: suppliers.length },
     { id: 'reservations', label: 'Reservations', count: reservations.length },
+    { id: 'weather', label: 'Weather' },
   ]
 
   return (
@@ -285,11 +305,11 @@ export function ResourcesPage() {
               <div className="section-title section-title-actions">
                 <div>
                   <h2>Reservations</h2>
-                  <p className="muted-text">The backend supports reserve, release and cancel actions, but does not expose a persisted reservation list endpoint.</p>
+                  <p className="muted-text">Reserved quantities are held until the reservation is released or cancelled.</p>
                 </div>
                 <Button variant="secondary" icon={<Package size={16} aria-hidden="true" />} onClick={() => openReserve()}>Reserve Stock</Button>
               </div>
-              <DataTable rows={reservations} emptyTitle="No session reservations" emptyMessage="Reservations created in this browser session will appear here." getRowKey={(row) => row.id} columns={[
+              <DataTable rows={reservations} emptyTitle="No reservations" emptyMessage="Reserve stock to hold it for a planned activity." getRowKey={(row) => row.id} columns={[
                 { header: 'Resource', render: (row) => resourceNameById.get(stocks.find((stock) => stock.id === row.inventoryStockId)?.resourceId ?? '') ?? row.inventoryStockId.slice(0, 8) },
                 { header: 'Purpose', render: (row) => row.purpose },
                 { header: 'Quantity', render: (row) => formatNumber(row.quantity) },
@@ -301,6 +321,33 @@ export function ResourcesPage() {
                   </div>
                 ) : <span className="muted-text">Finalized</span> },
               ]} />
+            </section>
+          ) : null}
+
+          {activeTab === 'weather' ? (
+            <section className="work-section">
+              <div className="section-title">
+                <div>
+                  <h2>Weather Forecast</h2>
+                  <p className="muted-text">Five-day forecast for a farm location, used when checking whether a planting window is suitable.</p>
+                </div>
+              </div>
+              <form className="search-box" onSubmit={(event) => void loadForecast(event)}>
+                <CloudSun size={16} aria-hidden="true" />
+                <input value={weatherLocation} onChange={(event) => setWeatherLocation(event.target.value)} placeholder="Farm location, e.g. Kurunegala" aria-label="Weather location" required />
+                <Button variant="secondary" type="submit" disabled={isWeatherLoading}>{isWeatherLoading ? 'Loading...' : 'Get Forecast'}</Button>
+              </form>
+              {weatherError ? <ErrorState message={weatherError} /> : null}
+              {forecast && !forecast.isAvailable ? <Notice tone="warning">{forecast.message}</Notice> : null}
+              {forecast?.isAvailable ? (
+                <DataTable rows={forecast.days} emptyTitle="No forecast" emptyMessage="No forecast days were returned." getRowKey={(row) => row.date} columns={[
+                  { header: 'Date', render: (row) => formatDate(row.date) },
+                  { header: 'Conditions', render: (row) => row.description },
+                  { header: 'Temperature (C)', render: (row) => `${formatNumber(row.minTemperatureC)} - ${formatNumber(row.maxTemperatureC)}` },
+                  { header: 'Rain (mm)', render: (row) => formatNumber(row.rainMm) },
+                  { header: 'Wind (m/s)', render: (row) => formatNumber(row.maxWindSpeedMs) },
+                ]} />
+              ) : null}
             </section>
           ) : null}
         </>

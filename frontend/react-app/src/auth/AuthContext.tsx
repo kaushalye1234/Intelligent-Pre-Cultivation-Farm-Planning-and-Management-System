@@ -20,18 +20,51 @@ type StoredSession = {
   user: UserProfile
 }
 
+// Reads the JWT "exp" claim; a token we cannot decode is treated as expired.
+function isTokenExpired(token: string) {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))) as { exp?: number }
+    return !payload.exp || payload.exp * 1000 <= Date.now()
+  } catch {
+    return true
+  }
+}
+
+function readStoredSession(): StoredSession | null {
+  try {
+    const stored = window.localStorage.getItem(storageKey)
+    if (!stored) return null
+    const parsed = JSON.parse(stored) as StoredSession
+    if (parsed?.token && !isTokenExpired(parsed.token)) return parsed
+  } catch {
+    // Corrupt value - fall through and clear it.
+  }
+  window.localStorage.removeItem(storageKey)
+  return null
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<StoredSession | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const stored = window.localStorage.getItem(storageKey)
+    const stored = readStoredSession()
     if (stored) {
-      const parsed = JSON.parse(stored) as StoredSession
-      setSession(parsed)
-      setAuthToken(parsed.token)
+      setSession(stored)
+      setAuthToken(stored.token)
     }
     setIsLoading(false)
+  }, [])
+
+  // If the API rejects our token (expired, or signed with a different secret), send the user back to login.
+  useEffect(() => {
+    const interceptorId = api.interceptors.response.use(undefined, (error) => {
+      if (error?.response?.status === 401 && !String(error.config?.url ?? '').includes('/auth/login')) {
+        logout()
+      }
+      return Promise.reject(error)
+    })
+    return () => api.interceptors.response.eject(interceptorId)
   }, [])
 
   async function login(email: string, password: string) {
