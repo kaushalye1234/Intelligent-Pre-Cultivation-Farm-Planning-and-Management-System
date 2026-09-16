@@ -79,19 +79,11 @@ builder.Services.AddScoped<IRequestValidator<IrrigationScheduleRequest>, Irrigat
 builder.Services.AddScoped<IRequestValidator<ApprovalActionRequest>, ApprovalActionRequestValidator>();
 builder.Services.AddScoped<IRequestValidator<CancellationRequest>, CancellationRequestValidator>();
 builder.Services.AddScoped<ITaskApprovalService, TaskApprovalService>();
-<<<<<<< HEAD
-<<<<<<< Updated upstream
-builder.Services.AddScoped<IAgenticAIClient, AgenticAIClient>();
-=======
 builder.Services.AddHttpClient<IAgenticAIClient, AgenticAIClient>();
 builder.Services.AddHttpClient<IWeatherResourceAIClient, AgenticAIClient>();
 // OpenWeatherMap takes the API key as a query parameter, so do not log request URLs for this client.
 builder.Services.AddHttpClient<IWeatherService, WeatherService>().RemoveAllLoggers();
 builder.Services.AddScoped<IWeatherResourceWorkflowService, WeatherResourceWorkflowService>();
->>>>>>> Stashed changes
-=======
-builder.Services.AddHttpClient<IAgenticAIClient, AgenticAIClient>();
->>>>>>> 6f5561abf0c8257dafd53abd629d72ab2b783e9a
 
 var jwtSecret = builder.Configuration["Jwt:Secret"];
 if (!string.IsNullOrWhiteSpace(jwtSecret))

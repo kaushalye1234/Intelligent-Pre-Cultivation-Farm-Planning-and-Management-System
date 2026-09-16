@@ -1,27 +1,28 @@
 name: Backend CI
 
 on:
+  workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
 
 jobs:
   backend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup .NET 8
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '8.0.x'
 
-      - name: Restore backend
-        run: dotnet restore backend/AgriAssist.Api/AgriAssist.Api.csproj
+      - name: Restore backend tests
+        run: dotnet restore backend/AgriAssist.Api.Tests/AgriAssist.Api.Tests.csproj
 
-      - name: Build backend
-        run: dotnet build backend/AgriAssist.Api/AgriAssist.Api.csproj --configuration Release --no-restore
+      - name: Build backend tests
+        run: dotnet build backend/AgriAssist.Api.Tests/AgriAssist.Api.Tests.csproj --configuration Release --no-restore
 
       - name: Test backend
         run: dotnet test backend/AgriAssist.Api.Tests/AgriAssist.Api.Tests.csproj --configuration Release --no-build
