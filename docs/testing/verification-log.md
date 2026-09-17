@@ -90,6 +90,20 @@ Verified with:
 
 An Android debug APK build was attempted with `flutter build apk --debug`, but the Gradle build stayed running silently after a plugin SDK warning and was stopped. APK compile is not claimed as verified.
 
+## Member 4 Phase 2 integration verification
+
+Verified on 2026-09-17 with:
+
+- All five EF Core migrations applied to an isolated PostgreSQL 16 container; 29 public tables created.
+- Backend xUnit suite: 44 passing tests.
+- AI service Docker image (Python 3.12): 27 passing tests.
+- AI service `/health`: HTTP 200; unauthenticated workflow request: HTTP 401; authenticated malformed request reached schema validation with HTTP 422.
+- ASP.NET `/health`: HTTP 200 on port 5087.
+- React development server: HTTP 200 on port 5173.
+- Flutter farmer status implementation is present; local Flutter SDK is unavailable, so local analyze/test execution remains pending.
+
+PostgreSQL competing-request approval, rollback, and no-duplicate final-record behavior still require dedicated integration scenarios beyond migration application and EF InMemory service tests.
+
 ## Phase 10 - Member 2 Inspections AI
 
 Verified on 2026-09-14 with:
