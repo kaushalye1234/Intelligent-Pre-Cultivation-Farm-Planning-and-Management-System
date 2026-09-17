@@ -104,6 +104,8 @@ Verified on 2026-09-17 with:
 
 PostgreSQL competing-request approval, rollback, and no-duplicate final-record behavior still require dedicated integration scenarios beyond migration application and EF InMemory service tests.
 
+The repeatable `scripts/test-member4-postgres.ps1` smoke check passed against the disposable PostgreSQL container: five migrations and five required Member 4 tables were found, and rollback-to-savepoint and row-lock probes passed. API-level competing approval tests remain pending.
+
 ## Phase 10 - Member 2 Inspections AI
 
 Verified on 2026-09-14 with:
