@@ -71,7 +71,7 @@ The Phase 2 implementation was verified on 2026-09-17:
 - The Python 3.12 AI-service image built and all 27 pytest tests passed.
 - React lint completed with warnings and no errors, the production build passed, and all 18 Vitest tests passed.
 - EF Core reports no pending model changes, and the PostgreSQL migration SQL was generated and inspected.
-- PostgreSQL transaction/concurrency behavior was not executed against a disposable PostgreSQL database in this run.
+- All five EF Core migrations were applied successfully to an isolated PostgreSQL 16 container on port 55432; the resulting schema contains 29 public tables. This verifies migration application only; competing-request transaction tests remain separate.
 
 The Milestone 1 changes were verified again after merging the shared foundation:
 
