@@ -52,4 +52,12 @@ flutter test
 
 ## PostgreSQL evidence
 
+Run the repeatable database smoke checks from the repository root:
+
+```powershell
+.\scripts\test-member4-postgres.ps1
+```
+
+This verifies migration history, required Member 4 tables, rollback of a temporary transaction, and row-lock support. It does not replace API-level concurrent approval tests.
+
 Record the database target category, migration IDs, test count, approval outcomes, rollback result, and any concurrency failures. Do not use EF InMemory results as evidence for PostgreSQL transaction or concurrency guarantees. Do not record credentials or fabricate latency numbers.
