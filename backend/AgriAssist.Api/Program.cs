@@ -81,9 +81,11 @@ builder.Services.AddScoped<IRequestValidator<CancellationRequest>, CancellationR
 builder.Services.AddScoped<ITaskApprovalService, TaskApprovalService>();
 builder.Services.AddHttpClient<IAgenticAIClient, AgenticAIClient>();
 builder.Services.AddHttpClient<IWeatherResourceAIClient, AgenticAIClient>();
+builder.Services.AddHttpClient<ISchedulingValidationAIClient, AgenticAIClient>();
 // OpenWeatherMap takes the API key as a query parameter, so do not log request URLs for this client.
 builder.Services.AddHttpClient<IWeatherService, WeatherService>().RemoveAllLoggers();
 builder.Services.AddScoped<IWeatherResourceWorkflowService, WeatherResourceWorkflowService>();
+builder.Services.AddScoped<IWorkflowApprovalService, WorkflowApprovalService>();
 
 var jwtSecret = builder.Configuration["Jwt:Secret"];
 if (!string.IsNullOrWhiteSpace(jwtSecret))

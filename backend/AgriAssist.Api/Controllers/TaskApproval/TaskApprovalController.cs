@@ -10,8 +10,42 @@ namespace AgriAssist.Api.Controllers.TaskApproval;
 [ApiController]
 [Route("api/task-approval")]
 [Authorize]
-public sealed class TaskApprovalController(ITaskApprovalService taskApprovalService) : ControllerBase
+public sealed class TaskApprovalController(
+    ITaskApprovalService taskApprovalService,
+    IWorkflowApprovalService workflowApprovalService) : ControllerBase
 {
+    [HttpGet("workflows")]
+    public async Task<ActionResult<PagedResult<WorkflowSummaryResponse>>> SearchWorkflows([FromQuery] WorkflowApprovalQuery query, CancellationToken cancellationToken) =>
+        Ok(await workflowApprovalService.SearchAsync(query, cancellationToken));
+
+    [HttpGet("workflows/{id:guid}")]
+    public async Task<ActionResult<WorkflowReviewResponse>> GetWorkflow(Guid id, CancellationToken cancellationToken) =>
+        Ok(await workflowApprovalService.GetAsync(id, cancellationToken));
+
+    [HttpGet("workflows/{id:guid}/history")]
+    public async Task<ActionResult<WorkflowHistoryResponse>> GetWorkflowHistory(Guid id, CancellationToken cancellationToken) =>
+        Ok(await workflowApprovalService.GetHistoryAsync(id, cancellationToken));
+
+    [HttpPost("workflows/{id:guid}/generate-candidate")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
+    public async Task<ActionResult<WorkflowReviewResponse>> GenerateWorkflowCandidate(Guid id, CancellationToken cancellationToken) =>
+        Ok(await workflowApprovalService.GenerateCandidateAsync(id, cancellationToken));
+
+    [HttpPost("workflows/{id:guid}/approve")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
+    public async Task<ActionResult<WorkflowDecisionResponse>> ApproveWorkflow(Guid id, WorkflowDecisionRequest request, CancellationToken cancellationToken) =>
+        Ok(await workflowApprovalService.ApproveAsync(id, request, cancellationToken));
+
+    [HttpPost("workflows/{id:guid}/reject")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
+    public async Task<ActionResult<WorkflowDecisionResponse>> RejectWorkflow(Guid id, WorkflowDecisionRequest request, CancellationToken cancellationToken) =>
+        Ok(await workflowApprovalService.RejectAsync(id, request, cancellationToken));
+
+    [HttpPost("workflows/{id:guid}/request-revision")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
+    public async Task<ActionResult<WorkflowDecisionResponse>> RequestWorkflowRevision(Guid id, WorkflowDecisionRequest request, CancellationToken cancellationToken) =>
+        Ok(await workflowApprovalService.RequestRevisionAsync(id, request, cancellationToken));
+
     [HttpGet("tasks")]
     public async Task<ActionResult<PagedResult<FarmTaskResponse>>> SearchTasks([FromQuery] FarmTaskQuery query, CancellationToken cancellationToken) =>
         Ok(await taskApprovalService.SearchTasksAsync(query, cancellationToken));

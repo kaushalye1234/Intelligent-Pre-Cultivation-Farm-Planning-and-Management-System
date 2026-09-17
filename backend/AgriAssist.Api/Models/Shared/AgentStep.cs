@@ -7,6 +7,7 @@ public sealed class AgentStep : AuditableEntity
     public string AgentName { get; set; } = string.Empty;
     public string StepName { get; set; } = string.Empty;
     public int Sequence { get; set; }
+    public int CandidateRevision { get; set; } = 1;
     public string InputJson { get; set; } = "{}";
     public string OutputJson { get; set; } = "{}";
     public AgentStepStatus Status { get; set; } = AgentStepStatus.Pending;

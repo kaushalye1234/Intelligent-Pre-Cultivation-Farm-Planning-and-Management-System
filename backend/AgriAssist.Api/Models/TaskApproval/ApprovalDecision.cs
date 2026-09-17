@@ -12,6 +12,9 @@ public sealed class ApprovalDecision : AuditableEntity
     public AppUser? DecidedByUser { get; set; }
     public Guid? AgentWorkflowId { get; set; }
     public AgentWorkflow? AgentWorkflow { get; set; }
+    public int? CandidateRevision { get; set; }
+    public int? ExpectedWorkflowVersion { get; set; }
+    public string? IdempotencyKey { get; set; }
     public ApprovalDecisionType Decision { get; set; }
     public string Comment { get; set; } = string.Empty;
 }

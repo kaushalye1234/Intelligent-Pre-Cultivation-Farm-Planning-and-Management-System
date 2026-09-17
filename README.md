@@ -34,7 +34,9 @@ The `member4/task-approval-foundation` branch adds the completed first milestone
 - React create/edit/submit/cancel and officer decision flows
 - Focused backend business-rule and frontend decision-dialog tests
 
-See the [Member 4 implementation and integration plan](docs/plans/member-4-task-approval-integration-plan.md) for the remaining scheduling-agent and final-integration milestones.
+See the [Member 4 implementation and integration plan](docs/plans/member-4-task-approval-integration-plan.md) for the implemented scheduling workflow and remaining integration evidence.
+
+Phase 2 adds the fourth-agent scheduling proposal, deterministic candidate validation, revision/version-aware workflow review, and the officer approval gate. See the [Member 4 scheduling and approval contract](docs/ai-usage/member-4-scheduling-approval-contract.md) for endpoints, payloads, and verification limits.
 
 ## Local Commands
 
@@ -59,9 +61,17 @@ flutter test
 - React reads `VITE_API_BASE_URL`.
 - Flutter defaults to `http://10.0.2.2:5087/api` for Android emulator use and can be overridden with `--dart-define AGRIASSIST_API_BASE_URL=...`.
 - Cloudinary uploads require backend Cloudinary environment values.
-- The AgenticAI client remains disabled until the shared AI service from the later team prompts is integrated.
+- The AgenticAI client uses `AI__ServiceUrl` and `AI__ServiceToken`; unavailable or invalid AI responses are persisted as safe failures and never create final work.
 
 ## Member 4 Verification
+
+The Phase 2 implementation was verified on 2026-09-17:
+
+- Backend Release build passed with 0 warnings and 0 errors; all 44 xUnit tests passed.
+- The Python 3.12 AI-service image built and all 27 pytest tests passed.
+- React lint completed with warnings and no errors, the production build passed, and all 18 Vitest tests passed.
+- EF Core reports no pending model changes, and the PostgreSQL migration SQL was generated and inspected.
+- PostgreSQL transaction/concurrency behavior was not executed against a disposable PostgreSQL database in this run.
 
 The Milestone 1 changes were verified again after merging the shared foundation:
 

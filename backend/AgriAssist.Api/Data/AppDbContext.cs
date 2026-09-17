@@ -246,8 +246,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.Property(reservation => reservation.Purpose).IsRequired().HasMaxLength(500);
             entity.HasOne(reservation => reservation.InventoryStock).WithMany().HasForeignKey(reservation => reservation.InventoryStockId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(reservation => reservation.RequestedByUser).WithMany().HasForeignKey(reservation => reservation.RequestedByUserId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(reservation => reservation.GeneratedByWorkflow).WithMany().HasForeignKey(reservation => reservation.GeneratedByWorkflowId).OnDelete(DeleteBehavior.SetNull);
             entity.HasIndex(reservation => reservation.Status);
             entity.HasIndex(reservation => reservation.InventoryStockId);
+            entity.HasIndex(reservation => new { reservation.GeneratedByWorkflowId, reservation.CandidateRevision });
         });
 
         modelBuilder.Entity<FarmTask>(entity =>
@@ -257,8 +259,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.Property(task => task.Status).HasConversion<string>().HasMaxLength(40);
             entity.HasOne(task => task.Farm).WithMany().HasForeignKey(task => task.FarmId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(task => task.AssignedToUser).WithMany().HasForeignKey(task => task.AssignedToUserId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(task => task.GeneratedByWorkflow).WithMany().HasForeignKey(task => task.GeneratedByWorkflowId).OnDelete(DeleteBehavior.SetNull);
             entity.HasIndex(task => task.Status);
             entity.HasIndex(task => task.DueAt);
+            entity.HasIndex(task => new { task.GeneratedByWorkflowId, task.CandidateRevision });
         });
 
         modelBuilder.Entity<IrrigationSchedule>(entity =>
@@ -266,20 +270,24 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.Property(schedule => schedule.Notes).HasMaxLength(1000);
             entity.Property(schedule => schedule.Status).HasConversion<string>().HasMaxLength(40);
             entity.HasOne(schedule => schedule.Field).WithMany().HasForeignKey(schedule => schedule.FieldId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(schedule => schedule.GeneratedByWorkflow).WithMany().HasForeignKey(schedule => schedule.GeneratedByWorkflowId).OnDelete(DeleteBehavior.SetNull);
             entity.HasIndex(schedule => schedule.Status);
             entity.HasIndex(schedule => schedule.ScheduledAt);
+            entity.HasIndex(schedule => new { schedule.GeneratedByWorkflowId, schedule.CandidateRevision });
         });
 
         modelBuilder.Entity<ApprovalDecision>(entity =>
         {
             entity.Property(approval => approval.Decision).HasConversion<string>().HasMaxLength(40);
             entity.Property(approval => approval.Comment).HasMaxLength(1000);
+            entity.Property(approval => approval.IdempotencyKey).HasMaxLength(120);
             entity.HasOne(approval => approval.FarmTask).WithMany().HasForeignKey(approval => approval.FarmTaskId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(approval => approval.IrrigationSchedule).WithMany().HasForeignKey(approval => approval.IrrigationScheduleId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(approval => approval.DecidedByUser).WithMany().HasForeignKey(approval => approval.DecidedByUserId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(approval => approval.AgentWorkflow).WithMany().HasForeignKey(approval => approval.AgentWorkflowId).OnDelete(DeleteBehavior.SetNull);
             entity.HasIndex(approval => approval.Decision);
             entity.HasIndex(approval => approval.AgentWorkflowId);
+            entity.HasIndex(approval => new { approval.AgentWorkflowId, approval.IdempotencyKey }).IsUnique();
         });
 
         modelBuilder.Entity<AgentWorkflow>(entity =>
@@ -287,6 +295,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.Property(workflow => workflow.Objective).IsRequired().HasMaxLength(1000);
             entity.Property(workflow => workflow.Status).HasConversion<string>().HasMaxLength(40);
             entity.Property(workflow => workflow.CurrentStep).HasMaxLength(160);
+            entity.Property(workflow => workflow.Version).IsConcurrencyToken();
             entity.HasOne(workflow => workflow.CropPlanRequest).WithMany().HasForeignKey(workflow => workflow.CropPlanRequestId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(workflow => workflow.InitiatedByUser).WithMany().HasForeignKey(workflow => workflow.InitiatedByUserId).OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(workflow => workflow.CropPlanRequestId);
@@ -320,8 +329,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             entity.Property(result => result.ValidatorName).IsRequired().HasMaxLength(160);
             entity.Property(result => result.ErrorsJson).HasColumnType("jsonb");
+            entity.Property(result => result.WarningsJson).HasColumnType("jsonb");
             entity.HasOne(result => result.AgentWorkflow).WithMany(workflow => workflow.ValidationResults).HasForeignKey(result => result.AgentWorkflowId).OnDelete(DeleteBehavior.Cascade);
-            entity.HasIndex(result => result.AgentWorkflowId);
+            entity.HasIndex(result => new { result.AgentWorkflowId, result.CandidateRevision });
         });
     }
 }

@@ -3,13 +3,14 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using AgriAssist.Api.Dtos.CropPlanning;
 using AgriAssist.Api.Dtos.Resources;
+using AgriAssist.Api.Dtos.TaskApproval;
 
 namespace AgriAssist.Api.ExternalServices.AgenticAI;
 
 public sealed class AgenticAIClient(
     HttpClient httpClient,
     IConfiguration configuration,
-    ILogger<AgenticAIClient> logger) : IAgenticAIClient, IWeatherResourceAIClient
+    ILogger<AgenticAIClient> logger) : IAgenticAIClient, IWeatherResourceAIClient, ISchedulingValidationAIClient
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -35,6 +36,14 @@ public sealed class AgenticAIClient(
             input,
             input.WorkflowId,
             "weather and resource analysis",
+            cancellationToken);
+
+    public Task<SchedulingValidationOutput> RunSchedulingValidationAsync(SchedulingValidationInput input, CancellationToken cancellationToken) =>
+        PostAsync<SchedulingValidationInput, SchedulingValidationOutput>(
+            "/workflows/crop-planning/scheduling-validation",
+            input,
+            input.WorkflowId,
+            "scheduling validation",
             cancellationToken);
 
     private async Task<TOutput> PostAsync<TInput, TOutput>(

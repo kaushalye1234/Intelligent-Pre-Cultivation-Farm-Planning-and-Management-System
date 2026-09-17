@@ -11,6 +11,9 @@ public sealed class AgentWorkflow : AuditableEntity
     public string Objective { get; set; } = string.Empty;
     public AgentWorkflowStatus Status { get; set; } = AgentWorkflowStatus.NotStarted;
     public string CurrentStep { get; set; } = string.Empty;
+    public int CandidateRevision { get; set; } = 1;
+    public int RevisionCount { get; set; }
+    public int Version { get; set; } = 1;
     public DateTime? CompletedAt { get; set; }
     public List<AgentStep> Steps { get; set; } = [];
     public List<AgentValidationResult> ValidationResults { get; set; } = [];
@@ -23,5 +26,10 @@ public enum AgentWorkflowStatus
     Running = 3,
     Completed = 4,
     Failed = 5,
-    Cancelled = 6
+    Cancelled = 6,
+    CandidateReady = 7,
+    PendingOfficerApproval = 8,
+    Rejected = 9,
+    RevisionRequested = 10,
+    MissingDependency = 11
 }
