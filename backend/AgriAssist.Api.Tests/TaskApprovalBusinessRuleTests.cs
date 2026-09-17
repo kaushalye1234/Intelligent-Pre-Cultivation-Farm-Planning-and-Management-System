@@ -114,6 +114,41 @@ public sealed class TaskApprovalBusinessRuleTests
         Assert.Equal("No longer required", decision.Comment);
     }
 
+    [Fact]
+    public async Task Item_endpoint_cannot_bypass_workflow_generated_task_gate()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedAsync(db);
+        var workflow = new AgentWorkflow
+        {
+            InitiatedByUserId = data.Farmer.Id,
+            Objective = "Test workflow",
+            Status = AgentWorkflowStatus.PendingOfficerApproval,
+            CurrentStep = "HumanApproval"
+        };
+        var task = new FarmTask
+        {
+            FarmId = data.Farm.Id,
+            AssignedToUserId = data.Officer.Id,
+            Title = "Generated task",
+            DueAt = DateTime.UtcNow.AddDays(2),
+            Status = FarmTaskStatus.PendingApproval,
+            GeneratedByWorkflow = workflow,
+            CandidateRevision = 1
+        };
+        db.AddRange(workflow, task);
+        await db.SaveChangesAsync();
+        var approver = NewService(db, ApplicationRole.AgriculturalOfficer, data.Approver.Id);
+
+        var exception = await Assert.ThrowsAsync<ApiException>(() => approver.ApproveTaskAsync(
+            task.Id,
+            new ApprovalActionRequest("Approve directly", workflow.Id),
+            CancellationToken.None));
+
+        Assert.Equal("WORKFLOW_ITEM_DECISION_REQUIRED", exception.Code);
+        Assert.Empty(db.ApprovalDecisions);
+    }
+
     private static AppDbContext NewDbContext() =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
 

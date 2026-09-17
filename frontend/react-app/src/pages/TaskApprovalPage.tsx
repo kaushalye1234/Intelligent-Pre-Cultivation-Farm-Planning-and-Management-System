@@ -1,6 +1,7 @@
 ﻿import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Ban, Check, Pencil, Plus, RotateCcw, Send, X } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { api, getErrorMessage } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { SelectInput, TextAreaInput, TextInput } from '../components/FormControls'
@@ -11,9 +12,9 @@ import { Button, Modal, Notice, PageHeader, Tabs } from '../components/Ui'
 import { formatDateTime } from '../format'
 import { approvalDecision, scheduleStatus, taskStatus } from '../labels'
 import { isDecisionRole, Roles } from '../routing'
-import type { ApprovalDecision, Farm, FarmTask, Field, IrrigationSchedule, PagedResult, UserProfile } from '../types'
+import type { ApprovalDecision, Farm, FarmTask, Field, IrrigationSchedule, PagedResult, UserProfile, WorkflowSummary } from '../types'
 
-type ApprovalTab = 'tasks' | 'schedules' | 'approvals'
+type ApprovalTab = 'workflows' | 'tasks' | 'schedules' | 'approvals'
 type ApprovalModal = 'task' | 'schedule' | null
 
 type DecisionAction = {
@@ -47,6 +48,7 @@ function toLocalInputValue(value: string) {
 }
 
 export function TaskApprovalPage() {
+  const navigate = useNavigate()
   const { user } = useAuth()
   const [farms, setFarms] = useState<Farm[]>([])
   const [fields, setFields] = useState<Field[]>([])
@@ -54,7 +56,8 @@ export function TaskApprovalPage() {
   const [tasks, setTasks] = useState<FarmTask[]>([])
   const [schedules, setSchedules] = useState<IrrigationSchedule[]>([])
   const [approvals, setApprovals] = useState<ApprovalDecision[]>([])
-  const [activeTab, setActiveTab] = useState<ApprovalTab>('tasks')
+  const [workflows, setWorkflows] = useState<WorkflowSummary[]>([])
+  const [activeTab, setActiveTab] = useState<ApprovalTab>('workflows')
   const [activeModal, setActiveModal] = useState<ApprovalModal>(null)
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
   const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null)
@@ -82,18 +85,20 @@ export function TaskApprovalPage() {
     setIsLoading(true)
     setError('')
     try {
-      const [farmResult, fieldResult, taskResult, scheduleResult, approvalResult] = await Promise.all([
+      const [farmResult, fieldResult, taskResult, scheduleResult, approvalResult, workflowResult] = await Promise.all([
         api.get<PagedResult<Farm>>('/crop-planning/farms'),
         api.get<PagedResult<Field>>('/crop-planning/fields'),
         api.get<PagedResult<FarmTask>>('/task-approval/tasks', { params: { sortBy: 'dueAt' } }),
         api.get<PagedResult<IrrigationSchedule>>('/task-approval/schedules', { params: { sortBy: 'scheduledAt' } }),
         api.get<PagedResult<ApprovalDecision>>('/task-approval/approvals', { params: { sortBy: 'createdAt', sortDirection: 'desc' } }),
+        api.get<PagedResult<WorkflowSummary>>('/task-approval/workflows'),
       ])
       setFarms(farmResult.data.items)
       setFields(fieldResult.data.items)
       setTasks(taskResult.data.items)
       setSchedules(scheduleResult.data.items)
       setApprovals(approvalResult.data.items)
+      setWorkflows(workflowResult.data.items)
 
       if (user?.role === Roles.Admin) {
         const userResult = await api.get<PagedResult<UserProfile>>('/users', { params: { sortBy: 'fullName' } })
@@ -276,6 +281,7 @@ export function TaskApprovalPage() {
   }
 
   const tabs = [
+    { id: 'workflows', label: 'Workflow Review', count: workflows.length },
     { id: 'tasks', label: 'Farm Tasks', count: tasks.length },
     { id: 'schedules', label: 'Irrigation Schedules', count: schedules.length },
     { id: 'approvals', label: 'Approvals', count: approvals.length },
@@ -296,6 +302,17 @@ export function TaskApprovalPage() {
 
       {isLoading ? <LoadingState /> : (
         <>
+          {activeTab === 'workflows' ? (
+            <section className="work-section">
+              <DataTable rows={workflows} emptyTitle="No scheduling workflows" emptyMessage="Run the crop planning agents to create a scheduling candidate for officer review." getRowKey={(row) => row.id} columns={[
+                { header: 'Objective', render: (row) => <div><strong>{row.objective}</strong><p className="muted-text">Revision {row.candidateRevision} · Version {row.version}</p></div> },
+                { header: 'State', render: (row) => <StatusPill label={row.currentStep || String(row.status)} tone={row.status === 4 ? 'good' : row.status === 5 || row.status === 9 ? 'bad' : row.status === 8 ? 'warn' : 'info'} /> },
+                { header: 'Created', render: (row) => formatDateTime(row.createdAt) },
+                { header: 'Actions', className: 'actions-cell', render: (row) => <div className="row-actions"><Button variant="ghost" onClick={() => navigate(`/task-approval/workflows/${row.id}`)}>Review</Button></div> },
+              ]} />
+            </section>
+          ) : null}
+
           {activeTab === 'tasks' ? (
             <section className="work-section">
               <DataTable rows={tasks} emptyTitle="No farm tasks" emptyMessage="Create a task when farm work needs assignment or approval." getRowKey={(row) => row.id} columns={[
@@ -308,7 +325,8 @@ export function TaskApprovalPage() {
                   <div className="row-actions">
                     {canManage && [1, 2, 5].includes(row.status) ? <Button variant="ghost" icon={<Pencil size={14} aria-hidden="true" />} onClick={() => openEditTask(row)}>Edit</Button> : null}
                     {canManage && [1, 5].includes(row.status) ? <Button variant="ghost" icon={<Send size={14} aria-hidden="true" />} onClick={() => openSubmit(`/task-approval/tasks/${row.id}`, 'task')}>Submit</Button> : null}
-                    {canDecide && row.status === 2 ? <><Button variant="ghost" icon={<Check size={14} aria-hidden="true" />} onClick={() => openTaskDecision(row, 'approve')}>Approve</Button><Button variant="ghost" icon={<RotateCcw size={14} aria-hidden="true" />} onClick={() => openTaskDecision(row, 'request-revision')}>Revision</Button><Button variant="ghost" icon={<X size={14} aria-hidden="true" />} onClick={() => openTaskDecision(row, 'reject')}>Reject</Button></> : null}
+                    {canDecide && row.status === 2 && !row.generatedByWorkflowId ? <><Button variant="ghost" icon={<Check size={14} aria-hidden="true" />} onClick={() => openTaskDecision(row, 'approve')}>Approve</Button><Button variant="ghost" icon={<RotateCcw size={14} aria-hidden="true" />} onClick={() => openTaskDecision(row, 'request-revision')}>Revision</Button><Button variant="ghost" icon={<X size={14} aria-hidden="true" />} onClick={() => openTaskDecision(row, 'reject')}>Reject</Button></> : null}
+                    {row.generatedByWorkflowId ? <Button variant="ghost" onClick={() => navigate(`/task-approval/workflows/${row.generatedByWorkflowId}`)}>Workflow</Button> : null}
                     {canManage && [1, 2, 3, 5].includes(row.status) ? <Button variant="ghost" icon={<Ban size={14} aria-hidden="true" />} onClick={() => openTaskCancel(row)}>Cancel</Button> : null}
                     {!canManage && !canDecide ? <span className="muted-text">No action</span> : null}
                   </div>
@@ -329,7 +347,8 @@ export function TaskApprovalPage() {
                   <div className="row-actions">
                     {canManage && [1, 4].includes(row.status) ? <Button variant="ghost" icon={<Pencil size={14} aria-hidden="true" />} onClick={() => openEditSchedule(row)}>Edit</Button> : null}
                     {canManage && row.status === 4 ? <Button variant="ghost" icon={<Send size={14} aria-hidden="true" />} onClick={() => openSubmit(`/task-approval/schedules/${row.id}`, 'schedule')}>Submit</Button> : null}
-                    {canDecide && row.status === 1 ? <><Button variant="ghost" icon={<Check size={14} aria-hidden="true" />} onClick={() => openScheduleDecision(row, 'approve')}>Approve</Button><Button variant="ghost" icon={<RotateCcw size={14} aria-hidden="true" />} onClick={() => openScheduleDecision(row, 'request-revision')}>Revision</Button><Button variant="ghost" icon={<X size={14} aria-hidden="true" />} onClick={() => openScheduleDecision(row, 'reject')}>Reject</Button></> : null}
+                    {canDecide && row.status === 1 && !row.generatedByWorkflowId ? <><Button variant="ghost" icon={<Check size={14} aria-hidden="true" />} onClick={() => openScheduleDecision(row, 'approve')}>Approve</Button><Button variant="ghost" icon={<RotateCcw size={14} aria-hidden="true" />} onClick={() => openScheduleDecision(row, 'request-revision')}>Revision</Button><Button variant="ghost" icon={<X size={14} aria-hidden="true" />} onClick={() => openScheduleDecision(row, 'reject')}>Reject</Button></> : null}
+                    {row.generatedByWorkflowId ? <Button variant="ghost" onClick={() => navigate(`/task-approval/workflows/${row.generatedByWorkflowId}`)}>Workflow</Button> : null}
                     {canManage && [1, 2, 4].includes(row.status) ? <Button variant="ghost" icon={<Ban size={14} aria-hidden="true" />} onClick={() => openScheduleCancel(row)}>Cancel</Button> : null}
                     {!canManage && !canDecide ? <span className="muted-text">No action</span> : null}
                   </div>

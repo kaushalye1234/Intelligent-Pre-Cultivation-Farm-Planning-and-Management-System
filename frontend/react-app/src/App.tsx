@@ -19,6 +19,7 @@ import { InspectionsPage } from './pages/InspectionsPage'
 import { LoginPage } from './pages/LoginPage'
 import { ResourcesPage } from './pages/ResourcesPage'
 import { TaskApprovalPage } from './pages/TaskApprovalPage'
+import { WorkflowReviewPage } from './pages/WorkflowReviewPage'
 import { UsersPage } from './pages/UsersPage'
 import { Roles, staffRoles } from './routing'
 import './styles.css'
@@ -51,6 +52,7 @@ export function AppRoutes() {
           <Route path="inspections/follow-ups" element={<ProtectedRoute allowedRoles={[Roles.Admin, Roles.FieldOfficer, Roles.AgriculturalOfficer]}><FollowUpRecommendations /></ProtectedRoute>} />
           <Route path="resources" element={<ProtectedRoute allowedRoles={[Roles.Admin, Roles.ResourceOfficer]}><ResourcesPage /></ProtectedRoute>} />
           <Route path="task-approval" element={<ProtectedRoute allowedRoles={[Roles.Admin, Roles.FieldOfficer, Roles.AgriculturalOfficer]}><TaskApprovalPage /></ProtectedRoute>} />
+          <Route path="task-approval/workflows/:id" element={<ProtectedRoute allowedRoles={[Roles.Admin, Roles.FieldOfficer, Roles.AgriculturalOfficer]}><WorkflowReviewPage /></ProtectedRoute>} />
           <Route path="users" element={<ProtectedRoute allowedRoles={[Roles.Admin]}><UsersPage /></ProtectedRoute>} />
         </Route>
       </Route>

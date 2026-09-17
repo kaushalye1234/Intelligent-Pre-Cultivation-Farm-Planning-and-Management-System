@@ -57,6 +57,7 @@ describe('TaskApprovalPage', () => {
       </MemoryRouter>,
     )
 
+    await userEvent.click(await screen.findByRole('tab', { name: /farm tasks/i }))
     await screen.findByText('Inspect field')
     await userEvent.click(screen.getByRole('button', { name: /^reject$/i }))
     await userEvent.type(screen.getByLabelText(/^reason/i), 'Weather risk is too high')

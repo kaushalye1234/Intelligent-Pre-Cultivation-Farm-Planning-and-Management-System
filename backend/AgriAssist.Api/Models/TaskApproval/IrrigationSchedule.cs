@@ -11,6 +11,9 @@ public sealed class IrrigationSchedule : AuditableEntity
     public int DurationMinutes { get; set; }
     public IrrigationScheduleStatus Status { get; set; } = IrrigationScheduleStatus.PendingApproval;
     public string Notes { get; set; } = string.Empty;
+    public Guid? GeneratedByWorkflowId { get; set; }
+    public AgentWorkflow? GeneratedByWorkflow { get; set; }
+    public int? CandidateRevision { get; set; }
 }
 
 public enum IrrigationScheduleStatus

@@ -213,6 +213,8 @@ export type FarmTask = {
   dueAt: string
   assignedToUserId: string
   status: number
+  generatedByWorkflowId?: string
+  candidateRevision?: number
 }
 
 export type IrrigationSchedule = {
@@ -222,6 +224,8 @@ export type IrrigationSchedule = {
   durationMinutes: number
   notes: string
   status: number
+  generatedByWorkflowId?: string
+  candidateRevision?: number
 }
 
 export type ApprovalDecision = {
@@ -233,6 +237,56 @@ export type ApprovalDecision = {
   decision: number
   comment: string
   createdAt: string
+}
+
+export type WorkflowSummary = {
+  id: string
+  cropPlanRequestId?: string
+  objective: string
+  status: number
+  currentStep: string
+  candidateRevision: number
+  revisionCount: number
+  version: number
+  createdAt: string
+  completedAt?: string
+}
+
+export type WorkflowStepReview = {
+  id: string
+  agentName: string
+  stepName: string
+  sequence: number
+  candidateRevision: number
+  status: number
+  input: unknown
+  output: unknown
+  startedAt?: string
+  completedAt?: string
+  errorCode?: string
+  errorMessageSafe?: string
+}
+
+export type WorkflowValidation = {
+  id: string
+  validatorName: string
+  candidateRevision: number
+  isValid: boolean
+  errors: string[]
+  warnings: string[]
+  createdAt: string
+}
+
+export type WorkflowReview = {
+  workflow: WorkflowSummary
+  farmId: string
+  fieldId?: string
+  budget: number
+  preferredStartDate: string
+  preferredEndDate: string
+  steps: WorkflowStepReview[]
+  validations: WorkflowValidation[]
+  decisions: ApprovalDecision[]
 }
 
 export type AgentStepStatus = {

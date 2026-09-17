@@ -305,6 +305,8 @@ public sealed class TaskApprovalService(
         RequireApprover();
         await EnsureWorkflowExistsAsync(request.AgentWorkflowId, cancellationToken);
         var task = await dbContext.FarmTasks.SingleOrDefaultAsync(item => item.Id == taskId && !item.IsDeleted, cancellationToken) ?? throw NotFound("Task");
+        if (task.GeneratedByWorkflowId.HasValue)
+            throw Conflict("WORKFLOW_ITEM_DECISION_REQUIRED", "Workflow-generated tasks must be decided through the workflow approval endpoint.");
         if (task.Status != FarmTaskStatus.PendingApproval)
             throw Conflict("TASK_DECISION_NOT_ALLOWED", "Only tasks pending approval can receive a decision.");
 
@@ -323,6 +325,8 @@ public sealed class TaskApprovalService(
         RequireApprover();
         await EnsureWorkflowExistsAsync(request.AgentWorkflowId, cancellationToken);
         var schedule = await dbContext.IrrigationSchedules.SingleOrDefaultAsync(item => item.Id == scheduleId && !item.IsDeleted, cancellationToken) ?? throw NotFound("Irrigation schedule");
+        if (schedule.GeneratedByWorkflowId.HasValue)
+            throw Conflict("WORKFLOW_ITEM_DECISION_REQUIRED", "Workflow-generated schedules must be decided through the workflow approval endpoint.");
         if (schedule.Status != IrrigationScheduleStatus.PendingApproval)
             throw Conflict("SCHEDULE_DECISION_NOT_ALLOWED", "Only schedules pending approval can receive a decision.");
 
@@ -527,7 +531,7 @@ public sealed class TaskApprovalService(
         if (errors.Count > 0) throw new ApiException(HttpStatusCode.BadRequest, "VALIDATION_ERROR", string.Join(" ", errors));
     }
 
-    private static FarmTaskResponse MapTask(FarmTask item) => new(item.Id, item.FarmId, item.Title, item.Description, item.DueAt, item.AssignedToUserId, item.Status);
-    private static IrrigationScheduleResponse MapSchedule(IrrigationSchedule item) => new(item.Id, item.FieldId, item.ScheduledAt, item.DurationMinutes, item.Notes, item.Status);
+    private static FarmTaskResponse MapTask(FarmTask item) => new(item.Id, item.FarmId, item.Title, item.Description, item.DueAt, item.AssignedToUserId, item.Status, item.GeneratedByWorkflowId, item.CandidateRevision);
+    private static IrrigationScheduleResponse MapSchedule(IrrigationSchedule item) => new(item.Id, item.FieldId, item.ScheduledAt, item.DurationMinutes, item.Notes, item.Status, item.GeneratedByWorkflowId, item.CandidateRevision);
     private static ApprovalDecisionResponse MapApproval(ApprovalDecision item) => new(item.Id, item.FarmTaskId, item.IrrigationScheduleId, item.DecidedByUserId, item.AgentWorkflowId, item.Decision, item.Comment, item.CreatedAt);
 }

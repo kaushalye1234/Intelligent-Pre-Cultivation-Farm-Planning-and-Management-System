@@ -167,6 +167,52 @@ public sealed class ResourceService(
         return MapReservation(reservation);
     }
 
+    public async Task<ResourceReservationResponse> StageWorkflowReservationAsync(
+        ResourceReservationRequest request,
+        Guid workflowId,
+        int candidateRevision,
+        Guid requestedByUserId,
+        CancellationToken cancellationToken)
+    {
+        Validate(reservationValidator.Validate(request));
+        if (!await dbContext.AgentWorkflows.AnyAsync(item => item.Id == workflowId && !item.IsDeleted, cancellationToken))
+            throw NotFound("Agent workflow");
+        if (!await dbContext.Users.AnyAsync(item => item.Id == requestedByUserId && item.IsActive && !item.IsDeleted, cancellationToken))
+            throw NotFound("Reservation requester");
+
+        var stock = await dbContext.InventoryStocks.SingleOrDefaultAsync(
+            item => item.Id == request.InventoryStockId && !item.IsDeleted,
+            cancellationToken) ?? throw NotFound("Inventory stock");
+        if (stock.AvailableQuantity < request.Quantity)
+            throw new ApiException(HttpStatusCode.Conflict, "INSUFFICIENT_STOCK", "Reservation cannot exceed available stock.");
+
+        stock.ReservedQuantity += request.Quantity;
+        stock.RowVersion = NewRowVersion();
+        stock.UpdatedAt = DateTime.UtcNow;
+        var actor = RequireUser();
+        var reservation = new ResourceReservation
+        {
+            InventoryStockId = stock.Id,
+            RequestedByUserId = requestedByUserId,
+            Quantity = request.Quantity,
+            Purpose = request.Purpose.Trim(),
+            GeneratedByWorkflowId = workflowId,
+            CandidateRevision = candidateRevision,
+            CreatedByUserId = actor,
+            UpdatedByUserId = actor
+        };
+        dbContext.ResourceReservations.Add(reservation);
+        dbContext.StockTransactions.Add(new StockTransaction
+        {
+            InventoryStockId = stock.Id,
+            Type = StockTransactionType.Reserve,
+            Quantity = request.Quantity,
+            Note = request.Purpose.Trim(),
+            CreatedByUserId = actor
+        });
+        return MapReservation(reservation);
+    }
+
     public Task<ResourceReservationResponse> ReleaseAsync(Guid reservationId, CancellationToken cancellationToken) =>
         CloseReservationAsync(reservationId, ResourceReservationStatus.Released, cancellationToken);
 
@@ -218,7 +264,9 @@ public sealed class ResourceService(
 
     private async Task<IDbContextTransaction?> BeginTransactionIfRelationalAsync(CancellationToken cancellationToken)
     {
-        return dbContext.Database.IsRelational() ? await dbContext.Database.BeginTransactionAsync(cancellationToken) : null;
+        return dbContext.Database.IsRelational() && dbContext.Database.CurrentTransaction is null
+            ? await dbContext.Database.BeginTransactionAsync(cancellationToken)
+            : null;
     }
 
     private Guid RequireUser() => currentUser.UserId ?? throw new ApiException(HttpStatusCode.Unauthorized, "AUTH_REQUIRED", "Authentication is required.");
