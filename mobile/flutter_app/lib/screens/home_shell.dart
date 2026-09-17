@@ -6,6 +6,7 @@ import 'crop_plan_screen.dart';
 import 'dashboard_screen.dart';
 import 'inspection_screen.dart';
 import 'resources_screen.dart';
+import 'status_screen.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -22,6 +23,7 @@ class _HomeShellState extends State<HomeShell> {
     CropPlanScreen(),
     InspectionScreen(),
     ResourcesScreen(),
+    StatusScreen(),
   ];
 
   @override
@@ -50,6 +52,7 @@ class _HomeShellState extends State<HomeShell> {
           NavigationDestination(icon: Icon(Icons.spa_outlined), selectedIcon: Icon(Icons.spa), label: 'Plans'),
           NavigationDestination(icon: Icon(Icons.camera_alt_outlined), selectedIcon: Icon(Icons.camera_alt), label: 'Inspect'),
           NavigationDestination(icon: Icon(Icons.inventory_2_outlined), selectedIcon: Icon(Icons.inventory_2), label: 'Resources'),
+          NavigationDestination(icon: Icon(Icons.assignment_outlined), selectedIcon: Icon(Icons.assignment), label: 'My status'),
         ],
       ),
       bottomSheet: state.error == null
