@@ -100,11 +100,13 @@ Verified on 2026-09-17 with:
 - AI service `/health`: HTTP 200; unauthenticated workflow request: HTTP 401; authenticated malformed request reached schema validation with HTTP 422.
 - ASP.NET `/health`: HTTP 200 on port 5087.
 - React development server: HTTP 200 on port 5173.
-- Flutter farmer status implementation is present; local Flutter SDK is unavailable, so local analyze/test execution remains pending.
+- Flutter farmer status implementation is present; local SDK verification is recorded below.
 
 PostgreSQL competing-request approval, rollback, and no-duplicate final-record behavior still require dedicated integration scenarios beyond migration application and EF InMemory service tests.
 
 The repeatable `scripts/test-member4-postgres.ps1` smoke check passed against the disposable PostgreSQL container: five migrations and five required Member 4 tables were found, and rollback-to-savepoint and row-lock probes passed. API-level competing approval tests remain pending.
+
+Flutter follow-up on 2026-09-17: Flutter 3.47.4 was detected, `flutter pub get` succeeded, `flutter analyze --no-pub` reported no issues, and the login, crop-planning, and inspection test files each passed when run separately (6 tests total). The combined test command stalled during multi-file loading and the debug APK Gradle task did not complete in this environment; no APK build is claimed.
 
 ## Phase 10 - Member 2 Inspections AI
 
