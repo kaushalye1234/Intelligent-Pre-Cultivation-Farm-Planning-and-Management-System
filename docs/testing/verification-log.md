@@ -108,6 +108,8 @@ The repeatable `scripts/test-member4-postgres.ps1` smoke check passed against th
 
 Flutter follow-up on 2026-09-17: Flutter 3.47.4 was detected, `flutter pub get` succeeded, `flutter analyze --no-pub` reported no issues, and the login, crop-planning, and inspection test files each passed when run separately (6 tests total). The combined test command stalled during multi-file loading and the debug APK Gradle task did not complete in this environment; no APK build is claimed.
 
+API smoke follow-up on 2026-09-19: ASP.NET `/health` and AI `/health` returned HTTP 200; AgriculturalOfficer login succeeded; workflow, task, schedule, and approval reads returned successfully with zero records in the disposable database; unauthenticated workflow access returned HTTP 401. Candidate generation and API concurrency require a real upstream-complete workflow fixture.
+
 ## Phase 10 - Member 2 Inspections AI
 
 Verified on 2026-09-14 with:
