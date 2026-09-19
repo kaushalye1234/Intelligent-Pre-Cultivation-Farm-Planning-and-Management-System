@@ -29,6 +29,7 @@ public sealed class AuthIntegrationTests
                 });
             });
         using var client = factory.CreateClient();
+        await TestUserSeeder.AddAdminAsync(factory);
 
         var unauthorized = await client.GetAsync("/api/auth/profile");
         var login = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest("admin@agriassist.local", "Admin@2026"));

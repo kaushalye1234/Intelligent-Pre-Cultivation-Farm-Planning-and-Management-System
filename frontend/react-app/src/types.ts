@@ -6,12 +6,26 @@ export type UserProfile = {
   email: string
   role: ApplicationRole
   isActive: boolean
+  mustChangePassword: boolean
 }
 
 export type AuthResponse = {
-  accessToken: string
-  expiresAt: string
+  authenticationStatus: 'authenticated' | 'passwordChangeRequired'
+  accessToken: string | null
+  accessTokenExpiresAt: string | null
+  passwordChangeToken: string | null
+  passwordChangeTokenExpiresAt: string | null
   user: UserProfile
+}
+
+export type LoginResult = {
+  status: AuthResponse['authenticationStatus']
+  user: UserProfile
+}
+
+export type AdminUser = UserProfile & {
+  createdAt: string
+  lastLoginAt?: string | null
 }
 
 export type PagedResult<T> = {

@@ -1,9 +1,10 @@
 ﻿import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { Search, UserCog } from 'lucide-react'
+import { KeyRound, Search, UserCog, UserPlus } from 'lucide-react'
 import { api, getErrorMessage } from '../api/client'
+import { useAuth } from '../auth/AuthContext'
 import { DataTable } from '../components/DataTable'
-import { SelectInput } from '../components/FormControls'
+import { SelectInput, TextInput } from '../components/FormControls'
 import { ErrorState, LoadingState } from '../components/States'
 import { StatusPill } from '../components/StatusPill'
 import { Button, ConfirmDialog, Modal, Notice, PageHeader, Toolbar } from '../components/Ui'
@@ -20,13 +21,36 @@ type ConfirmAction = {
 } | null
 
 const roleOptions = Object.entries(roleLabels).map(([value, label]) => ({ value, label }))
+const staffRoleOptions = roleOptions.filter((option) => option.value !== '1')
+const emptyCreateForm = {
+  fullName: '',
+  email: '',
+  role: '',
+  temporaryPassword: '',
+  confirmPassword: '',
+  currentAdminPassword: '',
+}
+
+function validateTemporaryPassword(password: string, confirmation: string) {
+  if (password.length < 12) return 'Temporary passwords must contain at least 12 characters.'
+  if (new TextEncoder().encode(password).length > 72) return 'Temporary passwords cannot exceed 72 UTF-8 bytes.'
+  if (password !== confirmation) return 'The password confirmation does not match.'
+  return ''
+}
 
 export function UsersPage() {
+  const { user: currentAdmin } = useAuth()
   const [users, setUsers] = useState<UserProfile[]>([])
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null)
+  const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [createForm, setCreateForm] = useState(emptyCreateForm)
+  const [resetUser, setResetUser] = useState<UserProfile | null>(null)
+  const [resetPassword, setResetPassword] = useState('')
+  const [resetConfirmation, setResetConfirmation] = useState('')
+  const [resetAdminPassword, setResetAdminPassword] = useState('')
   const [roleForm, setRoleForm] = useState('')
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null)
   const [error, setError] = useState('')
@@ -91,6 +115,89 @@ export function UsersPage() {
     }, 'User role updated successfully.')
   }
 
+  function openCreateStaff() {
+    setCreateForm(emptyCreateForm)
+    setActionError('')
+    setIsCreateOpen(true)
+  }
+
+  async function createStaff(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setActionError('')
+    setSuccess('')
+    const passwordError = validateTemporaryPassword(createForm.temporaryPassword, createForm.confirmPassword)
+    if (passwordError) {
+      setActionError(passwordError)
+      return
+    }
+    if (!createForm.fullName.trim() || !createForm.email.trim() || !createForm.role) {
+      setActionError('Full name, email, and staff role are required.')
+      return
+    }
+    if (Number(createForm.role) === 5 && !createForm.currentAdminPassword) {
+      setActionError('Enter your current Admin password to create another Admin.')
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      await api.post('/admin/users', {
+        fullName: createForm.fullName.trim(),
+        email: createForm.email.trim(),
+        role: Number(createForm.role) as ApplicationRole,
+        temporaryPassword: createForm.temporaryPassword,
+        currentAdminPassword: Number(createForm.role) === 5 ? createForm.currentAdminPassword : null,
+      })
+      setIsCreateOpen(false)
+      setCreateForm(emptyCreateForm)
+      setSuccess('Staff account created. Share the temporary password through an approved secure channel.')
+      await loadData()
+    } catch (err) {
+      setActionError(getErrorMessage(err))
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  function openResetPassword(user: UserProfile) {
+    setResetUser(user)
+    setResetPassword('')
+    setResetConfirmation('')
+    setResetAdminPassword('')
+    setActionError('')
+  }
+
+  async function resetStaffPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!resetUser) return
+    setActionError('')
+    setSuccess('')
+    const passwordError = validateTemporaryPassword(resetPassword, resetConfirmation)
+    if (passwordError) {
+      setActionError(passwordError)
+      return
+    }
+    if (resetUser.role === 5 && !resetAdminPassword) {
+      setActionError('Enter your current Admin password to reset another Admin.')
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      await api.post(`/admin/users/${resetUser.id}/reset-password`, {
+        temporaryPassword: resetPassword,
+        currentAdminPassword: resetUser.role === 5 ? resetAdminPassword : null,
+      })
+      setResetUser(null)
+      setSuccess('Temporary password reset. Existing sessions for that staff account are no longer valid.')
+      await loadData()
+    } catch (err) {
+      setActionError(getErrorMessage(err))
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   function confirmStatus(user: UserProfile) {
     const nextActive = !user.isActive
     setConfirmAction({
@@ -105,7 +212,12 @@ export function UsersPage() {
 
   return (
     <section className="page-stack">
-      <PageHeader eyebrow="Administration" title="User Management" description="Manage staff accounts, roles and account status using existing admin APIs.">
+      <PageHeader
+        eyebrow="Administration"
+        title="User Management"
+        description="Create staff accounts, issue temporary credentials, and control role and account status."
+        actions={<Button icon={<UserPlus size={16} aria-hidden="true" />} onClick={openCreateStaff}>Create staff account</Button>}
+      >
         <Toolbar>
           <form className="search-box user-search" onSubmit={(event) => { event.preventDefault(); void loadData(search, roleFilter, statusFilter) }}>
             <Search size={16} aria-hidden="true" />
@@ -133,18 +245,93 @@ export function UsersPage() {
             { header: 'Email', render: (row) => row.email },
             { header: 'Role', render: (row) => roleLabels[row.role] },
             { header: 'Status', render: (row) => <StatusPill label={row.isActive ? 'Active' : 'Inactive'} tone={row.isActive ? 'good' : 'bad'} /> },
+            { header: 'Password', render: (row) => <StatusPill label={row.mustChangePassword ? 'Change required' : 'Current'} tone={row.mustChangePassword ? 'warn' : 'good'} /> },
             { header: 'Actions', className: 'actions-cell', render: (row) => (
               <details className="action-menu">
                 <summary aria-label={`Actions for ${row.fullName}`}>Actions</summary>
                 <div>
                   <button type="button" onClick={() => openRoleModal(row)}>Change Role</button>
                   <button type="button" onClick={() => confirmStatus(row)}>{row.isActive ? 'Deactivate' : 'Activate'}</button>
+                  {row.role !== 1 && row.id !== currentAdmin?.id ? <button type="button" onClick={() => openResetPassword(row)}>Reset Password</button> : null}
                 </div>
               </details>
             ) },
           ]} />
         </section>
       )}
+
+      <Modal
+        open={isCreateOpen}
+        title="Create staff account"
+        description="The staff member must replace this temporary password at first sign-in."
+        onClose={() => setIsCreateOpen(false)}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setIsCreateOpen(false)} disabled={isSubmitting}>Cancel</Button>
+            <Button type="submit" form="create-staff-form" disabled={isSubmitting}>{isSubmitting ? 'Creating...' : 'Create account'}</Button>
+          </>
+        }
+      >
+        <form id="create-staff-form" className="form-grid" onSubmit={(event) => void createStaff(event)}>
+          <TextInput label="Full name" value={createForm.fullName} required onChange={(value) => setCreateForm((current) => ({ ...current, fullName: value }))} />
+          <TextInput label="Email" type="email" value={createForm.email} required onChange={(value) => setCreateForm((current) => ({ ...current, email: value }))} />
+          <SelectInput label="Staff role" value={createForm.role} required options={staffRoleOptions} onChange={(value) => setCreateForm((current) => ({ ...current, role: value, currentAdminPassword: '' }))} />
+          <label className="field-control">
+            <span>Temporary password<strong aria-hidden="true"> *</strong></span>
+            <input type="password" autoComplete="new-password" value={createForm.temporaryPassword} onChange={(event) => setCreateForm((current) => ({ ...current, temporaryPassword: event.target.value }))} />
+          </label>
+          <label className="field-control">
+            <span>Confirm temporary password<strong aria-hidden="true"> *</strong></span>
+            <input type="password" autoComplete="new-password" value={createForm.confirmPassword} onChange={(event) => setCreateForm((current) => ({ ...current, confirmPassword: event.target.value }))} />
+          </label>
+          {Number(createForm.role) === 5 ? (
+            <label className="field-control">
+              <span>Your current Admin password<strong aria-hidden="true"> *</strong></span>
+              <input type="password" autoComplete="current-password" value={createForm.currentAdminPassword} onChange={(event) => setCreateForm((current) => ({ ...current, currentAdminPassword: event.target.value }))} />
+            </label>
+          ) : null}
+          <div className="security-guidance field-control-wide">
+            <KeyRound size={18} aria-hidden="true" />
+            <span>Use 12–72 UTF-8 bytes and share it only through an approved secure channel. Plaintext passwords are never returned by the API.</span>
+          </div>
+          {actionError ? <div className="form-error field-control-wide" role="alert">{actionError}</div> : null}
+        </form>
+      </Modal>
+
+      <Modal
+        open={Boolean(resetUser)}
+        title="Reset staff password"
+        description={resetUser ? `Issue a one-time temporary password for ${resetUser.fullName}.` : undefined}
+        onClose={() => setResetUser(null)}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setResetUser(null)} disabled={isSubmitting}>Cancel</Button>
+            <Button type="submit" form="reset-staff-password-form" disabled={isSubmitting}>{isSubmitting ? 'Resetting...' : 'Reset password'}</Button>
+          </>
+        }
+      >
+        <form id="reset-staff-password-form" className="form-grid" onSubmit={(event) => void resetStaffPassword(event)}>
+          <label className="field-control">
+            <span>Temporary password<strong aria-hidden="true"> *</strong></span>
+            <input type="password" autoComplete="new-password" value={resetPassword} onChange={(event) => setResetPassword(event.target.value)} />
+          </label>
+          <label className="field-control">
+            <span>Confirm temporary password<strong aria-hidden="true"> *</strong></span>
+            <input type="password" autoComplete="new-password" value={resetConfirmation} onChange={(event) => setResetConfirmation(event.target.value)} />
+          </label>
+          {resetUser?.role === 5 ? (
+            <label className="field-control field-control-wide">
+              <span>Your current Admin password<strong aria-hidden="true"> *</strong></span>
+              <input type="password" autoComplete="current-password" value={resetAdminPassword} onChange={(event) => setResetAdminPassword(event.target.value)} />
+            </label>
+          ) : null}
+          <div className="security-guidance field-control-wide">
+            <KeyRound size={18} aria-hidden="true" />
+            <span>Resetting invalidates the staff member's existing sessions and requires a password change on the next login.</span>
+          </div>
+          {actionError ? <div className="form-error field-control-wide" role="alert">{actionError}</div> : null}
+        </form>
+      </Modal>
 
       <Modal open={Boolean(selectedUser)} title="Change User Role" description="Update this account role using the existing admin role endpoint." onClose={() => setSelectedUser(null)} footer={<><Button variant="secondary" onClick={() => setSelectedUser(null)} disabled={isSubmitting}>Cancel</Button><Button type="submit" form="role-form" disabled={isSubmitting}>{isSubmitting ? 'Saving...' : 'Save Role'}</Button></>}>
         <form id="role-form" className="form-grid" onSubmit={(event) => void updateRole(event)}>
