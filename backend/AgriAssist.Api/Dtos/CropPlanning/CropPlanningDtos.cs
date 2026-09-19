@@ -4,6 +4,7 @@ namespace AgriAssist.Api.Dtos.CropPlanning;
 
 public sealed record FarmRequest(string Name, string Location, decimal TotalArea, Guid? OwnerUserId);
 public sealed record FarmResponse(Guid Id, string Name, string Location, decimal TotalArea, Guid OwnerUserId, DateTime CreatedAt);
+public sealed record FarmerOnboardingStatusResponse(string Stage, int ActiveFarmCount, int ActiveFieldCount);
 
 public sealed record FieldRequest(Guid FarmId, string Name, decimal Area, string SoilType, bool IsActive);
 public sealed record FieldResponse(Guid Id, Guid FarmId, string Name, decimal Area, string SoilType, bool IsActive);

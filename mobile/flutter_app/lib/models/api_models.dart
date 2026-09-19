@@ -1,10 +1,11 @@
-﻿class UserProfile {
+class UserProfile {
   const UserProfile({
     required this.id,
     required this.fullName,
     required this.email,
     required this.role,
     required this.isActive,
+    this.mustChangePassword = false,
   });
 
   final String id;
@@ -12,6 +13,7 @@
   final String email;
   final int role;
   final bool isActive;
+  final bool mustChangePassword;
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
     return UserProfile(
@@ -20,6 +22,53 @@
       email: json['email'] as String,
       role: json['role'] as int,
       isActive: json['isActive'] as bool,
+      mustChangePassword: json['mustChangePassword'] as bool? ?? false,
+    );
+  }
+}
+
+class AuthenticationSession {
+  const AuthenticationSession({
+    required this.authenticationStatus,
+    required this.user,
+    this.accessToken,
+    this.passwordChangeToken,
+  });
+
+  final String authenticationStatus;
+  final String? accessToken;
+  final String? passwordChangeToken;
+  final UserProfile user;
+
+  bool get requiresPasswordChange =>
+      authenticationStatus == 'passwordChangeRequired';
+
+  factory AuthenticationSession.fromJson(Map<String, dynamic> json) {
+    return AuthenticationSession(
+      authenticationStatus: json['authenticationStatus'] as String,
+      accessToken: json['accessToken'] as String?,
+      passwordChangeToken: json['passwordChangeToken'] as String?,
+      user: UserProfile.fromJson(json['user'] as Map<String, dynamic>),
+    );
+  }
+}
+
+class FarmerOnboardingStatus {
+  const FarmerOnboardingStatus({
+    required this.stage,
+    required this.activeFarmCount,
+    required this.activeFieldCount,
+  });
+
+  final String stage;
+  final int activeFarmCount;
+  final int activeFieldCount;
+
+  factory FarmerOnboardingStatus.fromJson(Map<String, dynamic> json) {
+    return FarmerOnboardingStatus(
+      stage: json['stage'] as String,
+      activeFarmCount: json['activeFarmCount'] as int? ?? 0,
+      activeFieldCount: json['activeFieldCount'] as int? ?? 0,
     );
   }
 }
@@ -65,7 +114,13 @@ class DashboardSummary {
 }
 
 class FarmTaskRecord {
-  const FarmTaskRecord({required this.id, required this.title, required this.description, required this.dueAt, required this.status});
+  const FarmTaskRecord({
+    required this.id,
+    required this.title,
+    required this.description,
+    required this.dueAt,
+    required this.status,
+  });
 
   final String id;
   final String title;
@@ -74,18 +129,34 @@ class FarmTaskRecord {
   final int status;
 
   factory FarmTaskRecord.fromJson(Map<String, dynamic> json) => FarmTaskRecord(
-        id: json['id'] as String,
-        title: json['title'] as String? ?? '',
-        description: json['description'] as String? ?? '',
-        dueAt: json['dueAt'] as String? ?? '',
-        status: json['status'] as int? ?? 0,
-      );
+    id: json['id'] as String,
+    title: json['title'] as String? ?? '',
+    description: json['description'] as String? ?? '',
+    dueAt: json['dueAt'] as String? ?? '',
+    status: json['status'] as int? ?? 0,
+  );
 
-  String get statusLabel => switch (status) { 1 => 'Draft', 2 => 'Pending approval', 3 => 'Approved', 4 => 'Rejected', 5 => 'Revision requested', 6 => 'Completed', 7 => 'Cancelled', _ => 'Unknown' };
+  String get statusLabel => switch (status) {
+    1 => 'Draft',
+    2 => 'Pending approval',
+    3 => 'Approved',
+    4 => 'Rejected',
+    5 => 'Revision requested',
+    6 => 'Completed',
+    7 => 'Cancelled',
+    _ => 'Unknown',
+  };
 }
 
 class IrrigationScheduleRecord {
-  const IrrigationScheduleRecord({required this.id, required this.fieldId, required this.scheduledAt, required this.durationMinutes, required this.notes, required this.status});
+  const IrrigationScheduleRecord({
+    required this.id,
+    required this.fieldId,
+    required this.scheduledAt,
+    required this.durationMinutes,
+    required this.notes,
+    required this.status,
+  });
 
   final String id;
   final String fieldId;
@@ -94,7 +165,8 @@ class IrrigationScheduleRecord {
   final String notes;
   final int status;
 
-  factory IrrigationScheduleRecord.fromJson(Map<String, dynamic> json) => IrrigationScheduleRecord(
+  factory IrrigationScheduleRecord.fromJson(Map<String, dynamic> json) =>
+      IrrigationScheduleRecord(
         id: json['id'] as String,
         fieldId: json['fieldId'] as String,
         scheduledAt: json['scheduledAt'] as String? ?? '',
@@ -103,35 +175,67 @@ class IrrigationScheduleRecord {
         status: json['status'] as int? ?? 0,
       );
 
-  String get statusLabel => switch (status) { 1 => 'Pending approval', 2 => 'Approved', 3 => 'Rejected', 4 => 'Revision requested', 5 => 'Completed', 6 => 'Cancelled', _ => 'Unknown' };
+  String get statusLabel => switch (status) {
+    1 => 'Pending approval',
+    2 => 'Approved',
+    3 => 'Rejected',
+    4 => 'Revision requested',
+    5 => 'Completed',
+    6 => 'Cancelled',
+    _ => 'Unknown',
+  };
 }
 
 class ApprovalHistoryRecord {
-  const ApprovalHistoryRecord({required this.id, required this.decision, required this.comment, required this.createdAt});
+  const ApprovalHistoryRecord({
+    required this.id,
+    required this.decision,
+    required this.comment,
+    required this.createdAt,
+  });
 
   final String id;
   final int decision;
   final String comment;
   final String createdAt;
 
-  factory ApprovalHistoryRecord.fromJson(Map<String, dynamic> json) => ApprovalHistoryRecord(
+  factory ApprovalHistoryRecord.fromJson(Map<String, dynamic> json) =>
+      ApprovalHistoryRecord(
         id: json['id'] as String,
         decision: json['decision'] as int? ?? 0,
         comment: json['comment'] as String? ?? '',
         createdAt: json['createdAt'] as String? ?? '',
       );
 
-  String get decisionLabel => switch (decision) { 1 => 'Approved', 2 => 'Rejected', 3 => 'Revision requested', 4 => 'Cancelled', _ => 'Pending' };
+  String get decisionLabel => switch (decision) {
+    1 => 'Approved',
+    2 => 'Rejected',
+    3 => 'Revision requested',
+    4 => 'Cancelled',
+    _ => 'Pending',
+  };
 }
 
 class FarmOption {
-  const FarmOption({required this.id, required this.name});
+  const FarmOption({
+    required this.id,
+    required this.name,
+    this.location = '',
+    this.totalArea = 0,
+  });
 
   final String id;
   final String name;
+  final String location;
+  final num totalArea;
 
   factory FarmOption.fromJson(Map<String, dynamic> json) {
-    return FarmOption(id: json['id'] as String, name: json['name'] as String);
+    return FarmOption(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      location: json['location'] as String? ?? '',
+      totalArea: json['totalArea'] as num? ?? 0,
+    );
   }
 }
 
@@ -153,7 +257,10 @@ class CropTypeOption {
   final String name;
 
   factory CropTypeOption.fromJson(Map<String, dynamic> json) {
-    return CropTypeOption(id: json['id'] as String, name: json['name'] as String);
+    return CropTypeOption(
+      id: json['id'] as String,
+      name: json['name'] as String,
+    );
   }
 }
 
@@ -198,7 +305,13 @@ class InspectionRecord {
 }
 
 class CropIssueRecord {
-  const CropIssueRecord({required this.id, required this.fieldInspectionId, required this.title, required this.severity, required this.status});
+  const CropIssueRecord({
+    required this.id,
+    required this.fieldInspectionId,
+    required this.title,
+    required this.severity,
+    required this.status,
+  });
 
   final String id;
   final String fieldInspectionId;
@@ -228,7 +341,13 @@ class CropIssueRecord {
 }
 
 class FollowUpRecommendationRecord {
-  const FollowUpRecommendationRecord({required this.id, required this.cropIssueId, required this.recommendation, required this.isCompleted, this.dueAt});
+  const FollowUpRecommendationRecord({
+    required this.id,
+    required this.cropIssueId,
+    required this.recommendation,
+    required this.isCompleted,
+    this.dueAt,
+  });
 
   final String id;
   final String cropIssueId;
@@ -248,7 +367,11 @@ class FollowUpRecommendationRecord {
 }
 
 class InspectionHistoryEventRecord {
-  const InspectionHistoryEventRecord({required this.occurredAt, required this.eventType, required this.summary});
+  const InspectionHistoryEventRecord({
+    required this.occurredAt,
+    required this.eventType,
+    required this.summary,
+  });
 
   final String occurredAt;
   final String eventType;
@@ -335,7 +458,10 @@ class CropPlanningResult {
       warnings: warnings.map((item) => item.toString()).toList(),
       referenceDataStatus: json['referenceDataStatus'] as String? ?? 'Unknown',
       objectiveSummary: json['objectiveSummary'] as String? ?? '',
-      steps: steps.cast<Map<String, dynamic>>().map(CropPlanningDelegatedStep.fromJson).toList(),
+      steps: steps
+          .cast<Map<String, dynamic>>()
+          .map(CropPlanningDelegatedStep.fromJson)
+          .toList(),
     );
   }
 }

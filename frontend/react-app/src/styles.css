@@ -1473,6 +1473,82 @@ p {
   font-size: 15px;
 }
 
+.security-screen {
+  grid-template-columns: minmax(0, 640px);
+  place-content: center;
+}
+
+.security-card {
+  position: relative;
+  width: min(100%, 640px);
+  padding: clamp(28px, 5vw, 52px);
+  overflow: hidden;
+  background: linear-gradient(145deg, rgba(255, 253, 248, 0.98), rgba(239, 245, 234, 0.97));
+  border: 1px solid rgba(96, 84, 61, 0.2);
+  border-radius: 24px;
+  box-shadow: 0 28px 76px rgba(23, 37, 27, 0.16);
+}
+
+.security-card::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 5px;
+  background: linear-gradient(90deg, #1d6f42, #c5a453, #1d6f42);
+}
+
+.security-card-icon {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  margin-bottom: var(--space-5);
+  color: #1d6f42;
+  background: linear-gradient(145deg, #e7f2e2, #fff7df);
+  border: 1px solid rgba(29, 111, 66, 0.18);
+  border-radius: 17px;
+  box-shadow: 0 14px 30px rgba(29, 111, 66, 0.11);
+}
+
+.security-card h1 {
+  max-width: 520px;
+  margin: 0;
+  color: #17251b;
+  font-size: clamp(30px, 5vw, 44px);
+  line-height: 1.06;
+}
+
+.security-card-intro {
+  margin: var(--space-3) 0 0;
+  color: var(--color-text-muted);
+  line-height: 1.65;
+}
+
+.security-guidance {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  margin-top: var(--space-5);
+  color: #36523f;
+  background: rgba(220, 235, 216, 0.55);
+  border: 1px solid rgba(29, 111, 66, 0.16);
+  border-radius: 13px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.55;
+}
+
+.security-guidance svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--color-primary);
+}
+
+.form-grid .security-guidance {
+  margin-top: 0;
+}
+
 .login-submit:hover {
   background: linear-gradient(135deg, #23804e, #173f2b);
   border-color: #1d6f42;
