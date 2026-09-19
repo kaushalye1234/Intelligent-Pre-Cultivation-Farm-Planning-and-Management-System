@@ -21,7 +21,7 @@ These values are taken from the persisted `AgentStep` timestamps returned by the
 
 ## API health baseline
 
-Ten sequential requests to `GET http://127.0.0.1:5087/health` were measured after the API reached readiness: minimum 1.03 ms, maximum 266.52 ms, average 28.91 ms. The first request accounted for the cold-start outlier; this is a local readiness baseline, not a throughput or production SLA measurement.
+Ten sequential requests to `GET http://127.0.0.1:5087/health` were measured after the API reached readiness: minimum 1.03 ms, maximum 266.52 ms, average 28.91 ms. A second ten-request run against the disposable local PostgreSQL setup returned HTTP 200 for all requests: minimum 21.42 ms, maximum 354.48 ms, average 59.79 ms. The first request in each run accounted for the cold-start outlier; these are local readiness baselines, not throughput or production SLA measurements.
 
 ## Approval and persistence evidence
 
@@ -34,7 +34,10 @@ Ten sequential requests to `GET http://127.0.0.1:5087/health` were measured afte
 - Approval decisions: 1
 - Final workflow state: `Completed`, version 4
 - Farmer-scoped reads: one approved task, one approved irrigation schedule, and one workflow decision visible
+- API smoke check: health HTTP 200, six workflows listed, one task, one schedule, one approval, and unauthenticated workflow access returned HTTP 401
 
 ## Limitations
 
 The local fixture used deterministic fallback output. Weather provider access was unavailable and no stored inspection or inventory rows were present, so the workflow retained human-review warnings. No k6 load run or APK build completion is claimed by this report.
+
+The final-submission verification initially hit the external Supabase configuration, then succeeded against the disposable local PostgreSQL container after applying the local connection string and process-scoped JWT settings. The persisted workflow step timing remains one fixture; the repeated health runs provide readiness evidence only, and no load-test percentile claim is made.
