@@ -29,6 +29,7 @@ These values are taken from the persisted `AgentStep` timestamps returned by the
 - Final approved irrigation schedules: 1
 - Approval decisions: 1
 - Final workflow state: `Completed`, version 4
+- Farmer-scoped reads: one approved task, one approved irrigation schedule, and one workflow decision visible
 
 ## Limitations
 
