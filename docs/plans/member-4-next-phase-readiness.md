@@ -22,8 +22,9 @@ Completed on 2026-09-19 in the disposable PostgreSQL environment:
 
 Still required before final submission:
 
-5. Complete Flutter APK build or record the Android/Gradle blocker.
 6. Extend measured workflow latency beyond the single-run baseline in `docs/testing/performance-report.md`.
 7. Attach Swagger/API evidence, ERD, verification log, and the final submission checklist.
+
+Flutter evidence is recorded: Flutter 3.47.4, dependency resolution, analysis, and the individual login, crop-planning, and inspection tests passed; the combined suite and debug APK Gradle task did not complete in this environment.
 
 The current evidence is valid for the disposable local database only. It must not be presented as production performance or as proof of a genuine external LLM-provider run.
