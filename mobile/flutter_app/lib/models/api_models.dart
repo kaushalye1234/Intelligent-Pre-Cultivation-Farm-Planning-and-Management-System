@@ -64,6 +64,66 @@ class DashboardSummary {
   }
 }
 
+class FarmTaskRecord {
+  const FarmTaskRecord({required this.id, required this.title, required this.description, required this.dueAt, required this.status});
+
+  final String id;
+  final String title;
+  final String description;
+  final String dueAt;
+  final int status;
+
+  factory FarmTaskRecord.fromJson(Map<String, dynamic> json) => FarmTaskRecord(
+        id: json['id'] as String,
+        title: json['title'] as String? ?? '',
+        description: json['description'] as String? ?? '',
+        dueAt: json['dueAt'] as String? ?? '',
+        status: json['status'] as int? ?? 0,
+      );
+
+  String get statusLabel => switch (status) { 1 => 'Draft', 2 => 'Pending approval', 3 => 'Approved', 4 => 'Rejected', 5 => 'Revision requested', 6 => 'Completed', 7 => 'Cancelled', _ => 'Unknown' };
+}
+
+class IrrigationScheduleRecord {
+  const IrrigationScheduleRecord({required this.id, required this.fieldId, required this.scheduledAt, required this.durationMinutes, required this.notes, required this.status});
+
+  final String id;
+  final String fieldId;
+  final String scheduledAt;
+  final int durationMinutes;
+  final String notes;
+  final int status;
+
+  factory IrrigationScheduleRecord.fromJson(Map<String, dynamic> json) => IrrigationScheduleRecord(
+        id: json['id'] as String,
+        fieldId: json['fieldId'] as String,
+        scheduledAt: json['scheduledAt'] as String? ?? '',
+        durationMinutes: json['durationMinutes'] as int? ?? 0,
+        notes: json['notes'] as String? ?? '',
+        status: json['status'] as int? ?? 0,
+      );
+
+  String get statusLabel => switch (status) { 1 => 'Pending approval', 2 => 'Approved', 3 => 'Rejected', 4 => 'Revision requested', 5 => 'Completed', 6 => 'Cancelled', _ => 'Unknown' };
+}
+
+class ApprovalHistoryRecord {
+  const ApprovalHistoryRecord({required this.id, required this.decision, required this.comment, required this.createdAt});
+
+  final String id;
+  final int decision;
+  final String comment;
+  final String createdAt;
+
+  factory ApprovalHistoryRecord.fromJson(Map<String, dynamic> json) => ApprovalHistoryRecord(
+        id: json['id'] as String,
+        decision: json['decision'] as int? ?? 0,
+        comment: json['comment'] as String? ?? '',
+        createdAt: json['createdAt'] as String? ?? '',
+      );
+
+  String get decisionLabel => switch (decision) { 1 => 'Approved', 2 => 'Rejected', 3 => 'Revision requested', 4 => 'Cancelled', _ => 'Pending' };
+}
+
 class FarmOption {
   const FarmOption({required this.id, required this.name});
 

@@ -17,6 +17,7 @@ public interface IResourceService
     Task<IReadOnlyList<StockTransactionResponse>> GetStockHistoryAsync(Guid stockId, CancellationToken cancellationToken);
     Task<PagedResult<ResourceReservationResponse>> SearchReservationsAsync(PagedQuery query, ResourceReservationStatus? status, CancellationToken cancellationToken);
     Task<ResourceReservationResponse> ReserveAsync(ResourceReservationRequest request, CancellationToken cancellationToken);
+    Task<ResourceReservationResponse> StageWorkflowReservationAsync(ResourceReservationRequest request, Guid workflowId, int candidateRevision, Guid requestedByUserId, CancellationToken cancellationToken);
     Task<ResourceReservationResponse> ReleaseAsync(Guid reservationId, CancellationToken cancellationToken);
     Task<ResourceReservationResponse> CancelReservationAsync(Guid reservationId, CancellationToken cancellationToken);
 }

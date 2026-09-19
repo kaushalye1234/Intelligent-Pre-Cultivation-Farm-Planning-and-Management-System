@@ -92,6 +92,21 @@ class ApiClient {
     return _items(response).map(FollowUpRecommendationRecord.fromJson).toList();
   }
 
+  Future<List<FarmTaskRecord>> tasks() async {
+    final response = await _get('/task-approval/tasks?pageSize=50');
+    return _items(response).map(FarmTaskRecord.fromJson).toList();
+  }
+
+  Future<List<IrrigationScheduleRecord>> irrigationSchedules() async {
+    final response = await _get('/task-approval/schedules?pageSize=50');
+    return _items(response).map(IrrigationScheduleRecord.fromJson).toList();
+  }
+
+  Future<List<ApprovalHistoryRecord>> approvalHistory() async {
+    final response = await _get('/task-approval/approvals?pageSize=50');
+    return _items(response).map(ApprovalHistoryRecord.fromJson).toList();
+  }
+
   Future<List<InspectionHistoryEventRecord>> inspectionHistory(String inspectionId) async {
     final response = await _getList('/inspections/$inspectionId/history');
     return response.map(InspectionHistoryEventRecord.fromJson).toList();

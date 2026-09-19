@@ -4,15 +4,12 @@ from langgraph.graph import END, StateGraph
 
 from agents.crop_field_analysis_agent import CropFieldAnalysisAgent
 from agents.crop_planning_coordinator_agent import CropPlanningCoordinatorAgent
-<<<<<<< HEAD
 from agents.weather_resource_agent import WeatherResourceAgent
+from agents.scheduling_validation_agent import SchedulingValidationAgent
 from schemas.crop_planning import CoordinatorInput, CropPlanningCoordinatorOutput
 from schemas.field_analysis import CropFieldAnalysisOutput, FieldAnalysisInput
 from schemas.weather_resource import WeatherResourceInput, WeatherResourceOutput
-=======
-from schemas.crop_planning import CoordinatorInput, CropPlanningCoordinatorOutput
-from schemas.field_analysis import CropFieldAnalysisOutput, FieldAnalysisInput
->>>>>>> 6f5561abf0c8257dafd53abd629d72ab2b783e9a
+from schemas.scheduling_validation import SchedulingValidationInput, SchedulingValidationOutput
 
 
 class CoordinatorState(TypedDict):
@@ -47,7 +44,6 @@ def build_field_analysis_graph(agent: CropFieldAnalysisAgent):
     graph.set_entry_point("field_analysis")
     graph.add_edge("field_analysis", END)
     return graph.compile()
-<<<<<<< HEAD
 
 
 class WeatherResourceState(TypedDict):
@@ -65,5 +61,20 @@ def build_weather_resource_graph(agent: WeatherResourceAgent):
     graph.set_entry_point("weather_resource")
     graph.add_edge("weather_resource", END)
     return graph.compile()
-=======
->>>>>>> 6f5561abf0c8257dafd53abd629d72ab2b783e9a
+
+
+class SchedulingValidationState(TypedDict):
+    request: SchedulingValidationInput
+    output: SchedulingValidationOutput | None
+
+
+def build_scheduling_validation_graph(agent: SchedulingValidationAgent):
+    async def run_scheduling_validation(state: SchedulingValidationState) -> SchedulingValidationState:
+        output = await agent.run(state["request"])
+        return {"request": state["request"], "output": output}
+
+    graph = StateGraph(SchedulingValidationState)
+    graph.add_node("scheduling_validation", run_scheduling_validation)
+    graph.set_entry_point("scheduling_validation")
+    graph.add_edge("scheduling_validation", END)
+    return graph.compile()

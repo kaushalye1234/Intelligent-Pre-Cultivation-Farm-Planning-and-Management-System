@@ -12,6 +12,9 @@ public sealed class ResourceReservation : AuditableEntity
     public ResourceReservationStatus Status { get; set; } = ResourceReservationStatus.Active;
     public DateTime? ReleasedAt { get; set; }
     public string Purpose { get; set; } = string.Empty;
+    public Guid? GeneratedByWorkflowId { get; set; }
+    public AgentWorkflow? GeneratedByWorkflow { get; set; }
+    public int? CandidateRevision { get; set; }
 }
 
 public enum ResourceReservationStatus

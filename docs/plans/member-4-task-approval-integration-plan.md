@@ -1,8 +1,14 @@
 ﻿# Member 4: Task/Approval and Final Integration Plan
 
 Date: 2026-09-09
-Status: Milestone 1 manual Task/Approval hardening implemented and merged with `origin/main` foundation commit `71f5d17` on 2026-09-10; shared AI and four-agent integration remain pending.
+Status: Milestone 1 and the Phase 2 scheduling-validation/approval workflow are implemented; PostgreSQL integration evidence and final submission artifacts remain pending.
 Assignment source: `05_FINAL_MEMBER_4_TASK_APPROVAL_INTEGRATION.md`, supplied by the user from Downloads.
+
+## Phase 2 implementation update — 2026-09-17
+
+Milestones M2-M5 and the React review portion of M6 are now implemented on `member4/task-approval-phase2`: revisioned workflow contracts, `SchedulingValidationAgent`, deterministic backend validation, stale-version and idempotency checks, bounded revisions, workflow-level decisions, transaction-compatible resource staging, generated-record provenance, and the React workflow review route. The implementation consumes the persisted Member 1-3 outputs and returns `MissingDependency` without candidates when any compatible upstream result is absent. The Flutter app now includes an owner-scoped farmer status view for tasks, irrigation schedules, and approval history.
+
+Migration `AddSchedulingApprovalWorkflow` adds workflow versions/revisions, validation warnings, decision idempotency, and final-record provenance. All five migrations now apply successfully to an isolated PostgreSQL 16 database with 29 public tables. Automated verification covers missing dependencies, conflicts, stale and competing decisions, rejection, revision limits, idempotent approval, and failure without partial final records; competing PostgreSQL requests and rollback behavior remain an explicit integration-test boundary.
 
 ## Progress update — 2026-09-10
 

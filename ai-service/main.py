@@ -2,23 +2,16 @@
 
 from agents.crop_field_analysis_agent import CropFieldAnalysisAgent
 from agents.crop_planning_coordinator_agent import CropPlanningCoordinatorAgent
-<<<<<<< HEAD
 from agents.weather_resource_agent import WeatherResourceAgent
+from agents.scheduling_validation_agent import SchedulingValidationAgent
 from auth import require_service_token
 from config import Settings, get_settings
-from graph.workflow_graph import build_crop_planning_graph, build_field_analysis_graph, build_weather_resource_graph
+from graph.workflow_graph import build_crop_planning_graph, build_field_analysis_graph, build_scheduling_validation_graph, build_weather_resource_graph
 from providers import create_provider
 from schemas.crop_planning import CoordinatorInput, CropPlanningCoordinatorOutput
 from schemas.field_analysis import CropFieldAnalysisOutput, FieldAnalysisInput
 from schemas.weather_resource import WeatherResourceInput, WeatherResourceOutput
-=======
-from auth import require_service_token
-from config import Settings, get_settings
-from graph.workflow_graph import build_crop_planning_graph, build_field_analysis_graph
-from providers import create_provider
-from schemas.crop_planning import CoordinatorInput, CropPlanningCoordinatorOutput
-from schemas.field_analysis import CropFieldAnalysisOutput, FieldAnalysisInput
->>>>>>> 6f5561abf0c8257dafd53abd629d72ab2b783e9a
+from schemas.scheduling_validation import SchedulingValidationInput, SchedulingValidationOutput
 from tools.backend_tool_client import BackendToolClient
 from tools.crop_planning_tools import CropPlanningTools
 from tools.inspection_tools import InspectionTools
@@ -74,8 +67,6 @@ async def run_crop_field_analysis(
     state = await graph.ainvoke({"request": request, "output": None})
     return state["output"]
 
-<<<<<<< HEAD
-
 @app.post(
     "/workflows/crop-planning/weather-resource",
     response_model=WeatherResourceOutput,
@@ -94,5 +85,16 @@ async def run_weather_resource_analysis(
     state = await graph.ainvoke({"request": request, "output": None})
     return state["output"]
 
-=======
->>>>>>> 6f5561abf0c8257dafd53abd629d72ab2b783e9a
+
+@app.post(
+    "/workflows/crop-planning/scheduling-validation",
+    response_model=SchedulingValidationOutput,
+    dependencies=[Depends(require_service_token)],
+)
+async def run_scheduling_validation(
+    request: SchedulingValidationInput,
+) -> SchedulingValidationOutput:
+    agent = SchedulingValidationAgent()
+    graph = build_scheduling_validation_graph(agent)
+    state = await graph.ainvoke({"request": request, "output": None})
+    return state["output"]

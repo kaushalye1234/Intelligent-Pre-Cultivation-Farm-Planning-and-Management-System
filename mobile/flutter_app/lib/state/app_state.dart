@@ -24,6 +24,9 @@ class AppState extends ChangeNotifier {
   List<InspectionRecord> inspections = [];
   List<CropIssueRecord> cropIssues = [];
   List<FollowUpRecommendationRecord> followUps = [];
+  List<FarmTaskRecord> tasks = [];
+  List<IrrigationScheduleRecord> irrigationSchedules = [];
+  List<ApprovalHistoryRecord> approvalHistory = [];
   List<InspectionHistoryEventRecord> activeInspectionHistory = [];
   String? activeInspectionId;
   String? lastCropPlanRequestId;
@@ -79,6 +82,9 @@ class AppState extends ChangeNotifier {
     inspections = await _apiClient.inspections();
     cropIssues = await _apiClient.cropIssues();
     followUps = await _apiClient.followUps();
+    tasks = await _apiClient.tasks();
+    irrigationSchedules = await _apiClient.irrigationSchedules();
+    approvalHistory = await _apiClient.approvalHistory();
   }
 
   Future<void> startInspection({required String fieldId, required String summary}) async {

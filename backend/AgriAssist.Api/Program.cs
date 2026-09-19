@@ -29,6 +29,14 @@ Env.Load();
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Keep local diagnostics on the console. Windows EventLog can throw when a
+// stale DPAPI key or EF warning is emitted, which otherwise resets API calls.
+if (builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Testing"))
+{
+    builder.Logging.ClearProviders();
+    builder.Logging.AddConsole();
+}
+
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddHealthChecks();
@@ -79,19 +87,13 @@ builder.Services.AddScoped<IRequestValidator<IrrigationScheduleRequest>, Irrigat
 builder.Services.AddScoped<IRequestValidator<ApprovalActionRequest>, ApprovalActionRequestValidator>();
 builder.Services.AddScoped<IRequestValidator<CancellationRequest>, CancellationRequestValidator>();
 builder.Services.AddScoped<ITaskApprovalService, TaskApprovalService>();
-<<<<<<< HEAD
-<<<<<<< Updated upstream
-builder.Services.AddScoped<IAgenticAIClient, AgenticAIClient>();
-=======
 builder.Services.AddHttpClient<IAgenticAIClient, AgenticAIClient>();
 builder.Services.AddHttpClient<IWeatherResourceAIClient, AgenticAIClient>();
+builder.Services.AddHttpClient<ISchedulingValidationAIClient, AgenticAIClient>();
 // OpenWeatherMap takes the API key as a query parameter, so do not log request URLs for this client.
 builder.Services.AddHttpClient<IWeatherService, WeatherService>().RemoveAllLoggers();
 builder.Services.AddScoped<IWeatherResourceWorkflowService, WeatherResourceWorkflowService>();
->>>>>>> Stashed changes
-=======
-builder.Services.AddHttpClient<IAgenticAIClient, AgenticAIClient>();
->>>>>>> 6f5561abf0c8257dafd53abd629d72ab2b783e9a
+builder.Services.AddScoped<IWorkflowApprovalService, WorkflowApprovalService>();
 
 var jwtSecret = builder.Configuration["Jwt:Secret"];
 if (!string.IsNullOrWhiteSpace(jwtSecret))
@@ -194,7 +196,12 @@ using (var scope = app.Services.CreateScope())
     await SeedData.SeedAsync(dbContext);
 }
 
-app.UseHttpsRedirection();
+// Local development and the documented HTTP profile run on port 5087. Redirect
+// HTTPS only for deployed environments where an HTTPS endpoint is configured.
+if (!app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("Testing"))
+{
+    app.UseHttpsRedirection();
+}
 app.UseCors("ClientApps");
 app.UseAuthentication();
 app.UseAuthorization();

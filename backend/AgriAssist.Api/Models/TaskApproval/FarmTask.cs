@@ -13,6 +13,9 @@ public sealed class FarmTask : AuditableEntity
     public FarmTaskStatus Status { get; set; } = FarmTaskStatus.PendingApproval;
     public Guid AssignedToUserId { get; set; }
     public AppUser? AssignedToUser { get; set; }
+    public Guid? GeneratedByWorkflowId { get; set; }
+    public AgentWorkflow? GeneratedByWorkflow { get; set; }
+    public int? CandidateRevision { get; set; }
 }
 
 public enum FarmTaskStatus

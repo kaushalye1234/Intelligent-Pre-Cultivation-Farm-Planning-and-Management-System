@@ -4,7 +4,7 @@ using AgriAssist.Api.Dtos.Shared;
 namespace AgriAssist.Api.Dtos.TaskApproval;
 
 public sealed record FarmTaskRequest(Guid FarmId, string Title, string Description, DateTime DueAt, Guid AssignedToUserId, FarmTaskStatus Status);
-public sealed record FarmTaskResponse(Guid Id, Guid FarmId, string Title, string Description, DateTime DueAt, Guid AssignedToUserId, FarmTaskStatus Status);
+public sealed record FarmTaskResponse(Guid Id, Guid FarmId, string Title, string Description, DateTime DueAt, Guid AssignedToUserId, FarmTaskStatus Status, Guid? GeneratedByWorkflowId, int? CandidateRevision);
 
 public sealed class FarmTaskQuery : PagedQuery
 {
@@ -16,7 +16,7 @@ public sealed class FarmTaskQuery : PagedQuery
 }
 
 public sealed record IrrigationScheduleRequest(Guid FieldId, DateTime ScheduledAt, int DurationMinutes, string Notes, IrrigationScheduleStatus Status);
-public sealed record IrrigationScheduleResponse(Guid Id, Guid FieldId, DateTime ScheduledAt, int DurationMinutes, string Notes, IrrigationScheduleStatus Status);
+public sealed record IrrigationScheduleResponse(Guid Id, Guid FieldId, DateTime ScheduledAt, int DurationMinutes, string Notes, IrrigationScheduleStatus Status, Guid? GeneratedByWorkflowId, int? CandidateRevision);
 
 public sealed class IrrigationScheduleQuery : PagedQuery
 {

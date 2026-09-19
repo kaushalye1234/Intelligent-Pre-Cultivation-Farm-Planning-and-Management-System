@@ -1,37 +1,17 @@
-<<<<<<< HEAD
-<<<<<<< Updated upstream
-=======
-﻿using System.Net.Http.Headers;
-using System.Net.Http.Json;
-using System.Text.Json;
-using AgriAssist.Api.Dtos.CropPlanning;
-
->>>>>>> 6f5561abf0c8257dafd53abd629d72ab2b783e9a
-namespace AgriAssist.Api.ExternalServices.AgenticAI;
-
-public sealed class AgenticAIClient(
-    HttpClient httpClient,
-    IConfiguration configuration,
-    ILogger<AgenticAIClient> logger) : IAgenticAIClient
-{
-<<<<<<< HEAD
-    public Task StartWorkflowAsync(Guid workflowId, CancellationToken cancellationToken)
-=======
-﻿using System.Net.Http.Headers;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using AgriAssist.Api.Dtos.CropPlanning;
 using AgriAssist.Api.Dtos.Resources;
+using AgriAssist.Api.Dtos.TaskApproval;
 
 namespace AgriAssist.Api.ExternalServices.AgenticAI;
 
 public sealed class AgenticAIClient(
     HttpClient httpClient,
     IConfiguration configuration,
-    ILogger<AgenticAIClient> logger) : IAgenticAIClient, IWeatherResourceAIClient
+    ILogger<AgenticAIClient> logger) : IAgenticAIClient, IWeatherResourceAIClient, ISchedulingValidationAIClient
 {
-=======
->>>>>>> 6f5561abf0c8257dafd53abd629d72ab2b783e9a
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public Task<CropPlanningCoordinatorOutput> RunCropPlanningCoordinatorAsync(CropPlanningCoordinatorInput input, CancellationToken cancellationToken) =>
@@ -50,7 +30,6 @@ public sealed class AgenticAIClient(
             "field analysis",
             cancellationToken);
 
-<<<<<<< HEAD
     public Task<WeatherResourceOutput> RunWeatherResourceAnalysisAsync(WeatherResourceInput input, CancellationToken cancellationToken) =>
         PostAsync<WeatherResourceInput, WeatherResourceOutput>(
             "/workflows/crop-planning/weather-resource",
@@ -59,18 +38,20 @@ public sealed class AgenticAIClient(
             "weather and resource analysis",
             cancellationToken);
 
-=======
->>>>>>> 6f5561abf0c8257dafd53abd629d72ab2b783e9a
+    public Task<SchedulingValidationOutput> RunSchedulingValidationAsync(SchedulingValidationInput input, CancellationToken cancellationToken) =>
+        PostAsync<SchedulingValidationInput, SchedulingValidationOutput>(
+            "/workflows/crop-planning/scheduling-validation",
+            input,
+            input.WorkflowId,
+            "scheduling validation",
+            cancellationToken);
+
     private async Task<TOutput> PostAsync<TInput, TOutput>(
         string path,
         TInput input,
         Guid workflowId,
         string operationName,
         CancellationToken cancellationToken)
-<<<<<<< HEAD
->>>>>>> Stashed changes
-=======
->>>>>>> 6f5561abf0c8257dafd53abd629d72ab2b783e9a
     {
         var serviceUrl = configuration["AI:ServiceUrl"];
         var serviceToken = configuration["AI:ServiceToken"];
