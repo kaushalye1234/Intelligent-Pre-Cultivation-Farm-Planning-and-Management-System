@@ -110,6 +110,8 @@ Flutter follow-up on 2026-09-17: Flutter 3.47.4 was detected, `flutter pub get` 
 
 API smoke follow-up on 2026-09-19: ASP.NET `/health` and AI `/health` returned HTTP 200; AgriculturalOfficer login succeeded; workflow, task, schedule, and approval reads returned successfully with zero records in the disposable database; unauthenticated workflow access returned HTTP 401. Candidate generation and API concurrency require a real upstream-complete workflow fixture.
 
+Member 4 live approval verification on 2026-09-19: the local Docker AI service reached the host API after setting its ignored development-only `BACKEND_TOOL_BASE_URL` to `http://host.docker.internal:5087`. A disposable workflow completed coordinator, field-analysis, weather/resource, and scheduling steps; candidate revision 1 was generated for workflow `d807e840-1c3a-4760-9055-6972fc429b80`. Two simultaneous approval requests produced exactly one HTTP 200 and one HTTP 409, and the final read showed one approved task, one approved irrigation schedule, and one approval decision. The coordinator used its deterministic fallback because no LLM provider key was configured; weather and inspection inputs remained safe-review warnings, as expected for the local fixture.
+
 ## Phase 10 - Member 2 Inspections AI
 
 Verified on 2026-09-14 with:
