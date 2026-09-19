@@ -50,6 +50,14 @@ flutter test
 9. Reject or request revision with a real officer comment and confirm the candidate does not create final work.
 10. Log in to Flutter as the owning farmer and confirm **My status** shows task status, irrigation status, and approval history.
 
+For a real pending workflow, run the API concurrency probe with its candidate revision, workflow version, and an authorized officer token:
+
+```powershell
+.\scripts\test-member4-api-concurrency.ps1 -WorkflowId <workflow-id> -CandidateRevision 1 -ExpectedWorkflowVersion <version> -BearerToken <officer-token>
+```
+
+It must report one successful approval and one HTTP 409 conflict. Never use a production token or database for this probe.
+
 ## PostgreSQL evidence
 
 Run the repeatable database smoke checks from the repository root:
