@@ -19,6 +19,10 @@ Workflow: `d807e840-1c3a-4760-9055-6972fc429b80`.
 
 These values are taken from the persisted `AgentStep` timestamps returned by the workflow review API. The sample count is one per step; p50 and p95 are therefore not reported. A larger repeated run is required before using percentile targets.
 
+## API health baseline
+
+Ten sequential requests to `GET http://127.0.0.1:5087/health` were measured after the API reached readiness: minimum 1.03 ms, maximum 266.52 ms, average 28.91 ms. The first request accounted for the cold-start outlier; this is a local readiness baseline, not a throughput or production SLA measurement.
+
 ## Approval and persistence evidence
 
 - Candidate revision: 1

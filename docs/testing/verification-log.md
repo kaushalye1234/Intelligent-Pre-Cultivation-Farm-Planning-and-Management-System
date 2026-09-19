@@ -114,6 +114,8 @@ Member 4 live approval verification on 2026-09-19: the local Docker AI service r
 
 Farmer visibility follow-up on 2026-09-19: the owning farmer could read the completed workflow and its one decision, and farmer-scoped task and schedule reads returned one approved task and one approved irrigation schedule. The global approval queue returned zero farmer rows because it is intentionally officer-scoped; the workflow review response is the farmer-visible approval-history surface.
 
+Phase 3 release-check follow-up on 2026-09-19: backend xUnit passed 44 tests; React production build and lint completed successfully (lint retained existing non-blocking warnings). A ten-request local API health sample measured 1.03-266.52 ms with a 28.91 ms average. The global Python environment did not have pytest, while the previously verified Docker AI image had 27 passing pytest tests. The full React Vitest and Flutter test runners stalled during this run and were stopped; no new pass claim is made for those combined commands.
+
 ## Phase 10 - Member 2 Inspections AI
 
 Verified on 2026-09-14 with:
