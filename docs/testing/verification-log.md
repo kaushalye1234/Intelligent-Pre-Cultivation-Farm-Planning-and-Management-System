@@ -116,6 +116,8 @@ Farmer visibility follow-up on 2026-09-19: the owning farmer could read the comp
 
 Phase 3 release-check follow-up on 2026-09-19: backend xUnit passed 44 tests; React production build and lint completed successfully (lint retained existing non-blocking warnings). A ten-request local API health sample measured 1.03-266.52 ms with a 28.91 ms average. The global Python environment did not have pytest, while the previously verified Docker AI image had 27 passing pytest tests. The full React Vitest and Flutter test runners stalled during this run and were stopped; no new pass claim is made for those combined commands.
 
+Limitation remediation follow-up on 2026-09-19: the compatible AI Docker runtime executed all 27 pytest tests successfully. React Vitest completed all 18 tests when allowed to finish (about 35 seconds locally). The Flutter CI job now runs each widget test file separately to avoid the aggregate-runner hang; this Windows session still did not complete the Flutter runner or Android Gradle APK build, so no APK artifact is claimed.
+
 ## Phase 10 - Member 2 Inspections AI
 
 Verified on 2026-09-14 with:
