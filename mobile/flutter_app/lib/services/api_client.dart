@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -7,9 +7,17 @@ import 'package:http/http.dart' as http;
 import '../models/api_models.dart';
 
 class ApiException implements Exception {
-  const ApiException(this.message);
+  const ApiException(
+    this.message, {
+    this.code,
+    this.statusCode,
+    this.retryAfter,
+  });
 
   final String message;
+  final String? code;
+  final int? statusCode;
+  final String? retryAfter;
 
   @override
   String toString() => message;
@@ -20,36 +28,107 @@ class ApiClient {
     http.Client? httpClient,
     FlutterSecureStorage? secureStorage,
     String? baseUrl,
-  })  : _httpClient = httpClient ?? http.Client(),
-        _secureStorage = secureStorage ?? const FlutterSecureStorage(),
-        baseUrl = baseUrl ?? const String.fromEnvironment('AGRIASSIST_API_BASE_URL', defaultValue: 'http://10.0.2.2:5087/api');
+  }) : _httpClient = httpClient ?? http.Client(),
+       _secureStorage = secureStorage ?? const FlutterSecureStorage(),
+       baseUrl =
+           baseUrl ??
+           const String.fromEnvironment(
+             'AGRIASSIST_API_BASE_URL',
+             defaultValue: 'http://10.0.2.2:5087/api',
+           );
 
   final http.Client _httpClient;
   final FlutterSecureStorage _secureStorage;
   final String baseUrl;
   String? _token;
 
+  static const _tokenStorageKey = 'agriassist.token';
+
   Future<String?> loadToken() async {
-    _token = await _secureStorage.read(key: 'agriassist.token');
+    _token = await _secureStorage.read(key: _tokenStorageKey);
     return _token;
   }
 
   Future<void> clearToken() async {
     _token = null;
-    await _secureStorage.delete(key: 'agriassist.token');
+    await _secureStorage.delete(key: _tokenStorageKey);
   }
 
-  Future<UserProfile> login(String email, String password) async {
-    final response = await _post('/auth/login', {'email': email, 'password': password});
-    final token = response['accessToken'] as String;
-    _token = token;
-    await _secureStorage.write(key: 'agriassist.token', value: token);
-    return UserProfile.fromJson(response['user'] as Map<String, dynamic>);
+  Future<AuthenticationSession> login(String email, String password) async {
+    final response = await _postUnauthenticated('/auth/login', {
+      'email': email,
+      'password': password,
+    });
+    final session = AuthenticationSession.fromJson(response);
+    await _acceptAuthenticationSession(session);
+    return session;
+  }
+
+  Future<AuthenticationSession> registerFarmer({
+    required String fullName,
+    required String email,
+    required String password,
+  }) async {
+    final response = await _postUnauthenticated('/auth/register-farmer', {
+      'fullName': fullName,
+      'email': email,
+      'password': password,
+    });
+    final session = AuthenticationSession.fromJson(response);
+    await _acceptAuthenticationSession(session);
+    return session;
+  }
+
+  Future<AuthenticationSession> changeTemporaryPassword({
+    required String passwordChangeToken,
+    required String newPassword,
+  }) async {
+    final response = await _postWithToken('/auth/change-temporary-password', {
+      'newPassword': newPassword,
+    }, passwordChangeToken);
+    final session = AuthenticationSession.fromJson(response);
+    await _acceptAuthenticationSession(session);
+    return session;
   }
 
   Future<UserProfile> profile() async {
     final response = await _get('/auth/profile');
     return UserProfile.fromJson(response);
+  }
+
+  Future<FarmerOnboardingStatus> farmerOnboardingStatus() async {
+    final response = await _get('/farmer/onboarding-status');
+    return FarmerOnboardingStatus.fromJson(response);
+  }
+
+  Future<FarmOption> createFarm({
+    required String name,
+    required String location,
+    required num totalArea,
+  }) async {
+    final response = await _post('/crop-planning/farms', {
+      'name': name,
+      'location': location,
+      'totalArea': totalArea,
+      'ownerUserId': null,
+    });
+    return FarmOption.fromJson(response);
+  }
+
+  Future<FieldOption> createField({
+    required String farmId,
+    required String name,
+    required num area,
+    required String soilType,
+  }) async {
+    final response = await _post('/crop-planning/fields', {
+      'farmId': farmId,
+      'name': name,
+      'area': area,
+      'soilType': soilType,
+      'isActive': true,
+    });
+    return FieldOption.fromJson(response);
   }
 
   Future<DashboardSummary> dashboard() async {
@@ -78,17 +157,23 @@ class ApiClient {
   }
 
   Future<List<InspectionRecord>> inspections() async {
-    final response = await _get('/inspections?sortBy=scheduledAt&sortDirection=desc&pageSize=50');
+    final response = await _get(
+      '/inspections?sortBy=scheduledAt&sortDirection=desc&pageSize=50',
+    );
     return _items(response).map(InspectionRecord.fromJson).toList();
   }
 
   Future<List<CropIssueRecord>> cropIssues() async {
-    final response = await _get('/inspections/issues?sortBy=createdAt&sortDirection=desc&pageSize=50');
+    final response = await _get(
+      '/inspections/issues?sortBy=createdAt&sortDirection=desc&pageSize=50',
+    );
     return _items(response).map(CropIssueRecord.fromJson).toList();
   }
 
   Future<List<FollowUpRecommendationRecord>> followUps() async {
-    final response = await _get('/inspections/recommendations?isCompleted=false&pageSize=50');
+    final response = await _get(
+      '/inspections/recommendations?isCompleted=false&pageSize=50',
+    );
     return _items(response).map(FollowUpRecommendationRecord.fromJson).toList();
   }
 
@@ -107,12 +192,17 @@ class ApiClient {
     return _items(response).map(ApprovalHistoryRecord.fromJson).toList();
   }
 
-  Future<List<InspectionHistoryEventRecord>> inspectionHistory(String inspectionId) async {
+  Future<List<InspectionHistoryEventRecord>> inspectionHistory(
+    String inspectionId,
+  ) async {
     final response = await _getList('/inspections/$inspectionId/history');
     return response.map(InspectionHistoryEventRecord.fromJson).toList();
   }
 
-  Future<String> createInspection({required String fieldId, required String summary}) async {
+  Future<String> createInspection({
+    required String fieldId,
+    required String summary,
+  }) async {
     final response = await _post('/inspections', {
       'fieldId': fieldId,
       'scheduledAt': DateTime.now().toUtc().toIso8601String(),
@@ -126,7 +216,11 @@ class ApiClient {
     await _post('/inspections/$inspectionId/submit', {});
   }
 
-  Future<void> createObservation({required String inspectionId, required String observationType, required String notes}) async {
+  Future<void> createObservation({
+    required String inspectionId,
+    required String observationType,
+    required String notes,
+  }) async {
     await _post('/inspections/observations', {
       'fieldInspectionId': inspectionId,
       'observationType': observationType,
@@ -134,7 +228,12 @@ class ApiClient {
     });
   }
 
-  Future<void> createCropIssue({required String inspectionId, required String title, required String description, required int severity}) async {
+  Future<void> createCropIssue({
+    required String inspectionId,
+    required String title,
+    required String description,
+    required int severity,
+  }) async {
     await _post('/inspections/issues', {
       'fieldInspectionId': inspectionId,
       'title': title,
@@ -165,22 +264,39 @@ class ApiClient {
     return response['id'] as String;
   }
 
-  Future<CropPlanningWorkflowStart> startCropPlanningWorkflow(String cropPlanRequestId) async {
-    final response = await _post('/crop-plans/$cropPlanRequestId/start-ai-workflow', {});
+  Future<CropPlanningWorkflowStart> startCropPlanningWorkflow(
+    String cropPlanRequestId,
+  ) async {
+    final response = await _post(
+      '/crop-plans/$cropPlanRequestId/start-ai-workflow',
+      {},
+    );
     return CropPlanningWorkflowStart.fromJson(response);
   }
 
-  Future<CropPlanningWorkflowStatus> cropPlanningWorkflowStatus(String cropPlanRequestId) async {
-    final response = await _get('/crop-plans/$cropPlanRequestId/workflow-status');
+  Future<CropPlanningWorkflowStatus> cropPlanningWorkflowStatus(
+    String cropPlanRequestId,
+  ) async {
+    final response = await _get(
+      '/crop-plans/$cropPlanRequestId/workflow-status',
+    );
     return CropPlanningWorkflowStatus.fromJson(response);
   }
 
-  Future<CropPlanningResult> cropPlanningResult(String cropPlanRequestId) async {
-    final response = await _get('/crop-plans/$cropPlanRequestId/planning-result');
+  Future<CropPlanningResult> cropPlanningResult(
+    String cropPlanRequestId,
+  ) async {
+    final response = await _get(
+      '/crop-plans/$cropPlanRequestId/planning-result',
+    );
     return CropPlanningResult.fromJson(response);
   }
 
-  Future<void> reserveResource({required String inventoryStockId, required num quantity, required String purpose}) async {
+  Future<void> reserveResource({
+    required String inventoryStockId,
+    required num quantity,
+    required String purpose,
+  }) async {
     await _post('/resources/reservations', {
       'inventoryStockId': inventoryStockId,
       'quantity': quantity,
@@ -188,10 +304,18 @@ class ApiClient {
     });
   }
 
-  Future<void> uploadInspectionImage({required String inspectionId, required File imageFile}) async {
-    final request = http.MultipartRequest('POST', Uri.parse('$baseUrl/inspections/$inspectionId/images'));
+  Future<void> uploadInspectionImage({
+    required String inspectionId,
+    required File imageFile,
+  }) async {
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse('$baseUrl/inspections/$inspectionId/images'),
+    );
     _applyAuth(request.headers);
-    request.files.add(await http.MultipartFile.fromPath('file', imageFile.path));
+    request.files.add(
+      await http.MultipartFile.fromPath('file', imageFile.path),
+    );
     final response = await request.send();
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw const ApiException('Image upload failed');
@@ -199,22 +323,88 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> _get(String path) async {
-    final response = await _httpClient.get(Uri.parse('$baseUrl$path'), headers: _headers());
+    final response = await _httpClient.get(
+      Uri.parse('$baseUrl$path'),
+      headers: _headers(),
+    );
     return _decode(response);
   }
 
   Future<List<Map<String, dynamic>>> _getList(String path) async {
-    final response = await _httpClient.get(Uri.parse('$baseUrl$path'), headers: _headers());
+    final response = await _httpClient.get(
+      Uri.parse('$baseUrl$path'),
+      headers: _headers(),
+    );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw const ApiException('Request failed');
     }
-    final body = response.body.isEmpty ? <dynamic>[] : jsonDecode(response.body) as List<dynamic>;
+    final body = response.body.isEmpty
+        ? <dynamic>[]
+        : jsonDecode(response.body) as List<dynamic>;
     return body.cast<Map<String, dynamic>>();
   }
 
-  Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> body) async {
-    final response = await _httpClient.post(Uri.parse('$baseUrl$path'), headers: _headers(), body: jsonEncode(body));
+  Future<Map<String, dynamic>> _post(
+    String path,
+    Map<String, dynamic> body,
+  ) async {
+    final response = await _httpClient.post(
+      Uri.parse('$baseUrl$path'),
+      headers: _headers(),
+      body: jsonEncode(body),
+    );
     return _decode(response);
+  }
+
+  Future<Map<String, dynamic>> _postUnauthenticated(
+    String path,
+    Map<String, dynamic> body,
+  ) async {
+    final response = await _httpClient.post(
+      Uri.parse('$baseUrl$path'),
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode(body),
+    );
+    return _decode(response);
+  }
+
+  Future<Map<String, dynamic>> _postWithToken(
+    String path,
+    Map<String, dynamic> body,
+    String token,
+  ) async {
+    final response = await _httpClient.post(
+      Uri.parse('$baseUrl$path'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(body),
+    );
+    return _decode(response);
+  }
+
+  Future<void> _acceptAuthenticationSession(
+    AuthenticationSession session,
+  ) async {
+    if (session.requiresPasswordChange) {
+      if (session.passwordChangeToken == null ||
+          session.passwordChangeToken!.isEmpty) {
+        throw const ApiException('Password-change token was not returned.');
+      }
+      await clearToken();
+      return;
+    }
+
+    final token = session.accessToken;
+    if (session.authenticationStatus != 'authenticated' ||
+        token == null ||
+        token.isEmpty) {
+      throw const ApiException('Access token was not returned.');
+    }
+
+    _token = token;
+    await _secureStorage.write(key: _tokenStorageKey, value: token);
   }
 
   Map<String, String> _headers() {
@@ -231,10 +421,21 @@ class ApiClient {
   }
 
   Map<String, dynamic> _decode(http.Response response) {
-    final body = response.body.isEmpty ? <String, dynamic>{} : jsonDecode(response.body) as Map<String, dynamic>;
+    final body = response.body.isEmpty
+        ? <String, dynamic>{}
+        : jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final error = body['error'] as Map<String, dynamic>?;
-      throw ApiException((error?['message'] ?? body['message'] ?? body['title'] ?? 'Request failed') as String);
+      throw ApiException(
+        (error?['message'] ??
+                body['message'] ??
+                body['title'] ??
+                'Request failed')
+            as String,
+        code: error?['code'] as String?,
+        statusCode: response.statusCode,
+        retryAfter: response.headers['retry-after'],
+      );
     }
     return body;
   }

@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using System.Text.Json;
+using System.Data;
 using AgriAssist.Api.Data;
 using AgriAssist.Api.Dtos.CropPlanning;
 using AgriAssist.Api.Dtos.Shared;
@@ -9,6 +10,7 @@ using AgriAssist.Api.Models.Shared;
 using AgriAssist.Api.Services.Shared;
 using AgriAssist.Api.Validators.Shared;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace AgriAssist.Api.Services.CropPlanning;
 
@@ -41,6 +43,34 @@ public sealed class CropPlanningService(
         IRequestValidator<CropPlanRequestUpdate> updateRequestValidator)
         : this(dbContext, currentUser, farmValidator, fieldValidator, cropTypeValidator, cropCycleValidator, createRequestValidator, updateRequestValidator, new UnavailableAgenticAIClient())
     {
+    }
+
+    public async Task<FarmerOnboardingStatusResponse> GetFarmerOnboardingStatusAsync(CancellationToken cancellationToken)
+    {
+        var farmerId = RequireUser();
+        if (!currentUser.IsInRole(ApplicationRole.Farmer))
+        {
+            throw new ApiException(HttpStatusCode.Forbidden, "FARMER_REQUIRED", "A Farmer account is required.");
+        }
+
+        var ownedFarmIds = dbContext.Farms.AsNoTracking()
+            .Where(farm => farm.OwnerUserId == farmerId && !farm.IsDeleted)
+            .Select(farm => farm.Id);
+        var activeFarmCount = await ownedFarmIds.CountAsync(cancellationToken);
+        var activeFieldCount = await dbContext.Fields.AsNoTracking()
+            .CountAsync(field =>
+                ownedFarmIds.Contains(field.FarmId) &&
+                field.IsActive &&
+                !field.IsDeleted,
+                cancellationToken);
+
+        var stage = activeFarmCount == 0
+            ? "farm"
+            : activeFieldCount == 0
+                ? "field"
+                : "complete";
+
+        return new FarmerOnboardingStatusResponse(stage, activeFarmCount, activeFieldCount);
     }
 
     public async Task<PagedResult<FarmResponse>> SearchFarmsAsync(PagedQuery query, CancellationToken cancellationToken)
@@ -94,13 +124,21 @@ public sealed class CropPlanningService(
     public async Task<FarmResponse> UpdateFarmAsync(Guid id, FarmRequest request, CancellationToken cancellationToken)
     {
         Validate(farmValidator.Validate(request));
-        var farm = await ApplyFarmAccess(dbContext.Farms).SingleOrDefaultAsync(item => item.Id == id, cancellationToken) ?? throw NotFound("Farm");
+        await using var transaction = await BeginCapacityTransactionAsync(cancellationToken);
+        var farm = await LockFarmForCapacityAsync(id, cancellationToken);
+        var allocatedArea = await GetAllocatedFieldAreaAsync(id, cancellationToken: cancellationToken);
+        if (allocatedArea > request.TotalArea)
+        {
+            throw new ApiException(HttpStatusCode.BadRequest, "FIELD_AREA_EXCEEDS_FARM", "Farm area cannot be less than its total active field area.");
+        }
+
         farm.Name = request.Name.Trim();
         farm.Location = request.Location.Trim();
         farm.TotalArea = request.TotalArea;
         farm.UpdatedAt = DateTime.UtcNow;
         farm.UpdatedByUserId = currentUser.UserId;
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         return MapFarm(farm);
     }
 
@@ -132,26 +170,42 @@ public sealed class CropPlanningService(
     public async Task<FieldResponse> CreateFieldAsync(FieldRequest request, CancellationToken cancellationToken)
     {
         Validate(fieldValidator.Validate(request));
-        var farm = await ApplyFarmAccess(dbContext.Farms).SingleOrDefaultAsync(item => item.Id == request.FarmId, cancellationToken) ?? throw NotFound("Farm");
-        var usedArea = await dbContext.Fields.Where(field => field.FarmId == request.FarmId && !field.IsDeleted).SumAsync(field => field.Area, cancellationToken);
-        if (usedArea + request.Area > farm.TotalArea) throw new ApiException(HttpStatusCode.BadRequest, "FIELD_AREA_EXCEEDS_FARM", "Total field area cannot exceed farm area.");
+        await using var transaction = await BeginCapacityTransactionAsync(cancellationToken);
+        var farm = await LockFarmForCapacityAsync(request.FarmId, cancellationToken);
+        var allocatedArea = await GetAllocatedFieldAreaAsync(request.FarmId, cancellationToken: cancellationToken);
+        var newAllocation = request.IsActive ? request.Area : 0m;
+        if (allocatedArea + newAllocation > farm.TotalArea)
+        {
+            throw new ApiException(HttpStatusCode.BadRequest, "FIELD_AREA_EXCEEDS_FARM", "Total active field area cannot exceed farm area.");
+        }
 
         var field = new Field { FarmId = request.FarmId, Name = request.Name.Trim(), Area = request.Area, SoilType = request.SoilType.Trim(), IsActive = request.IsActive, CreatedByUserId = currentUser.UserId };
         dbContext.Fields.Add(field);
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         return MapField(field);
     }
 
     public async Task<FieldResponse> UpdateFieldAsync(Guid id, FieldRequest request, CancellationToken cancellationToken)
     {
         Validate(fieldValidator.Validate(request));
+        await using var transaction = await BeginCapacityTransactionAsync(cancellationToken);
         var field = await ApplyFieldAccess(dbContext.Fields).SingleOrDefaultAsync(item => item.Id == id, cancellationToken) ?? throw NotFound("Field");
+        var farm = await LockFarmForCapacityAsync(field.FarmId, cancellationToken);
+        var allocatedArea = await GetAllocatedFieldAreaAsync(field.FarmId, id, cancellationToken);
+        var updatedAllocation = request.IsActive ? request.Area : 0m;
+        if (allocatedArea + updatedAllocation > farm.TotalArea)
+        {
+            throw new ApiException(HttpStatusCode.BadRequest, "FIELD_AREA_EXCEEDS_FARM", "Total active field area cannot exceed farm area.");
+        }
+
         field.Name = request.Name.Trim();
         field.Area = request.Area;
         field.SoilType = request.SoilType.Trim();
         field.IsActive = request.IsActive;
         field.UpdatedAt = DateTime.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         return MapField(field);
     }
 
@@ -721,6 +775,44 @@ public sealed class CropPlanningService(
     private async Task EnsureFarmAccessAsync(Guid farmId, CancellationToken cancellationToken)
     {
         if (!await ApplyFarmAccess(dbContext.Farms.AsNoTracking()).AnyAsync(item => item.Id == farmId, cancellationToken)) throw NotFound("Farm");
+    }
+
+    private bool UsesPostgreSql => string.Equals(
+        dbContext.Database.ProviderName,
+        "Npgsql.EntityFrameworkCore.PostgreSQL",
+        StringComparison.Ordinal);
+
+    private async Task<IDbContextTransaction?> BeginCapacityTransactionAsync(CancellationToken cancellationToken) =>
+        UsesPostgreSql
+            ? await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+
+    private async Task<Farm> LockFarmForCapacityAsync(Guid farmId, CancellationToken cancellationToken)
+    {
+        var farms = UsesPostgreSql
+            ? dbContext.Farms.FromSqlRaw(
+                "SELECT * FROM \"Farms\" WHERE \"Id\" = {0} FOR UPDATE",
+                farmId)
+            : dbContext.Farms;
+
+        return await ApplyFarmAccess(farms).SingleOrDefaultAsync(cancellationToken) ?? throw NotFound("Farm");
+    }
+
+    private async Task<decimal> GetAllocatedFieldAreaAsync(
+        Guid farmId,
+        Guid? excludedFieldId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var activeFields = dbContext.Fields.AsNoTracking().Where(field =>
+            field.FarmId == farmId &&
+            field.IsActive &&
+            !field.IsDeleted);
+        if (excludedFieldId.HasValue)
+        {
+            activeFields = activeFields.Where(field => field.Id != excludedFieldId.Value);
+        }
+
+        return await activeFields.SumAsync(field => field.Area, cancellationToken);
     }
 
     private async Task EnsureFieldAccessAsync(Guid fieldId, CancellationToken cancellationToken)

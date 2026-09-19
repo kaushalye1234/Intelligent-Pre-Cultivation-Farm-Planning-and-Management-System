@@ -13,12 +13,18 @@
 
 ## Remaining before final submission
 
-1. Create a real workflow with completed Member 1, Member 2, and Member 3 outputs.
-2. Generate a scheduling candidate and record `PendingOfficerApproval` evidence.
-3. Run the API concurrency probe and record one success plus one HTTP 409 conflict.
-4. Verify farmer visibility of the final task, irrigation schedule, and approval history.
-5. Complete Flutter APK build or record the Android/Gradle blocker.
-6. Record measured workflow latency and update the performance report.
+Completed on 2026-09-19 in the disposable PostgreSQL environment:
+
+1. Created a real workflow with coordinator, field-analysis, weather/resource, and scheduling outputs.
+2. Generated candidate revision 1 and recorded the officer approval state.
+3. Ran the API concurrency probe with one HTTP 200 and one HTTP 409 conflict.
+4. Verified farmer-scoped visibility of the completed workflow, one approved task, one approved irrigation schedule, and one workflow approval decision.
+
+Still required before final submission:
+
+6. Extend measured workflow latency beyond the single-run baseline in `docs/testing/performance-report.md`.
 7. Attach Swagger/API evidence, ERD, verification log, and the final submission checklist.
 
-The current disposable database has no workflows, tasks, schedules, or approvals, so candidate and concurrency checks cannot be claimed until step 1 is completed.
+Flutter evidence is recorded: Flutter 3.47.4, dependency resolution, analysis, and the individual login, crop-planning, and inspection tests passed; the combined suite and debug APK Gradle task did not complete in this environment.
+
+The current evidence is valid for the disposable local database only. It must not be presented as production performance or as proof of a genuine external LLM-provider run.

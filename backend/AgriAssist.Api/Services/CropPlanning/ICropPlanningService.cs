@@ -5,6 +5,8 @@ namespace AgriAssist.Api.Services.CropPlanning;
 
 public interface ICropPlanningService
 {
+    Task<FarmerOnboardingStatusResponse> GetFarmerOnboardingStatusAsync(CancellationToken cancellationToken);
+
     Task<PagedResult<FarmResponse>> SearchFarmsAsync(PagedQuery query, CancellationToken cancellationToken);
     Task<FarmResponse> GetFarmAsync(Guid id, CancellationToken cancellationToken);
     Task<FarmResponse> CreateFarmAsync(FarmRequest request, CancellationToken cancellationToken);

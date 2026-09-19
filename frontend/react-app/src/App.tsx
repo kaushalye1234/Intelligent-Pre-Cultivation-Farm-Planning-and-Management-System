@@ -5,6 +5,7 @@ import { ProtectedRoute } from './components/ProtectedRoute'
 import { PublicLayout } from './components/PublicLayout'
 import { AboutPage } from './pages/AboutPage'
 import { ContactPage } from './pages/ContactPage'
+import { ChangeTemporaryPasswordPage } from './pages/ChangeTemporaryPasswordPage'
 import { CropIssueDetails } from './pages/CropIssueDetails'
 import { CropIssues } from './pages/CropIssues'
 import { CropPlanningPage } from './pages/CropPlanningPage'
@@ -32,6 +33,7 @@ export function AppRoutes() {
         <Route path="about" element={<AboutPage />} />
         <Route path="contact" element={<ContactPage />} />
         <Route path="login" element={<LoginPage />} />
+        <Route path="change-temporary-password" element={<ChangeTemporaryPasswordPage />} />
       </Route>
       <Route element={<ProtectedRoute allowedRoles={staffRoles} />}>
         <Route element={<Layout />}>

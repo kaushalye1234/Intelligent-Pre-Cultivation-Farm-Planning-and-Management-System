@@ -1,11 +1,9 @@
 using AgriAssist.Api.Dtos.Shared;
-using AgriAssist.Api.Models.Shared;
-
 namespace AgriAssist.Api.Validators.Shared;
 
-public sealed class RegisterRequestValidator : IRequestValidator<RegisterRequest>
+public sealed class RegisterFarmerRequestValidator : IRequestValidator<RegisterFarmerRequest>
 {
-    public IReadOnlyList<string> Validate(RegisterRequest request)
+    public IReadOnlyList<string> Validate(RegisterFarmerRequest request)
     {
         var errors = new List<string>();
 
@@ -19,17 +17,22 @@ public sealed class RegisterRequestValidator : IRequestValidator<RegisterRequest
             errors.Add("A valid email address is required.");
         }
 
-        if (string.IsNullOrWhiteSpace(request.Password) || request.Password.Length < 8 || request.Password.Length > 120)
+        if (string.IsNullOrWhiteSpace(request.Password))
         {
-            errors.Add("Password must be between 8 and 120 characters.");
-        }
-
-        if (!Enum.IsDefined(typeof(ApplicationRole), request.Role))
-        {
-            errors.Add("Role is invalid.");
+            errors.Add("Password is required.");
         }
 
         return errors;
+    }
+}
+
+public sealed class ChangeTemporaryPasswordRequestValidator : IRequestValidator<ChangeTemporaryPasswordRequest>
+{
+    public IReadOnlyList<string> Validate(ChangeTemporaryPasswordRequest request)
+    {
+        return string.IsNullOrWhiteSpace(request.NewPassword)
+            ? ["New password is required."]
+            : [];
     }
 }
 

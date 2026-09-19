@@ -1,13 +1,17 @@
 ﻿import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { api, setAuthToken } from '../api/client'
-import type { AuthResponse, UserProfile } from '../types'
+import { useCallback } from 'react'
+import type { AuthResponse, LoginResult, UserProfile } from '../types'
 
 type AuthContextValue = {
   user: UserProfile | null
   token: string | null
   isAuthenticated: boolean
   isLoading: boolean
-  login: (email: string, password: string) => Promise<UserProfile>
+  passwordChangeUser: UserProfile | null
+  hasPasswordChangeSession: boolean
+  login: (email: string, password: string) => Promise<LoginResult>
+  changeTemporaryPassword: (newPassword: string) => Promise<UserProfile>
   logout: () => void
 }
 
@@ -17,6 +21,12 @@ export const AuthContext = createContext<AuthContextValue | undefined>(undefined
 
 type StoredSession = {
   token: string
+  user: UserProfile
+}
+
+type PasswordChangeSession = {
+  token: string
+  expiresAt: string
   user: UserProfile
 }
 
@@ -45,7 +55,15 @@ function readStoredSession(): StoredSession | null {
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<StoredSession | null>(null)
+  const [passwordChangeSession, setPasswordChangeSession] = useState<PasswordChangeSession | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+
+  const logout = useCallback(() => {
+    window.localStorage.removeItem(storageKey)
+    setAuthToken(null)
+    setSession(null)
+    setPasswordChangeSession(null)
+  }, [])
 
   useEffect(() => {
     const stored = readStoredSession()
@@ -65,25 +83,57 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return Promise.reject(error)
     })
     return () => api.interceptors.response.eject(interceptorId)
-  }, [])
+  }, [logout])
 
-  async function login(email: string, password: string) {
-    const response = await api.post<AuthResponse>('/auth/login', { email, password })
+  const establishSession = useCallback((authentication: AuthResponse) => {
+    if (!authentication.accessToken) throw new Error('The server did not return an access token.')
     const nextSession = {
-      token: response.data.accessToken,
-      user: response.data.user,
+      token: authentication.accessToken,
+      user: authentication.user,
     }
     window.localStorage.setItem(storageKey, JSON.stringify(nextSession))
     setAuthToken(nextSession.token)
     setSession(nextSession)
-    return nextSession.user
-  }
+    setPasswordChangeSession(null)
+  }, [])
 
-  function logout() {
-    window.localStorage.removeItem(storageKey)
-    setAuthToken(null)
-    setSession(null)
-  }
+  const login = useCallback(async (email: string, password: string): Promise<LoginResult> => {
+    const response = await api.post<AuthResponse>('/auth/login', { email, password })
+    const authentication = response.data
+    if (authentication.authenticationStatus === 'passwordChangeRequired') {
+      if (!authentication.passwordChangeToken || !authentication.passwordChangeTokenExpiresAt) {
+        throw new Error('The server did not return a password-change token.')
+      }
+
+      window.localStorage.removeItem(storageKey)
+      setAuthToken(null)
+      setSession(null)
+      setPasswordChangeSession({
+        token: authentication.passwordChangeToken,
+        expiresAt: authentication.passwordChangeTokenExpiresAt,
+        user: authentication.user,
+      })
+    } else {
+      establishSession(authentication)
+    }
+
+    return { status: authentication.authenticationStatus, user: authentication.user }
+  }, [establishSession])
+
+  const changeTemporaryPassword = useCallback(async (newPassword: string): Promise<UserProfile> => {
+    if (!passwordChangeSession) throw new Error('Sign in again with your temporary password to continue.')
+    const response = await api.post<AuthResponse>(
+      '/auth/change-temporary-password',
+      { newPassword },
+      { headers: { Authorization: `Bearer ${passwordChangeSession.token}` } },
+    )
+    if (response.data.authenticationStatus !== 'authenticated') {
+      throw new Error('The password change did not create a normal session.')
+    }
+
+    establishSession(response.data)
+    return response.data.user
+  }, [establishSession, passwordChangeSession])
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -91,10 +141,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       token: session?.token ?? null,
       isAuthenticated: Boolean(session?.token),
       isLoading,
+      passwordChangeUser: passwordChangeSession?.user ?? null,
+      hasPasswordChangeSession: Boolean(passwordChangeSession),
       login,
+      changeTemporaryPassword,
       logout,
     }),
-    [isLoading, session],
+    [changeTemporaryPassword, isLoading, login, logout, passwordChangeSession, session],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

@@ -13,6 +13,7 @@ const adminUser: UserProfile = {
   email: 'admin@agriassist.local',
   role: 5,
   isActive: true,
+  mustChangePassword: false,
 }
 
 afterEach(() => {
@@ -49,7 +50,10 @@ describe('TaskApprovalPage', () => {
           token: 'token',
           isAuthenticated: true,
           isLoading: false,
+          passwordChangeUser: null,
+          hasPasswordChangeSession: false,
           login: vi.fn(),
+          changeTemporaryPassword: vi.fn(),
           logout: vi.fn(),
         }}>
           <TaskApprovalPage />
