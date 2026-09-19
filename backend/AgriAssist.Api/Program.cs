@@ -29,6 +29,14 @@ Env.Load();
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Keep local diagnostics on the console. Windows EventLog can throw when a
+// stale DPAPI key or EF warning is emitted, which otherwise resets API calls.
+if (builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Testing"))
+{
+    builder.Logging.ClearProviders();
+    builder.Logging.AddConsole();
+}
+
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddHealthChecks();
@@ -188,7 +196,12 @@ using (var scope = app.Services.CreateScope())
     await SeedData.SeedAsync(dbContext);
 }
 
-app.UseHttpsRedirection();
+// Local development and the documented HTTP profile run on port 5087. Redirect
+// HTTPS only for deployed environments where an HTTPS endpoint is configured.
+if (!app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("Testing"))
+{
+    app.UseHttpsRedirection();
+}
 app.UseCors("ClientApps");
 app.UseAuthentication();
 app.UseAuthorization();
