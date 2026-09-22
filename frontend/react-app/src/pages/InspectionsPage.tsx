@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { Camera, CheckCircle2, Plus, XCircle } from 'lucide-react'
+import { Camera, CheckCircle2, MoreHorizontal, Plus, XCircle } from 'lucide-react'
 import { api, getErrorMessage } from '../api/client'
 import { SelectInput, TextAreaInput, TextInput } from '../components/FormControls'
 import { DataTable } from '../components/DataTable'
@@ -11,14 +11,136 @@ import { Button, ConfirmDialog, Modal, Notice, PageHeader, Toolbar } from '../co
 import { formatDateTime } from '../format'
 import { inspectionStatus } from '../labels'
 import type { Field, Inspection, PagedResult } from '../types'
+import './InspectionsPage.css'
 
 type ConfirmAction = { title: string; message: string; label: string; action: () => Promise<void>; variant?: 'primary' | 'danger' } | null
 
+const summaryStatuses = [
+  { status: 1, label: 'Scheduled', tone: 'scheduled' },
+  { status: 2, label: 'In progress', tone: 'progress' },
+  { status: 3, label: 'Completed', tone: 'completed' },
+  { status: 4, label: 'Escalated', tone: 'escalated' },
+  { status: 5, label: 'Cancelled', tone: 'cancelled' },
+] as const
+
 function statusTone(status: number) {
   if (status === 3) return 'good'
-  if (status === 4 || status === 5) return 'bad'
+  if (status === 4) return 'warn'
+  if (status === 5) return 'bad'
   if (status === 2) return 'info'
   return 'neutral'
+}
+
+function InspectionActionMenu({
+  inspection,
+  isOpen,
+  onToggle,
+  onClose,
+  onImage,
+  onSubmit,
+  onCloseInspection,
+}: {
+  inspection: Inspection
+  isOpen: boolean
+  onToggle: () => void
+  onClose: () => void
+  onImage: () => void
+  onSubmit: () => void
+  onCloseInspection: () => void
+}) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const menuId = `inspection-actions-${inspection.id}`
+  const actionLabel = inspection.summary || 'inspection'
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    const menuItems = () => Array.from(
+      containerRef.current?.querySelectorAll<HTMLButtonElement>('[role=menuitem]') ?? [],
+    )
+
+    menuItems()[0]?.focus()
+
+    function handlePointerDown(event: PointerEvent) {
+      if (event.target instanceof Node && !containerRef.current?.contains(event.target)) {
+        onClose()
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        onClose()
+        triggerRef.current?.focus()
+        return
+      }
+
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
+
+      const items = menuItems()
+      if (!items.length) return
+
+      event.preventDefault()
+      const activeIndex = items.indexOf(document.activeElement as HTMLButtonElement)
+      let nextIndex = 0
+
+      if (event.key === 'End') nextIndex = items.length - 1
+      else if (event.key === 'ArrowUp') nextIndex = activeIndex <= 0 ? items.length - 1 : activeIndex - 1
+      else if (event.key === 'ArrowDown') nextIndex = activeIndex === items.length - 1 ? 0 : activeIndex + 1
+
+      items[nextIndex]?.focus()
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isOpen, onClose])
+
+  function runMenuAction(action: () => void) {
+    onClose()
+    action()
+  }
+
+  return (
+    <div className="inspection-action-menu" ref={containerRef}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="inspection-action-trigger"
+        aria-label={'More actions for ' + actionLabel}
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+        aria-controls={isOpen ? menuId : undefined}
+        onClick={onToggle}
+      >
+        <MoreHorizontal size={20} aria-hidden="true" />
+      </button>
+      {isOpen ? (
+        <div id={menuId} className="inspection-action-popover" role="menu" aria-label={'Actions for ' + actionLabel}>
+          <button type="button" role="menuitem" onClick={() => runMenuAction(onImage)}>
+            <Camera size={16} aria-hidden="true" />
+            <span>Image</span>
+          </button>
+          {inspection.status !== 3 ? (
+            <button type="button" role="menuitem" onClick={() => runMenuAction(onSubmit)}>
+              <CheckCircle2 size={16} aria-hidden="true" />
+              <span>Submit</span>
+            </button>
+          ) : null}
+          {inspection.status !== 5 ? (
+            <button className="inspection-menu-danger" type="button" role="menuitem" onClick={() => runMenuAction(onCloseInspection)}>
+              <XCircle size={16} aria-hidden="true" />
+              <span>Close</span>
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  )
 }
 
 export function InspectionsPage() {
@@ -35,10 +157,22 @@ export function InspectionsPage() {
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null)
   const [imageInspectionId, setImageInspectionId] = useState('')
   const [imageFile, setImageFile] = useState<File | null>(null)
+  const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null)
   const [form, setForm] = useState({ fieldId: '', scheduledAt: '', status: 1, summary: '' })
 
   const fieldOptions = fields.map((field) => ({ value: field.id, label: field.name }))
   const fieldNameById = useMemo(() => new Map(fields.map((field) => [field.id, field.name])), [fields])
+  const statusSummary = useMemo(() => {
+    const counts = new Map<number, number>()
+    for (const inspection of inspections) {
+      counts.set(inspection.status, (counts.get(inspection.status) ?? 0) + 1)
+    }
+
+    return summaryStatuses.map((item) => ({
+      ...item,
+      count: counts.get(item.status) ?? 0,
+    }))
+  }, [inspections])
 
   const loadData = useCallback(async (nextSearch: string, nextStatusFilter: string) => {
     setIsLoading(true)
@@ -102,7 +236,7 @@ export function InspectionsPage() {
   }
 
   return (
-    <section className="page-stack">
+    <section className="page-stack inspections-command-center">
       <PageHeader
         eyebrow="Field Operations"
         title="Inspections"
@@ -110,34 +244,71 @@ export function InspectionsPage() {
         actions={<Button icon={<Plus size={16} aria-hidden="true" />} onClick={() => setShowCreate(true)}>Schedule</Button>}
       />
 
-      <Toolbar>
-        <TextInput label="Search" value={search} onChange={setSearch} placeholder="Summary" />
-        <SelectInput label="Status" value={statusFilter} onChange={setStatusFilter} options={[{ value: '', label: 'All statuses' }, ...Object.entries(inspectionStatus).map(([value, label]) => ({ value, label }))]} />
-        <Button variant="secondary" onClick={() => void loadData(search, statusFilter)}>Apply Filters</Button>
-        <Link className="ui-button ui-button-secondary" to="/inspections/history">History</Link>
-      </Toolbar>
+      <section className="inspection-status-overview" aria-label="Current inspection results" aria-busy={isLoading}>
+        <div className="inspection-status-heading">
+          <p>Current results</p>
+          <strong>{inspections.length} {inspections.length === 1 ? 'inspection' : 'inspections'}</strong>
+          <span>Counts reflect only the loaded queue.</span>
+        </div>
+        <ul className="inspection-status-list">
+          {statusSummary.map((item) => (
+            <li key={item.status} className={'inspection-status-stat status-stat-' + item.tone} aria-label={item.label + ': ' + item.count}>
+              <span><i aria-hidden="true" />{item.label}</span>
+              <strong>{item.count}</strong>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="inspection-filter-panel" aria-label="Inspection filters">
+        <div className="inspection-filter-heading">
+          <div>
+            <p>Find an inspection</p>
+            <span>Search the loaded work queue by summary or status.</span>
+          </div>
+          <Link className="ui-button ui-button-secondary inspection-history-link" to="/inspections/history">History</Link>
+        </div>
+        <Toolbar>
+          <TextInput label="Search" value={search} onChange={setSearch} placeholder="Search by summary" />
+          <SelectInput label="Status" value={statusFilter} onChange={setStatusFilter} options={[{ value: '', label: 'All statuses' }, ...Object.entries(inspectionStatus).map(([value, label]) => ({ value, label }))]} />
+          <Button onClick={() => void loadData(search, statusFilter)}>Apply Filters</Button>
+        </Toolbar>
+      </section>
 
       {success ? <Notice tone="success">{success}</Notice> : null}
       {actionError ? <Notice tone="error">{actionError}</Notice> : null}
       {error ? <ErrorState message={error} /> : null}
       {isLoading ? <LoadingState /> : (
-        <section className="work-section">
+        <section className="work-section inspection-work-queue" aria-labelledby="inspection-queue-title">
+          <div className="inspection-queue-heading">
+            <div>
+              <p>Field workload</p>
+              <h2 id="inspection-queue-title">Inspection work queue</h2>
+            </div>
+            <span>{inspections.length} {inspections.length === 1 ? 'record' : 'records'} in this view</span>
+          </div>
           <DataTable
             rows={inspections}
             emptyTitle="No inspections found"
             emptyMessage="Try another filter or schedule a new inspection."
             getRowKey={(row) => row.id}
             columns={[
-              { header: 'Scheduled', render: (row) => formatDateTime(row.scheduledAt) },
-              { header: 'Field', render: (row) => fieldNameById.get(row.fieldId) ?? row.fieldId.slice(0, 8) },
-              { header: 'Summary', render: (row) => row.summary || 'No summary' },
+              { header: 'Scheduled', render: (row) => <span className="inspection-scheduled-at">{formatDateTime(row.scheduledAt)}</span> },
+              { header: 'Field', render: (row) => <strong className="inspection-field-name">{fieldNameById.get(row.fieldId) ?? row.fieldId.slice(0, 8)}</strong> },
+              { header: 'Summary', render: (row) => <span className="inspection-summary-copy">{row.summary || 'No summary'}</span> },
               { header: 'Status', render: (row) => <StatusPill label={inspectionStatus[row.status] ?? String(row.status)} tone={statusTone(row.status)} /> },
               { header: 'Actions', className: 'actions-cell', render: (row) => (
-                <div className="row-actions">
-                  <Link className="ui-button ui-button-ghost" to={`/inspections/${row.id}`}>Details</Link>
-                  <Button variant="ghost" icon={<Camera size={14} aria-hidden="true" />} onClick={() => setImageInspectionId(row.id)}>Image</Button>
-                  {row.status !== 3 ? <Button variant="ghost" icon={<CheckCircle2 size={14} aria-hidden="true" />} onClick={() => setConfirmAction({ title: 'Submit inspection?', message: 'This marks the inspection as completed.', label: 'Submit', action: async () => { await api.post(`/inspections/${row.id}/submit`) } })}>Submit</Button> : null}
-                  {row.status !== 5 ? <Button variant="ghost" icon={<XCircle size={14} aria-hidden="true" />} onClick={() => setConfirmAction({ title: 'Close inspection?', message: 'This closes the inspection as cancelled.', label: 'Close', variant: 'danger', action: async () => { await api.post(`/inspections/${row.id}/close`) } })}>Close</Button> : null}
+                <div className="row-actions inspection-row-actions">
+                  <Link className="ui-button inspection-details-action" to={'/inspections/' + row.id}>Details</Link>
+                  <InspectionActionMenu
+                    inspection={row}
+                    isOpen={openActionMenuId === row.id}
+                    onToggle={() => setOpenActionMenuId((currentId) => currentId === row.id ? null : row.id)}
+                    onClose={() => setOpenActionMenuId(null)}
+                    onImage={() => setImageInspectionId(row.id)}
+                    onSubmit={() => setConfirmAction({ title: 'Submit inspection?', message: 'This marks the inspection as completed.', label: 'Submit', action: async () => { await api.post('/inspections/' + row.id + '/submit') } })}
+                    onCloseInspection={() => setConfirmAction({ title: 'Close inspection?', message: 'This closes the inspection as cancelled.', label: 'Close', variant: 'danger', action: async () => { await api.post('/inspections/' + row.id + '/close') } })}
+                  />
                 </div>
               ) },
             ]}
