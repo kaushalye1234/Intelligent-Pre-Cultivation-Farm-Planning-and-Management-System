@@ -66,4 +66,9 @@ jobs:
       - name: Analyze Flutter app
         run: flutter analyze
       - name: Test Flutter app
-        run: flutter test
+        # Run files separately because the aggregate Flutter runner can hang
+        # while loading multiple widget test isolates on some runners.
+        run: |
+          for test_file in test/*_test.dart; do
+            flutter test --no-pub "$test_file"
+          done

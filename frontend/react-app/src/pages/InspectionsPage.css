@@ -1,0 +1,722 @@
+.inspections-command-center {
+  --inspection-forest: #173f2b;
+  --inspection-leaf: #2f6f49;
+  --inspection-moss: #6f815b;
+  --inspection-amber: #d49a3a;
+  --inspection-cream: #fbf8f0;
+  --inspection-paper: #fffdf8;
+  --inspection-ink: #1c2b22;
+  --inspection-muted: #687267;
+  --inspection-line: #dcd5c7;
+  gap: 20px;
+}
+
+.inspections-command-center > .page-header {
+  position: relative;
+  isolation: isolate;
+  min-height: 178px;
+  align-items: center;
+  overflow: hidden;
+  padding: 30px 32px;
+  color: #fffdf7;
+  background:
+    linear-gradient(105deg, rgba(17, 53, 35, 0.98), rgba(37, 89, 57, 0.94)),
+    var(--inspection-forest);
+  border: 1px solid rgba(19, 64, 39, 0.48);
+  border-radius: 16px;
+  box-shadow: 0 18px 44px rgba(31, 54, 39, 0.16);
+}
+
+.inspections-command-center > .page-header::before,
+.inspections-command-center > .page-header::after {
+  position: absolute;
+  z-index: -1;
+  content: "";
+  pointer-events: none;
+}
+
+.inspections-command-center > .page-header::before {
+  inset: 0;
+  opacity: 0.2;
+  background: repeating-linear-gradient(
+    -11deg,
+    transparent 0,
+    transparent 22px,
+    rgba(255, 255, 255, 0.22) 23px,
+    transparent 24px
+  );
+}
+
+.inspections-command-center > .page-header::after {
+  width: 280px;
+  height: 280px;
+  right: -76px;
+  bottom: -180px;
+  border: 46px solid rgba(225, 178, 91, 0.18);
+  border-radius: 50%;
+}
+
+.inspections-command-center > .page-header .page-header-copy,
+.inspections-command-center > .page-header .page-header-actions {
+  position: relative;
+  z-index: 1;
+}
+
+.inspections-command-center > .page-header .page-header-copy p {
+  margin-bottom: 10px;
+  color: #dbe7d5;
+  letter-spacing: 0.09em;
+}
+
+.inspections-command-center > .page-header .page-header-copy h1 {
+  color: #fffdf7;
+  font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  font-size: clamp(34px, 4vw, 46px);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+.inspections-command-center > .page-header .page-header-copy span {
+  max-width: 670px;
+  color: rgba(255, 253, 247, 0.76);
+  font-size: 15px;
+}
+
+.inspections-command-center > .page-header .ui-button-primary {
+  min-height: 46px;
+  color: #203125;
+  background: #e3ae55;
+  border-color: #efc477;
+  box-shadow: 0 10px 24px rgba(13, 36, 23, 0.2);
+}
+
+.inspections-command-center > .page-header .ui-button-primary:hover {
+  background: #edbd6b;
+  border-color: #f5cf8d;
+}
+
+.inspections-command-center .inspection-status-overview {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.78fr) minmax(0, 3.4fr);
+  overflow: hidden;
+  background: var(--inspection-paper);
+  border: 1px solid var(--inspection-line);
+  border-radius: 14px;
+  box-shadow: 0 8px 26px rgba(37, 54, 41, 0.07);
+}
+
+.inspections-command-center .inspection-status-heading {
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  min-height: 112px;
+  padding: 20px 22px;
+  background: #f1eee4;
+  border-right: 1px solid var(--inspection-line);
+}
+
+.inspections-command-center .inspection-status-heading p,
+.inspections-command-center .inspection-filter-heading p,
+.inspections-command-center .inspection-queue-heading p {
+  margin: 0;
+  color: var(--inspection-leaf);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.inspections-command-center .inspection-status-heading strong {
+  color: var(--inspection-ink);
+  font-size: 20px;
+}
+
+.inspections-command-center .inspection-status-heading span,
+.inspections-command-center .inspection-filter-heading span,
+.inspections-command-center .inspection-queue-heading > span {
+  color: var(--inspection-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.inspections-command-center .inspection-status-list {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.inspections-command-center .inspection-status-stat {
+  position: relative;
+  display: grid;
+  align-content: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 112px;
+  padding: 18px;
+  border-right: 1px solid var(--inspection-line);
+}
+
+.inspections-command-center .inspection-status-stat:last-child {
+  border-right: 0;
+}
+
+.inspections-command-center .inspection-status-stat > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--inspection-muted);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.inspections-command-center .inspection-status-stat i {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  background: #8c948d;
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px rgba(140, 148, 141, 0.12);
+}
+
+.inspections-command-center .inspection-status-stat > strong {
+  color: var(--inspection-ink);
+  font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.inspections-command-center .status-stat-progress i,
+.inspections-command-center .status-stat-escalated i {
+  background: var(--inspection-amber);
+  box-shadow: 0 0 0 4px rgba(212, 154, 58, 0.14);
+}
+
+.inspections-command-center .status-stat-completed i {
+  background: var(--inspection-leaf);
+  box-shadow: 0 0 0 4px rgba(47, 111, 73, 0.14);
+}
+
+.inspections-command-center .status-stat-cancelled i {
+  background: #a34b3c;
+  box-shadow: 0 0 0 4px rgba(163, 75, 60, 0.12);
+}
+
+.inspections-command-center .inspection-filter-panel {
+  display: grid;
+  gap: 18px;
+  padding: 20px 22px;
+  background: rgba(255, 253, 248, 0.86);
+  border: 1px solid var(--inspection-line);
+  border-radius: 14px;
+  box-shadow: 0 6px 18px rgba(37, 54, 41, 0.05);
+}
+
+.inspections-command-center .inspection-filter-heading,
+.inspections-command-center .inspection-queue-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.inspections-command-center .inspection-filter-heading > div,
+.inspections-command-center .inspection-queue-heading > div {
+  display: grid;
+  gap: 4px;
+}
+
+.inspections-command-center .inspection-history-link {
+  min-height: 40px;
+}
+
+.inspections-command-center .inspection-filter-panel .toolbar {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(180px, 0.38fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.inspections-command-center .inspection-filter-panel .field-control {
+  gap: 7px;
+}
+
+.inspections-command-center .inspection-filter-panel .field-control > span {
+  color: #39473d;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.inspections-command-center .inspection-filter-panel input,
+.inspections-command-center .inspection-filter-panel select {
+  min-height: 44px;
+  background: #fffefb;
+  border-color: #cbc3b5;
+  border-radius: 8px;
+}
+
+.inspections-command-center .inspection-filter-panel input:hover,
+.inspections-command-center .inspection-filter-panel select:hover {
+  border-color: #9fa994;
+}
+
+.inspections-command-center .inspection-filter-panel .ui-button-primary {
+  min-height: 44px;
+  padding-inline: 22px;
+  background: var(--inspection-leaf);
+  border-color: var(--inspection-leaf);
+}
+
+.inspections-command-center .inspection-work-queue {
+  padding: 0;
+  overflow: visible;
+  border-radius: 14px;
+}
+
+.inspections-command-center .inspection-queue-heading {
+  padding: 20px 22px;
+  background: #f8f5ed;
+  border-bottom: 1px solid var(--inspection-line);
+  border-radius: 14px 14px 0 0;
+}
+
+.inspections-command-center .inspection-queue-heading h2 {
+  margin: 0;
+  color: var(--inspection-ink);
+  font-size: 21px;
+  letter-spacing: -0.015em;
+}
+
+.inspections-command-center .inspection-queue-heading > span {
+  padding: 7px 10px;
+  background: #ebe7dc;
+  border-radius: 999px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.inspections-command-center .inspection-work-queue .table-wrap {
+  overflow: visible;
+  padding: 0 20px 12px;
+}
+
+.inspections-command-center .inspection-work-queue .data-table {
+  min-width: 760px;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.inspections-command-center .inspection-work-queue .data-table th {
+  padding-top: 16px;
+  padding-bottom: 12px;
+  color: #768074;
+  border-bottom-color: #d5cdbf;
+  letter-spacing: 0.06em;
+}
+
+.inspections-command-center .inspection-work-queue .data-table td {
+  height: 78px;
+  border-bottom-color: #e5dfd3;
+}
+
+.inspections-command-center .inspection-work-queue .data-table tbody tr {
+  transition: background 150ms ease, box-shadow 150ms ease;
+}
+
+.inspections-command-center .inspection-work-queue .data-table tbody tr:hover {
+  background: #f5f7f1;
+  box-shadow: inset 3px 0 0 var(--inspection-moss);
+}
+
+.inspections-command-center .inspection-scheduled-at {
+  color: #445148;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.inspections-command-center .inspection-field-name {
+  color: var(--inspection-ink);
+  font-size: 14px;
+}
+
+.inspections-command-center .inspection-summary-copy {
+  display: block;
+  max-width: 430px;
+  color: #37443b;
+  line-height: 1.45;
+}
+
+.inspections-command-center .inspection-row-actions {
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+}
+
+.inspections-command-center .inspection-details-action {
+  min-height: 40px;
+  color: #255f3d;
+  background: #e7efe3;
+  border: 1px solid #c9dbc2;
+}
+
+.inspections-command-center .inspection-details-action:hover {
+  color: #17472c;
+  background: #dce9d7;
+  border-color: #aec8a4;
+}
+
+.inspections-command-center .inspection-action-menu {
+  position: relative;
+}
+
+.inspections-command-center .inspection-action-trigger {
+  width: 42px;
+  height: 42px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  color: #425047;
+  background: #fffdf8;
+  border: 1px solid #d4ccbe;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: color 150ms ease, background 150ms ease, border-color 150ms ease, transform 150ms ease;
+}
+
+.inspections-command-center .inspection-action-trigger:hover,
+.inspections-command-center .inspection-action-trigger[aria-expanded="true"] {
+  color: #17472c;
+  background: #eef3e9;
+  border-color: #aabc9f;
+}
+
+.inspections-command-center .inspection-action-trigger:hover {
+  transform: translateY(-1px);
+}
+
+.inspections-command-center .inspection-action-popover {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 176px;
+  display: grid;
+  gap: 3px;
+  padding: 6px;
+  background: #fffefb;
+  border: 1px solid #d4ccbe;
+  border-radius: 10px;
+  box-shadow: 0 18px 38px rgba(28, 43, 34, 0.18);
+  animation: inspection-menu-in 130ms ease-out both;
+}
+
+.inspections-command-center .inspection-action-popover button {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 11px;
+  color: #354239;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.inspections-command-center .inspection-action-popover button:hover,
+.inspections-command-center .inspection-action-popover button:focus-visible {
+  background: #edf3e9;
+}
+
+.inspections-command-center .inspection-action-popover .inspection-menu-danger {
+  color: #8c382d;
+}
+
+.inspections-command-center .inspection-action-popover .inspection-menu-danger:hover,
+.inspections-command-center .inspection-action-popover .inspection-menu-danger:focus-visible {
+  background: #faece8;
+}
+
+.inspections-command-center .status-info {
+  color: #5b481a;
+  background: #f3e8c5;
+  border-color: #dfca8f;
+}
+
+.inspections-command-center .status-warn {
+  color: #74480f;
+  background: #f4e0b7;
+  border-color: #dfbd72;
+}
+
+@keyframes inspection-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-5px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 1100px) {
+  .inspections-command-center .inspection-status-overview {
+    grid-template-columns: 1fr;
+  }
+
+  .inspections-command-center .inspection-status-heading {
+    min-height: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--inspection-line);
+  }
+
+  .inspections-command-center .inspection-status-list {
+    grid-template-columns: repeat(5, minmax(118px, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .inspections-command-center .inspection-status-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .inspections-command-center .inspection-status-stat:nth-child(3) {
+    border-right: 0;
+  }
+
+  .inspections-command-center .inspection-status-stat:nth-child(-n + 3) {
+    border-bottom: 1px solid var(--inspection-line);
+  }
+
+  .inspections-command-center .inspection-filter-panel .toolbar {
+    grid-template-columns: minmax(0, 1fr) minmax(180px, 0.55fr);
+  }
+
+  .inspections-command-center .inspection-filter-panel .toolbar > .ui-button {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
+
+@media (max-width: 768px) {
+  .inspections-command-center {
+    gap: 16px;
+  }
+
+  .inspections-command-center > .page-header {
+    min-height: auto;
+    padding: 24px;
+  }
+
+  .inspections-command-center > .page-header .page-header-actions,
+  .inspections-command-center > .page-header .ui-button-primary {
+    width: 100%;
+  }
+
+  .inspections-command-center .inspection-status-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .inspections-command-center .inspection-status-stat,
+  .inspections-command-center .inspection-status-stat:nth-child(3) {
+    min-height: 94px;
+    border-right: 1px solid var(--inspection-line);
+    border-bottom: 1px solid var(--inspection-line);
+  }
+
+  .inspections-command-center .inspection-status-stat:nth-child(even) {
+    border-right: 0;
+  }
+
+  .inspections-command-center .inspection-status-stat:last-child {
+    border-bottom: 0;
+  }
+
+  .inspections-command-center .inspection-filter-heading,
+  .inspections-command-center .inspection-queue-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .inspections-command-center .inspection-history-link {
+    width: 100%;
+  }
+
+  .inspections-command-center .inspection-filter-panel .toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .inspections-command-center .inspection-filter-panel .toolbar > .ui-button {
+    grid-column: auto;
+    width: 100%;
+  }
+
+  .inspections-command-center .inspection-work-queue {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+  }
+
+  .inspections-command-center .inspection-queue-heading {
+    background: var(--inspection-paper);
+    border: 1px solid var(--inspection-line);
+    border-radius: 12px;
+  }
+
+  .inspections-command-center .inspection-queue-heading > span {
+    align-self: flex-start;
+  }
+
+  .inspections-command-center .inspection-work-queue .table-wrap {
+    padding: 0;
+  }
+
+  .inspections-command-center .inspection-work-queue .data-table,
+  .inspections-command-center .inspection-work-queue .data-table tbody {
+    width: 100%;
+    min-width: 0;
+    display: block;
+  }
+
+  .inspections-command-center .inspection-work-queue .data-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .inspections-command-center .inspection-work-queue .data-table tbody {
+    display: grid;
+    gap: 14px;
+    margin-top: 14px;
+  }
+
+  .inspections-command-center .inspection-work-queue .data-table tbody tr {
+    display: grid;
+    overflow: visible;
+    background: var(--inspection-paper);
+    border: 1px solid var(--inspection-line);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(37, 54, 41, 0.07);
+  }
+
+  .inspections-command-center .inspection-work-queue .data-table tbody tr:hover {
+    background: var(--inspection-paper);
+    box-shadow: 0 10px 28px rgba(37, 54, 41, 0.1);
+  }
+
+  .inspections-command-center .inspection-work-queue .data-table td {
+    width: 100%;
+    min-height: 0;
+    height: auto;
+    display: grid;
+    grid-template-columns: 92px minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+    padding: 10px 16px;
+    border: 0;
+    white-space: normal;
+  }
+
+  .inspections-command-center .inspection-work-queue .data-table td:first-child {
+    padding-top: 16px;
+  }
+
+  .inspections-command-center .inspection-work-queue .data-table td::before {
+    color: #7a8279;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+  }
+
+  .inspections-command-center .inspection-work-queue .data-table td:nth-child(1)::before {
+    content: "Scheduled";
+  }
+
+  .inspections-command-center .inspection-work-queue .data-table td:nth-child(2)::before {
+    content: "Field";
+  }
+
+  .inspections-command-center .inspection-work-queue .data-table td:nth-child(3)::before {
+    content: "Summary";
+  }
+
+  .inspections-command-center .inspection-work-queue .data-table td:nth-child(4)::before {
+    content: "Status";
+  }
+
+  .inspections-command-center .inspection-work-queue .data-table td:nth-child(5) {
+    grid-template-columns: minmax(0, 1fr);
+    padding-top: 14px;
+    padding-bottom: 16px;
+    margin-top: 4px;
+    border-top: 1px solid #e4ddd0;
+  }
+
+  .inspections-command-center .inspection-work-queue .data-table td:nth-child(5)::before {
+    content: none;
+  }
+
+  .inspections-command-center .inspection-summary-copy {
+    max-width: none;
+  }
+
+  .inspections-command-center .inspection-row-actions {
+    width: 100%;
+    align-items: center;
+    flex-direction: row;
+  }
+
+  .inspections-command-center .inspection-details-action {
+    min-height: 44px;
+    flex: 1;
+  }
+
+  .inspections-command-center .inspection-action-trigger {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+@media (max-width: 520px) {
+  .inspections-command-center > .page-header,
+  .inspections-command-center .inspection-filter-panel,
+  .inspections-command-center .inspection-status-heading {
+    padding: 20px;
+  }
+
+  .inspections-command-center .inspection-status-stat {
+    padding: 15px;
+  }
+
+  .inspections-command-center .inspection-status-stat > span {
+    white-space: normal;
+  }
+
+  .inspections-command-center .inspection-action-popover {
+    width: min(176px, calc(100vw - 64px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inspections-command-center .inspection-action-popover {
+    animation: none;
+  }
+
+  .inspections-command-center .inspection-action-trigger,
+  .inspections-command-center .inspection-work-queue .data-table tbody tr {
+    transition: none;
+  }
+}

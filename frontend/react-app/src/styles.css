@@ -1473,6 +1473,82 @@ p {
   font-size: 15px;
 }
 
+.security-screen {
+  grid-template-columns: minmax(0, 640px);
+  place-content: center;
+}
+
+.security-card {
+  position: relative;
+  width: min(100%, 640px);
+  padding: clamp(28px, 5vw, 52px);
+  overflow: hidden;
+  background: linear-gradient(145deg, rgba(255, 253, 248, 0.98), rgba(239, 245, 234, 0.97));
+  border: 1px solid rgba(96, 84, 61, 0.2);
+  border-radius: 24px;
+  box-shadow: 0 28px 76px rgba(23, 37, 27, 0.16);
+}
+
+.security-card::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 5px;
+  background: linear-gradient(90deg, #1d6f42, #c5a453, #1d6f42);
+}
+
+.security-card-icon {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  margin-bottom: var(--space-5);
+  color: #1d6f42;
+  background: linear-gradient(145deg, #e7f2e2, #fff7df);
+  border: 1px solid rgba(29, 111, 66, 0.18);
+  border-radius: 17px;
+  box-shadow: 0 14px 30px rgba(29, 111, 66, 0.11);
+}
+
+.security-card h1 {
+  max-width: 520px;
+  margin: 0;
+  color: #17251b;
+  font-size: clamp(30px, 5vw, 44px);
+  line-height: 1.06;
+}
+
+.security-card-intro {
+  margin: var(--space-3) 0 0;
+  color: var(--color-text-muted);
+  line-height: 1.65;
+}
+
+.security-guidance {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  margin-top: var(--space-5);
+  color: #36523f;
+  background: rgba(220, 235, 216, 0.55);
+  border: 1px solid rgba(29, 111, 66, 0.16);
+  border-radius: 13px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.55;
+}
+
+.security-guidance svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--color-primary);
+}
+
+.form-grid .security-guidance {
+  margin-top: 0;
+}
+
 .login-submit:hover {
   background: linear-gradient(135deg, #23804e, #173f2b);
   border-color: #1d6f42;
@@ -2775,5 +2851,272 @@ p {
   .workflow-cell,
   .wide-column {
     min-width: 260px;
+  }
+}
+
+/* =========================================================
+   RESOURCE MANAGEMENT — UI Enhancements (Member 3)
+   ========================================================= */
+
+/* Stock level progress bar */
+.stock-level-bar {
+  width: 100%;
+  max-width: 120px;
+  height: 6px;
+  background: var(--color-surface-muted);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.stock-level-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 400ms ease;
+}
+
+.stock-level-fill-good { background: var(--color-success); }
+.stock-level-fill-warn { background: var(--color-warning); }
+.stock-level-fill-bad  { background: var(--color-danger); }
+
+.stock-cell-value {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stock-cell-value strong {
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.stock-cell-value small {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* Resource name with unit badge */
+.resource-name-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.resource-name-cell strong {
+  font-weight: 700;
+}
+
+.unit-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 var(--space-2);
+  color: var(--color-text-muted);
+  background: var(--color-surface-muted);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* Reservation summary strip */
+.reservation-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.reservation-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--color-text-muted);
+}
+
+.reservation-stat-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 var(--space-2);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.reservation-stat-active .reservation-stat-count  { color: #234f60; background: #dbeaf0; }
+.reservation-stat-released .reservation-stat-count { color: #155534; background: #dcebd8; }
+.reservation-stat-cancelled .reservation-stat-count { color: #7b251d; background: #f3d6d0; }
+
+/* Separator dot between reservation stats */
+.reservation-stat + .reservation-stat::before {
+  content: "";
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  margin-right: var(--space-1);
+  background: var(--color-border-strong);
+  border-radius: 999px;
+}
+
+/* Weather forecast enhanced cards */
+.weather-location-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-4);
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+  border: 1px solid rgba(29, 111, 66, 0.18);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.weather-location-badge svg {
+  flex: 0 0 auto;
+}
+
+.weather-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.weather-day-card {
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.weather-day-card:hover {
+  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.weather-day-card-date {
+  display: block;
+  margin-bottom: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.weather-day-card-desc {
+  display: block;
+  margin-bottom: var(--space-3);
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: capitalize;
+  line-height: 1.3;
+}
+
+.weather-day-card-stats {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.weather-day-card-stat {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.weather-day-card-stat strong {
+  color: var(--color-text);
+  font-weight: 800;
+}
+
+/* Enhanced metric cards with tone-specific icon backgrounds */
+.metric-warn .metric-icon {
+  color: var(--color-warning);
+  background: #f4e6bd;
+}
+
+.metric-bad .metric-icon {
+  color: var(--color-danger);
+  background: #f3d6d0;
+}
+
+/* Section intro text for empty state */
+.section-intro {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+  color: var(--color-text-muted);
+  background: #eef2e7;
+  border: 1px solid #d3ddc9;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.55;
+}
+
+.section-intro svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--color-primary);
+}
+
+/* Active tab badge highlight */
+.tabs button.active strong {
+  color: #fffdf8;
+  background: var(--color-primary);
+}
+
+/* Smoother table row transitions */
+.data-table tbody tr {
+  transition: background 140ms ease;
+}
+
+/* Better empty state text spacing */
+.state-box div {
+  display: grid;
+  gap: 2px;
+}
+
+/* Resource responsive grid adjustments */
+@media (max-width: 640px) {
+  .metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .weather-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .reservation-summary {
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .reservation-stat + .reservation-stat::before {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .weather-grid {
+    grid-template-columns: 1fr;
   }
 }

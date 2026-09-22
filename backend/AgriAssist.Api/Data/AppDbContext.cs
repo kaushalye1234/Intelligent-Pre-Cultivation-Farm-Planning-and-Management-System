@@ -48,6 +48,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.Property(user => user.Email).IsRequired().HasMaxLength(180);
             entity.Property(user => user.PasswordHash).IsRequired().HasMaxLength(500);
             entity.Property(user => user.Role).HasConversion<string>().HasMaxLength(40);
+            entity.Property(user => user.MustChangePassword).HasDefaultValue(false);
+            entity.Property(user => user.TokenVersion).IsConcurrencyToken().HasDefaultValue(1);
             entity.HasIndex(user => user.Email).IsUnique();
             entity.HasIndex(user => user.Role);
             entity.HasIndex(user => user.IsActive);

@@ -27,7 +27,12 @@ public sealed class ExceptionHandlingMiddleware(
         }
     }
 
-    private static async Task WriteProblemAsync(HttpContext context, HttpStatusCode statusCode, string code, string message)
+    internal static async Task WriteProblemAsync(
+        HttpContext context,
+        HttpStatusCode statusCode,
+        string code,
+        string message,
+        TimeSpan? retryAfter = null)
     {
         if (context.Response.HasStarted)
         {
@@ -37,13 +42,20 @@ public sealed class ExceptionHandlingMiddleware(
         context.Response.Clear();
         context.Response.StatusCode = (int)statusCode;
         context.Response.ContentType = "application/json";
+        if (retryAfter is not null)
+        {
+            context.Response.Headers.RetryAfter =
+                Math.Ceiling(retryAfter.Value.TotalSeconds)
+                    .ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
 
         var payload = new
         {
             error = new
             {
                 code,
-                message
+                message,
+                traceId = context.TraceIdentifier
             }
         };
 

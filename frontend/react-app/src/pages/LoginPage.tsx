@@ -31,8 +31,13 @@ export function LoginPage() {
 
     setIsSubmitting(true)
     try {
-      const loggedInUser = await login(email.trim(), password)
-      navigate(getDashboardPath(loggedInUser.role), { replace: true })
+      const result = await login(email.trim(), password)
+      navigate(
+        result.status === 'passwordChangeRequired'
+          ? '/change-temporary-password'
+          : getDashboardPath(result.user.role),
+        { replace: true },
+      )
     } catch (err) {
       setError(getErrorMessage(err))
     } finally {

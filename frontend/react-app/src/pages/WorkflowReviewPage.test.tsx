@@ -13,6 +13,7 @@ const officer: UserProfile = {
   email: 'officer@example.test',
   role: 4,
   isActive: true,
+  mustChangePassword: false,
 }
 
 const review: WorkflowReview = {
@@ -46,7 +47,7 @@ describe('WorkflowReviewPage', () => {
 
     render(
       <MemoryRouter initialEntries={['/task-approval/workflows/workflow-1']}>
-        <AuthContext.Provider value={{ user: officer, token: 'token', isAuthenticated: true, isLoading: false, login: vi.fn(), logout: vi.fn() }}>
+        <AuthContext.Provider value={{ user: officer, token: 'token', isAuthenticated: true, isLoading: false, passwordChangeUser: null, hasPasswordChangeSession: false, login: vi.fn(), changeTemporaryPassword: vi.fn(), logout: vi.fn() }}>
           <Routes><Route path="/task-approval/workflows/:id" element={<WorkflowReviewPage />} /></Routes>
         </AuthContext.Provider>
       </MemoryRouter>,

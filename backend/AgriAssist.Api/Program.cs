@@ -1,11 +1,17 @@
 ﻿using System.Text;
 using AgriAssist.Api.Data;
+using System.Net;
+using System.Security.Claims;
+using System.Threading.RateLimiting;
+using AgriAssist.Api.Configuration;
+using AgriAssist.Api.Bootstrap;
 using AgriAssist.Api.Dtos.Shared;
 using AgriAssist.Api.Dtos.CropPlanning;
 using AgriAssist.Api.Dtos.Inspections;
 using AgriAssist.Api.Dtos.Resources;
 using AgriAssist.Api.Dtos.TaskApproval;
 using AgriAssist.Api.Middleware;
+using AgriAssist.Api.Models.Shared;
 using AgriAssist.Api.Services.Shared;
 using AgriAssist.Api.Services.CropPlanning;
 using AgriAssist.Api.Services.Inspections;
@@ -21,6 +27,8 @@ using AgriAssist.Api.ExternalServices.Cloudinary;
 using AgriAssist.Api.ExternalServices.Weather;
 using DotNetEnv;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -42,13 +50,27 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddHealthChecks();
 builder.Services.Configure<CloudinaryOptions>(builder.Configuration.GetSection("Cloudinary"));
 builder.Services.Configure<WeatherOptions>(builder.Configuration.GetSection("Weather"));
+builder.Services.Configure<PasswordSecurityOptions>(builder.Configuration.GetSection(PasswordSecurityOptions.SectionName));
+builder.Services.AddOptions<SecurityRateLimitOptions>()
+    .Bind(builder.Configuration.GetSection(SecurityRateLimitOptions.SectionName))
+    .Validate(
+        options => IsValid(options.Login)
+            && IsValid(options.FarmerRegistration)
+            && IsValid(options.TemporaryPasswordChange)
+            && IsValid(options.AdminReauthentication)
+            && IsValid(options.AdminUserManagement),
+        "Security rate-limit values must be positive.")
+    .ValidateOnStart();
 builder.Services.AddHttpContextAccessor();
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 if (builder.Environment.IsEnvironment("Testing") || string.IsNullOrWhiteSpace(connectionString))
 {
+    var inMemoryDatabaseName = builder.Environment.IsEnvironment("Testing")
+        ? $"AgriAssistTesting-{Guid.NewGuid():N}"
+        : "AgriAssistDevelopment";
     builder.Services.AddDbContext<AppDbContext>(options =>
-        options.UseInMemoryDatabase("AgriAssistDevelopment"));
+        options.UseInMemoryDatabase(inMemoryDatabaseName));
 }
 else
 {
@@ -57,8 +79,15 @@ else
 }
 
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
-builder.Services.AddScoped<IRequestValidator<RegisterRequest>, RegisterRequestValidator>();
+builder.Services.AddScoped<IRequestValidator<RegisterFarmerRequest>, RegisterFarmerRequestValidator>();
 builder.Services.AddScoped<IRequestValidator<LoginRequest>, LoginRequestValidator>();
+builder.Services.AddScoped<IRequestValidator<ChangeTemporaryPasswordRequest>, ChangeTemporaryPasswordRequestValidator>();
+builder.Services.AddScoped<IRequestValidator<CreateStaffUserRequest>, CreateStaffUserRequestValidator>();
+builder.Services.AddScoped<IRequestValidator<ResetStaffPasswordRequest>, ResetStaffPasswordRequestValidator>();
+builder.Services.AddSingleton<ICompromisedPasswordChecker, ConfiguredCompromisedPasswordChecker>();
+builder.Services.AddSingleton<IPasswordPolicyService, PasswordPolicyService>();
+builder.Services.AddScoped<IAdminBootstrapService, AdminBootstrapService>();
+builder.Services.AddScoped<AdminBootstrapCommand>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
@@ -95,34 +124,74 @@ builder.Services.AddHttpClient<IWeatherService, WeatherService>().RemoveAllLogge
 builder.Services.AddScoped<IWeatherResourceWorkflowService, WeatherResourceWorkflowService>();
 builder.Services.AddScoped<IWorkflowApprovalService, WorkflowApprovalService>();
 
-var jwtSecret = builder.Configuration["Jwt:Secret"];
-if (!string.IsNullOrWhiteSpace(jwtSecret))
-{
-    var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret));
-    builder.Services
-        .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-        .AddJwtBearer(options =>
+builder.Services
+    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options => options.Events = CreateJwtBearerEvents());
+builder.Services
+    .AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
+    .Configure<IConfiguration>((options, configuration) =>
+    {
+        var jwtSecret = configuration["Jwt:Secret"];
+        if (string.IsNullOrWhiteSpace(jwtSecret) || jwtSecret.Length < 32)
         {
-            options.TokenValidationParameters = new TokenValidationParameters
-            {
-                ValidateIssuer = true,
-                ValidateAudience = true,
-                ValidateIssuerSigningKey = true,
-                ValidateLifetime = true,
-                ValidIssuer = builder.Configuration["Jwt:Issuer"],
-                ValidAudience = builder.Configuration["Jwt:Audience"],
-                IssuerSigningKey = signingKey,
-                ClockSkew = TimeSpan.FromMinutes(2)
-            };
-        });
-}
-else
-{
-    builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-        .AddJwtBearer();
-}
+            return;
+        }
 
-builder.Services.AddAuthorization();
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateIssuerSigningKey = true,
+            ValidateLifetime = true,
+            ValidIssuer = configuration["Jwt:Issuer"],
+            ValidAudience = configuration["Jwt:Audience"],
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
+            ClockSkew = TimeSpan.FromMinutes(2)
+        };
+    });
+
+builder.Services.AddAuthorization(options =>
+{
+    options.DefaultPolicy = new AuthorizationPolicyBuilder(JwtBearerDefaults.AuthenticationScheme)
+        .RequireAuthenticatedUser()
+        .RequireClaim(AuthenticationClaimNames.TokenUse, AuthenticationTokenUses.Access)
+        .Build();
+
+    options.AddPolicy(
+        AuthorizationPolicyNames.PasswordChange,
+        policy => policy
+            .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
+            .RequireAuthenticatedUser()
+            .RequireClaim(AuthenticationClaimNames.TokenUse, AuthenticationTokenUses.PasswordChange));
+});
+
+var securityRateLimits = builder.Configuration
+    .GetSection(SecurityRateLimitOptions.SectionName)
+    .Get<SecurityRateLimitOptions>() ?? new SecurityRateLimitOptions();
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        var retryAfter = context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var leaseRetryAfter)
+            ? leaseRetryAfter
+            : (TimeSpan?)null;
+
+        await ExceptionHandlingMiddleware.WriteProblemAsync(
+            context.HttpContext,
+            HttpStatusCode.TooManyRequests,
+            "RATE_LIMITED",
+            "Too many requests.",
+            retryAfter);
+    };
+
+    AddFixedWindowPolicy(options, RateLimitPolicyNames.Login, securityRateLimits.Login);
+    AddFixedWindowPolicy(options, RateLimitPolicyNames.FarmerRegistration, securityRateLimits.FarmerRegistration);
+    AddFixedWindowPolicy(options, RateLimitPolicyNames.TemporaryPasswordChange, securityRateLimits.TemporaryPasswordChange);
+    AddFixedWindowPolicy(options, RateLimitPolicyNames.AdminReauthentication, securityRateLimits.AdminReauthentication);
+    AddFixedWindowPolicy(options, RateLimitPolicyNames.AdminUserManagement, securityRateLimits.AdminUserManagement);
+});
 
 var configuredReactUrl = builder.Configuration["App:ReactUrl"] ?? "http://localhost:5173";
 var allowedClientOrigins = new[] { configuredReactUrl, "http://localhost:5173", "http://127.0.0.1:5173" }
@@ -177,6 +246,14 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
+if (args.Length == 1 && string.Equals(args[0], "bootstrap-admin", StringComparison.OrdinalIgnoreCase))
+{
+    using var bootstrapScope = app.Services.CreateScope();
+    var command = bootstrapScope.ServiceProvider.GetRequiredService<AdminBootstrapCommand>();
+    Environment.ExitCode = await command.ExecuteAsync(CancellationToken.None);
+    return;
+}
+
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
 if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing"))
@@ -202,8 +279,10 @@ if (!app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("Testing"
 {
     app.UseHttpsRedirection();
 }
+app.UseRouting();
 app.UseCors("ClientApps");
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
 
 app.MapHealthChecks("/health");
@@ -211,4 +290,144 @@ app.MapControllers();
 
 app.Run();
 
+static bool IsValid(RateLimitRuleOptions options) =>
+    options.PermitLimit > 0 && options.WindowSeconds > 0;
+
+static JwtBearerEvents CreateJwtBearerEvents() =>
+    new()
+    {
+        OnTokenValidated = async context =>
+        {
+            var userIdValue = context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier);
+            var roleValue = context.Principal?.FindFirstValue(ClaimTypes.Role);
+            var tokenVersionValue = context.Principal?.FindFirstValue(AuthenticationClaimNames.TokenVersion);
+            var tokenUse = context.Principal?.FindFirstValue(AuthenticationClaimNames.TokenUse);
+
+            if (!Guid.TryParse(userIdValue, out var userId)
+                || !Enum.TryParse<ApplicationRole>(roleValue, out var tokenRole)
+                || !int.TryParse(tokenVersionValue, out var tokenVersion)
+                || tokenUse is not (AuthenticationTokenUses.Access or AuthenticationTokenUses.PasswordChange))
+            {
+                FailAuthentication(context, "TOKEN_INVALID_OR_EXPIRED");
+                return;
+            }
+
+            var dbContext = context.HttpContext.RequestServices.GetRequiredService<AppDbContext>();
+            var user = await dbContext.Users
+                .AsNoTracking()
+                .IgnoreQueryFilters()
+                .SingleOrDefaultAsync(item => item.Id == userId, context.HttpContext.RequestAborted);
+
+            if (user is null
+                || user.IsDeleted
+                || !user.IsActive
+                || user.Role != tokenRole
+                || user.TokenVersion != tokenVersion)
+            {
+                FailAuthentication(context, "SESSION_SECURITY_VERSION_INVALID");
+                return;
+            }
+
+            if (tokenUse == AuthenticationTokenUses.Access && user.MustChangePassword)
+            {
+                FailAuthentication(context, "PASSWORD_CHANGE_REQUIRED");
+                return;
+            }
+
+            if (tokenUse == AuthenticationTokenUses.PasswordChange && !user.MustChangePassword)
+            {
+                FailAuthentication(context, "TOKEN_INVALID_OR_EXPIRED");
+            }
+        },
+        OnChallenge = async context =>
+        {
+            if (context.Response.HasStarted)
+            {
+                return;
+            }
+
+            context.HandleResponse();
+            var failureCode = FindAuthenticationSecurityException(context.AuthenticateFailure)?.Code;
+            var code = failureCode switch
+            {
+                "SESSION_SECURITY_VERSION_INVALID" => failureCode,
+                "PASSWORD_CHANGE_REQUIRED" => failureCode,
+                "TOKEN_INVALID_OR_EXPIRED" => failureCode,
+                _ when context.AuthenticateFailure is null => "AUTH_REQUIRED",
+                _ => "TOKEN_INVALID_OR_EXPIRED"
+            };
+
+            await ExceptionHandlingMiddleware.WriteProblemAsync(
+                context.HttpContext,
+                HttpStatusCode.Unauthorized,
+                code,
+                "Authentication is required or the session is no longer valid.");
+        },
+        OnForbidden = async context =>
+        {
+            var isPasswordChangeToken =
+                context.HttpContext.User.FindFirstValue(AuthenticationClaimNames.TokenUse)
+                == AuthenticationTokenUses.PasswordChange;
+            await ExceptionHandlingMiddleware.WriteProblemAsync(
+                context.HttpContext,
+                HttpStatusCode.Forbidden,
+                isPasswordChangeToken ? "PASSWORD_CHANGE_REQUIRED" : "ROLE_NOT_AUTHORIZED",
+                isPasswordChangeToken
+                    ? "The temporary password must be changed before accessing this resource."
+                    : "The current role is not authorized for this resource.");
+        }
+    };
+
+static void FailAuthentication(TokenValidatedContext context, string code)
+{
+    context.HttpContext.Items[AuthenticationFailureItems.ErrorCode] = code;
+    context.Properties.Items[AuthenticationFailureItems.ErrorCode] = code;
+    context.Fail(new AuthenticationSecurityException(code));
+}
+
+static AuthenticationSecurityException? FindAuthenticationSecurityException(Exception? exception)
+{
+    while (exception is not null)
+    {
+        if (exception is AuthenticationSecurityException authenticationSecurityException)
+        {
+            return authenticationSecurityException;
+        }
+
+        exception = exception.InnerException;
+    }
+
+    return null;
+}
+
+static void AddFixedWindowPolicy(
+    RateLimiterOptions options,
+    string policyName,
+    RateLimitRuleOptions policyOptions)
+{
+    options.AddPolicy(policyName, context =>
+    {
+        var userId = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var remoteAddress = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var partitionKey = string.IsNullOrWhiteSpace(userId)
+            ? remoteAddress
+            : $"{userId}:{remoteAddress}";
+
+        return RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey,
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = policyOptions.PermitLimit,
+                Window = TimeSpan.FromSeconds(policyOptions.WindowSeconds),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            });
+    });
+}
+
 public partial class Program;
+
+internal sealed class AuthenticationSecurityException(string code) : Exception(code)
+{
+    public string Code { get; } = code;
+}

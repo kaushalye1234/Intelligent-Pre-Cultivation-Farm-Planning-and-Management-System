@@ -18,6 +18,7 @@ const adminUser: UserProfile = {
   email: 'admin@agriassist.local',
   role: 5,
   isActive: true,
+  mustChangePassword: false,
 }
 
 const fieldOfficer: UserProfile = {
@@ -26,6 +27,7 @@ const fieldOfficer: UserProfile = {
   email: 'field@agriassist.local',
   role: 2,
   isActive: true,
+  mustChangePassword: false,
 }
 
 function authValue(overrides: Partial<React.ContextType<typeof AuthContext>> = {}) {
@@ -34,7 +36,10 @@ function authValue(overrides: Partial<React.ContextType<typeof AuthContext>> = {
     token: null,
     isAuthenticated: false,
     isLoading: false,
+    passwordChangeUser: null,
+    hasPasswordChangeSession: false,
     login: vi.fn(),
+    changeTemporaryPassword: vi.fn(),
     logout: vi.fn(),
     ...overrides,
   }
@@ -110,7 +115,7 @@ describe('React public website and portal routing', () => {
   })
 
   it('redirects successful admin login to the admin dashboard route', async () => {
-    const login = vi.fn().mockResolvedValue(adminUser)
+    const login = vi.fn().mockResolvedValue({ status: 'authenticated', user: adminUser })
     render(
       <MemoryRouter initialEntries={['/login']}>
         <AuthContext.Provider value={authValue({ login })}>
