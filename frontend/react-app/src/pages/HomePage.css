@@ -1,0 +1,37 @@
+.home-page {
+  --home-ink: #14251a;
+  --home-forest: #123d27;
+  --home-leaf: #2e7d4f;
+  --home-meadow: #dfe9d8;
+  --home-harvest: #c2a55b;
+  --home-cream: #faf7ee;
+  position: relative;
+  gap: clamp(64px, 8vw, 112px);
+  overflow: clip;
+  background: var(--home-cream);
+}
+
+.home-section,
+.home-cta {
+  position: relative;
+  z-index: 1;
+}
+
+.home-section {
+  gap: clamp(24px, 4vw, 44px);
+}
+
+.home-section .public-section-heading {
+  max-width: 680px;
+}
+
+.home-section .public-section-heading p,
+.home-eyebrow {
+  letter-spacing: 0.12em;
+}
+
+@media (max-width: 768px) {
+  .home-page {
+    gap: 64px;
+  }
+}

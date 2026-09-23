@@ -1,6 +1,7 @@
 import { ArrowRight, CalendarCheck, ClipboardCheck, PackageCheck, ShieldCheck, Sprout, Users } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import heroImage from '../assets/hero.png'
+import './HomePage.css'
 
 const features = [
   {
@@ -35,11 +36,11 @@ const roles = [
 
 export function HomePage() {
   return (
-    <div className="public-page">
-      <section className="hero-section" style={{ backgroundImage: `linear-gradient(90deg, rgba(18, 35, 25, 0.82), rgba(18, 35, 25, 0.42)), url(${heroImage})` }}>
-        <div className="hero-content">
-          <p>AgriAssist</p>
-          <h1>Smart Agricultural Planning and Farm Operations Management</h1>
+    <div className="public-page home-page">
+      <section className="hero-section home-hero" aria-labelledby="home-hero-title" style={{ backgroundImage: `linear-gradient(90deg, rgba(18, 35, 25, 0.82), rgba(18, 35, 25, 0.42)), url(${heroImage})` }}>
+        <div className="hero-content home-hero-content">
+          <p className="home-eyebrow">AgriAssist</p>
+          <h1 id="home-hero-title">Smart Agricultural Planning and Farm Operations Management</h1>
           <span>
             AgriAssist helps farmers and agricultural staff coordinate crop planning, field inspections, resources,
             schedules and manual approvals through a connected operations platform.
@@ -55,10 +56,10 @@ export function HomePage() {
         </div>
       </section>
 
-      <section className="public-section">
+      <section className="public-section home-section home-features" aria-labelledby="home-features-title">
         <div className="public-section-heading">
           <p>Core Features</p>
-          <h2>Built around real agricultural workflows</h2>
+          <h2 id="home-features-title">Built around real agricultural workflows</h2>
         </div>
         <div className="feature-grid">
           {features.map((feature) => {
@@ -74,10 +75,10 @@ export function HomePage() {
         </div>
       </section>
 
-      <section className="public-section process-section">
+      <section className="public-section process-section home-section home-process" aria-labelledby="home-process-title">
         <div className="public-section-heading">
           <p>How It Works</p>
-          <h2>From request to approval</h2>
+          <h2 id="home-process-title">From request to approval</h2>
         </div>
         <ol className="process-list">
           {['Farmer submits crop plan request', 'Field inspection', 'Resource and weather review', 'Task and schedule management', 'Agricultural officer approval'].map((step) => (
@@ -90,10 +91,10 @@ export function HomePage() {
         <p className="public-muted">The platform is designed with an AI-ready architecture for future intelligent planning support. Real Agentic AI is not active in this phase.</p>
       </section>
 
-      <section className="public-section">
+      <section className="public-section home-section home-roles" aria-labelledby="home-roles-title">
         <div className="public-section-heading">
           <p>User Roles</p>
-          <h2>Clear responsibilities across the farm operation</h2>
+          <h2 id="home-roles-title">Clear responsibilities across the farm operation</h2>
         </div>
         <div className="role-card-grid">
           {roles.map(([title, description]) => (
@@ -106,10 +107,10 @@ export function HomePage() {
         </div>
       </section>
 
-      <section className="public-cta">
+      <section className="public-cta home-cta" aria-labelledby="home-cta-title">
         <ShieldCheck size={28} aria-hidden="true" />
         <div>
-          <h2>Staff member?</h2>
+          <h2 id="home-cta-title">Staff member?</h2>
           <p>Sign in to access your AgriAssist operations dashboard.</p>
         </div>
         <Link className="ui-button ui-button-primary" to="/login">
