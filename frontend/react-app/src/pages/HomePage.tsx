@@ -93,7 +93,6 @@ export function HomePage() {
               </svg>
             </div>
             <div className={`${styles.fieldMarker} ${styles.markerOne}`}><Sprout size={17} /></div>
-            <div className={`${styles.fieldMarker} ${styles.markerTwo}`}><ClipboardCheck size={17} /></div>
             <div className={`${styles.fieldMarker} ${styles.markerThree}`}><ShieldCheck size={17} /></div>
             <div className={styles.visualCaption}>
               <span>One connected journey</span>

@@ -269,7 +269,6 @@
 }
 
 .markerOne { top: 205px; left: 17%; }
-.markerTwo { top: 166px; left: 48%; }
 .markerThree { top: 124px; right: 14%; }
 
 .visualCaption {
@@ -676,7 +675,6 @@
     animation: aa-home-crop-sway 9s ease-in-out infinite;
   }
 
-  .markerTwo { animation-delay: -2s; }
   .markerThree { animation-delay: -4s; }
 }
 
@@ -784,7 +782,6 @@
   }
 
   .markerOne { top: 140px; }
-  .markerTwo { top: 112px; }
   .markerThree { top: 86px; }
 
   .section,
