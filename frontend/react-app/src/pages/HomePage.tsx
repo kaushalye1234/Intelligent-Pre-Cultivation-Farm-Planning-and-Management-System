@@ -1,6 +1,7 @@
 import { ArrowRight, CalendarCheck, ClipboardCheck, PackageCheck, ShieldCheck, Sprout, Users } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import './HomePage.css'
+import { HomeGrowthPlant } from './HomeGrowthPlant'
 import { useHomeScrollReveal } from './useHomeScrollReveal'
 
 const features = [
@@ -85,7 +86,9 @@ export function HomePage() {
         </div>
       </section>
 
-      <section id="home-features" className="public-section home-section home-features" aria-labelledby="home-features-title">
+      <div className="home-growth-journey">
+        <HomeGrowthPlant />
+        <section id="home-features" className="public-section home-section home-features" aria-labelledby="home-features-title">
         <div className="public-section-heading" data-home-reveal="heading">
           <p>Core Features</p>
           <h2 id="home-features-title">Built around real agricultural workflows</h2>
@@ -102,9 +105,9 @@ export function HomePage() {
             )
           })}
         </div>
-      </section>
+        </section>
 
-      <section className="public-section process-section home-section home-process" aria-labelledby="home-process-title">
+        <section className="public-section process-section home-section home-process" aria-labelledby="home-process-title">
         <div className="public-section-heading" data-home-reveal="heading">
           <p>How It Works</p>
           <h2 id="home-process-title">From request to approval</h2>
@@ -118,9 +121,9 @@ export function HomePage() {
           ))}
         </ol>
         <p className="public-muted" data-home-reveal="note">The platform is designed with an AI-ready architecture for future intelligent planning support. Real Agentic AI is not active in this phase.</p>
-      </section>
+        </section>
 
-      <section className="public-section home-section home-roles" aria-labelledby="home-roles-title">
+        <section className="public-section home-section home-roles" aria-labelledby="home-roles-title">
         <div className="public-section-heading" data-home-reveal="heading">
           <p>User Roles</p>
           <h2 id="home-roles-title">Clear responsibilities across the farm operation</h2>
@@ -134,7 +137,8 @@ export function HomePage() {
             </article>
           ))}
         </div>
-      </section>
+        </section>
+      </div>
 
       <section className="public-cta home-cta" aria-labelledby="home-cta-title" data-home-reveal="group">
         <ShieldCheck size={28} aria-hidden="true" />
