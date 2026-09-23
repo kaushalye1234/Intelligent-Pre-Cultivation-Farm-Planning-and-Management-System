@@ -14,9 +14,9 @@
   padding: 20px;
   overflow: hidden;
   background:
-    linear-gradient(180deg, rgba(250, 247, 238, 0.09), rgba(250, 247, 238, 0.025)),
-    rgba(7, 25, 15, 0.24);
-  border: 1px solid rgba(232, 239, 219, 0.15);
+    linear-gradient(180deg, rgba(255, 253, 248, 0.12), rgba(255, 253, 248, 0.04)),
+    rgba(19, 61, 38, 0.2);
+  border: 1px solid rgba(238, 245, 232, 0.2);
   border-radius: 20px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
@@ -44,7 +44,7 @@
 }
 
 .plantHeader small {
-  color: #9eb19b;
+  color: #c3d5bd;
 }
 
 .plant {
@@ -142,7 +142,7 @@
   justify-content: space-between;
   gap: 10px;
   padding-top: 12px;
-  color: #a9b9a5;
+  color: #cadbc4;
   border-top: 1px solid rgba(255, 255, 255, 0.11);
 }
 

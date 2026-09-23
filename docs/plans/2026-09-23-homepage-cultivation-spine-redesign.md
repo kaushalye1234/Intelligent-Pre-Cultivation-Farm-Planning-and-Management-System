@@ -2,7 +2,7 @@
 
 ## Direction
 
-The homepage uses a clean premium farm-tech visual language: restrained serif display type, clean sans-serif body copy, deep agricultural greens, warm off-white surfaces, and subtle harvest-gold accents. Existing public navigation, routes, authentication behavior, roles, copy, and backend integration remain unchanged.
+The homepage uses a clean premium farm-tech visual language: restrained serif display type, clean sans-serif body copy, a dark navbar, a medium sage hero, warm ivory page surfaces, soft sage cards, one deeper-green workflow anchor, and subtle harvest-gold accents. The final CTA returns to a light surface with a strong green action. Existing public navigation, routes, authentication behavior, roles, copy, and backend integration remain unchanged.
 
 ## Section design
 
