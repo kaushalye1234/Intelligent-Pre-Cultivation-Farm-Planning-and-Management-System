@@ -21,6 +21,48 @@
   gap: clamp(24px, 4vw, 44px);
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  .home-reveal-ready [data-home-reveal] {
+    opacity: 0;
+    transform: translate3d(0, 24px, 0);
+    transition: opacity 620ms ease, transform 620ms cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: opacity, transform;
+  }
+
+  .home-reveal-ready [data-home-reveal="hero"] {
+    transform: translate3d(-18px, 0, 0);
+  }
+
+  .home-reveal-ready [data-home-reveal="hero-visual"] {
+    transform: translate3d(22px, 12px, 0) scale(0.985);
+  }
+
+  .home-reveal-ready [data-home-reveal].is-revealed {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    will-change: auto;
+  }
+
+  .home-reveal-ready .feature-grid [data-home-reveal]:nth-child(2),
+  .home-reveal-ready .role-card-grid [data-home-reveal]:nth-child(2) {
+    transition-delay: 70ms;
+  }
+
+  .home-reveal-ready .feature-grid [data-home-reveal]:nth-child(3),
+  .home-reveal-ready .role-card-grid [data-home-reveal]:nth-child(3) {
+    transition-delay: 140ms;
+  }
+
+  .home-reveal-ready .feature-grid [data-home-reveal]:nth-child(4),
+  .home-reveal-ready .role-card-grid [data-home-reveal]:nth-child(4) {
+    transition-delay: 210ms;
+  }
+
+  .home-reveal-ready .role-card-grid [data-home-reveal]:nth-child(5) {
+    transition-delay: 280ms;
+  }
+}
+
 .home-section .public-section-heading {
   max-width: 680px;
 }
