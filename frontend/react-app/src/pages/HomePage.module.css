@@ -21,11 +21,11 @@
   display: grid;
   align-items: center;
   padding: clamp(52px, 6vw, 78px) 24px;
-  color: #173321;
+  color: #fffaf1;
   background:
-    radial-gradient(circle at 12% 8%, rgba(255, 253, 247, 0.46), transparent 28%),
-    radial-gradient(circle at 84% 14%, rgba(185, 153, 79, 0.18), transparent 24%),
-    linear-gradient(135deg, #bed0b6 0%, #9bb39a 52%, #78947e 100%);
+    radial-gradient(circle at 12% 8%, rgba(255, 253, 247, 0.11), transparent 29%),
+    radial-gradient(circle at 84% 14%, rgba(185, 153, 79, 0.15), transparent 24%),
+    linear-gradient(135deg, #3f684c 0%, #57765c 54%, #768e78 100%);
 }
 
 .heroInner {
@@ -54,7 +54,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #28583b;
+  color: #e2ebdc;
 }
 
 .eyebrow span {
@@ -67,7 +67,7 @@
 .hero h1 {
   max-width: 650px;
   margin: 0;
-  color: #173321;
+  color: #fffdf7;
   font-family: Georgia, "Times New Roman", serif;
   font-size: clamp(42px, 4.6vw, 60px);
   font-weight: 600;
@@ -76,14 +76,14 @@
 }
 
 .hero h1 em {
-  color: #2d6745;
+  color: #d9e5d2;
   font-weight: inherit;
 }
 
 .heroSummary {
   max-width: 620px;
   margin: 22px 0 0;
-  color: rgba(20, 48, 31, 0.8);
+  color: rgba(255, 253, 248, 0.84);
   font-size: 17px;
   line-height: 1.68;
 }
@@ -113,15 +113,15 @@
 }
 
 .primaryAction {
-  color: #fffdf8;
-  background: #1d5b3a;
-  border-color: #1d5b3a;
+  color: #19482e;
+  background: #eef3e6;
+  border-color: #eef3e6;
 }
 
 .secondaryAction {
-  color: #173321;
-  background: rgba(255, 253, 247, 0.24);
-  border-color: rgba(23, 51, 33, 0.36);
+  color: #fffdf8;
+  background: rgba(255, 253, 247, 0.08);
+  border-color: rgba(255, 253, 247, 0.46);
 }
 
 .primaryAction:hover,
@@ -142,7 +142,7 @@
   flex-wrap: wrap;
   gap: 20px;
   margin-top: 28px;
-  color: rgba(23, 51, 33, 0.68);
+  color: rgba(255, 253, 248, 0.7);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.13em;
@@ -168,11 +168,11 @@
   min-height: 390px;
   overflow: hidden;
   background:
-    linear-gradient(180deg, rgba(255, 253, 247, 0.3), rgba(238, 244, 232, 0.12)),
-    rgba(47, 91, 62, 0.08);
-  border: 1px solid rgba(31, 76, 48, 0.24);
+    linear-gradient(180deg, rgba(255, 253, 247, 0.34), rgba(238, 244, 232, 0.15)),
+    rgba(225, 235, 218, 0.13);
+  border: 1px solid rgba(255, 253, 247, 0.3);
   border-radius: 28px 28px 74px 28px;
-  box-shadow: 0 24px 60px rgba(32, 69, 45, 0.14);
+  box-shadow: 0 24px 60px rgba(26, 56, 36, 0.2);
 }
 
 .fieldSun {
@@ -190,7 +190,7 @@
   inset: 112px 28px auto;
   z-index: 0;
   height: 84px;
-  border-top: 1px solid rgba(32, 81, 50, 0.3);
+  border-top: 1px solid rgba(29, 75, 46, 0.43);
   border-radius: 50%;
   transform: rotate(-4deg);
 }
@@ -207,8 +207,8 @@
 }
 
 .fieldPlot span {
-  background: linear-gradient(90deg, transparent, rgba(50, 105, 68, 0.26), transparent);
-  border-inline: 1px solid rgba(31, 76, 48, 0.18);
+  background: linear-gradient(90deg, transparent, rgba(37, 91, 57, 0.36), transparent);
+  border-inline: 1px solid rgba(28, 72, 44, 0.28);
 }
 
 .heroCrop {
@@ -218,7 +218,7 @@
   z-index: 1;
   width: 178px;
   height: 278px;
-  opacity: 0.22;
+  opacity: 0.25;
   pointer-events: none;
   transform: translateX(-50%);
 }
@@ -233,7 +233,7 @@
 .heroCrop [data-crop-stem],
 .heroCrop [data-crop-vein] {
   fill: none;
-  stroke: #285f3d;
+  stroke: #24583a;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -247,8 +247,8 @@
 }
 
 .heroCrop [data-crop-leaf] {
-  fill: rgba(45, 103, 69, 0.3);
-  stroke: #285f3d;
+  fill: rgba(35, 91, 57, 0.34);
+  stroke: #24583a;
   stroke-width: 1.6;
 }
 
@@ -287,7 +287,7 @@
 }
 
 .visualCaption span {
-  color: #316345;
+  color: #285d3d;
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.12em;
@@ -295,7 +295,7 @@
 }
 
 .visualCaption strong {
-  color: #173321;
+  color: #173a26;
   font-family: Georgia, "Times New Roman", serif;
   font-size: 17px;
   font-weight: 500;
