@@ -9,6 +9,8 @@ from schemas.common import AgentEnvelope, CamelModel
 
 class FieldAnalysisInput(CamelModel):
     workflow_id: UUID = Field(alias="workflowId")
+    crop_plan_request_id: UUID = Field(alias="cropPlanRequestId")
+    pre_planting_inspection_id: UUID = Field(alias="prePlantingInspectionId")
     field_id: UUID = Field(alias="fieldId")
     crop_cycle_id: UUID | None = Field(default=None, alias="cropCycleId")
     requested_analysis: list[str] = Field(default_factory=list, alias="requestedAnalysis")
@@ -50,4 +52,3 @@ class InspectionEvidence(CamelModel):
     scheduled_at: datetime | None = Field(default=None, alias="scheduledAt")
     completed_at: datetime | None = Field(default=None, alias="completedAt")
     observations: list[dict[str, Any]] = Field(default_factory=list)
-

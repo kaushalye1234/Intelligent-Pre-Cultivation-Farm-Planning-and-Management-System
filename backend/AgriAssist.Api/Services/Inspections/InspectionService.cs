@@ -94,6 +94,7 @@ public sealed class InspectionService(
         Validate(inspectionValidator.Validate(request));
         RequireInspectionStaff();
         var inspection = await ApplyInspectionAccess(dbContext.FieldInspections).SingleOrDefaultAsync(item => item.Id == id, cancellationToken) ?? throw NotFound("Inspection");
+        RequireFieldOfficerForPrePlantingMutation(inspection);
         inspection.ScheduledAt = request.ScheduledAt;
         inspection.Status = request.Status;
         inspection.Summary = request.Summary.Trim();
@@ -126,7 +127,10 @@ public sealed class InspectionService(
     {
         Validate(observationValidator.Validate(request));
         RequireInspectionStaff();
-        await EnsureInspectionVisibleAsync(request.FieldInspectionId, cancellationToken);
+        var inspection = await ApplyInspectionAccess(dbContext.FieldInspections.AsNoTracking())
+            .SingleOrDefaultAsync(item => item.Id == request.FieldInspectionId, cancellationToken)
+            ?? throw NotFound("Inspection");
+        RequireFieldOfficerForPrePlantingMutation(inspection);
         var observation = new InspectionObservation { FieldInspectionId = request.FieldInspectionId, ObservationType = request.ObservationType.Trim(), Notes = request.Notes.Trim(), CreatedByUserId = currentUser.UserId };
         dbContext.InspectionObservations.Add(observation);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -262,7 +266,10 @@ public sealed class InspectionService(
     public async Task<InspectionImageResponse> UploadImageAsync(Guid inspectionId, IFormFile file, CancellationToken cancellationToken)
     {
         RequireInspectionStaff();
-        await EnsureInspectionVisibleAsync(inspectionId, cancellationToken);
+        var inspection = await ApplyInspectionAccess(dbContext.FieldInspections.AsNoTracking())
+            .SingleOrDefaultAsync(item => item.Id == inspectionId, cancellationToken)
+            ?? throw NotFound("Inspection");
+        RequireFieldOfficerForPrePlantingMutation(inspection);
         var upload = await cloudinaryService.UploadInspectionImageAsync(file, cancellationToken);
         var image = new InspectionImage { FieldInspectionId = inspectionId, Url = upload.Url, PublicId = upload.PublicId, ContentType = upload.ContentType, SizeBytes = upload.SizeBytes, CreatedByUserId = currentUser.UserId };
         dbContext.InspectionImages.Add(image);
@@ -284,6 +291,7 @@ public sealed class InspectionService(
     {
         RequireInspectionStaff();
         var inspection = await ApplyInspectionAccess(dbContext.FieldInspections).SingleOrDefaultAsync(item => item.Id == id, cancellationToken) ?? throw NotFound("Inspection");
+        RequireFieldOfficerForPrePlantingMutation(inspection);
         inspection.Status = status;
         inspection.CompletedAt = status == InspectionStatus.Completed ? DateTime.UtcNow : inspection.CompletedAt;
         inspection.UpdatedAt = DateTime.UtcNow;
@@ -321,6 +329,14 @@ public sealed class InspectionService(
         if (currentUser.Role is not (ApplicationRole.FieldOfficer or ApplicationRole.AgriculturalOfficer or ApplicationRole.Admin))
         {
             throw new ApiException(HttpStatusCode.Forbidden, "INSPECTION_STAFF_REQUIRED", "Inspection staff role is required.");
+        }
+    }
+
+    private void RequireFieldOfficerForPrePlantingMutation(FieldInspection inspection)
+    {
+        if (inspection.Purpose == InspectionPurpose.PrePlanting && currentUser.Role != ApplicationRole.FieldOfficer)
+        {
+            throw new ApiException(HttpStatusCode.Forbidden, "FIELD_OFFICER_REQUIRED", "A Field Officer is required to change a pre-planting assessment.");
         }
     }
 

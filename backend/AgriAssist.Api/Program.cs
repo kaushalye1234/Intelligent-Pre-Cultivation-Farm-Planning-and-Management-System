@@ -97,6 +97,7 @@ builder.Services.AddScoped<IRequestValidator<CropTypeRequest>, CropTypeRequestVa
 builder.Services.AddScoped<IRequestValidator<CropCycleRequest>, CropCycleRequestValidator>();
 builder.Services.AddScoped<IRequestValidator<CropPlanRequestCreate>, CropPlanRequestCreateValidator>();
 builder.Services.AddScoped<IRequestValidator<CropPlanRequestUpdate>, CropPlanRequestUpdateValidator>();
+builder.Services.AddScoped<IRequestValidator<PrePlantingAssessmentRequest>, PrePlantingAssessmentRequestValidator>();
 builder.Services.AddScoped<ICropPlanningService, CropPlanningService>();
 builder.Services.AddScoped<IRequestValidator<FieldInspectionRequest>, FieldInspectionRequestValidator>();
 builder.Services.AddScoped<IRequestValidator<ObservationRequest>, ObservationRequestValidator>();

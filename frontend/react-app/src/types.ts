@@ -162,6 +162,35 @@ export type FieldAnalysisResult = {
   openIssues: FieldAnalysisOpenIssue[]
   priority: string
 }
+
+export type PrePlantingAssessmentInput = {
+  soilCondition: string
+  waterAvailability: string
+  irrigationAvailability: string
+  drainageCondition: string
+  generalFieldCondition: string
+  plantingReadiness: string
+  risksAndConcerns: string
+  officerNotes: string
+}
+
+export type PrePlantingAssessmentImage = {
+  id: string
+  url: string
+  contentType: string
+  sizeBytes: number
+}
+
+export type PrePlantingAssessment = PrePlantingAssessmentInput & {
+  inspectionId: string
+  cropPlanRequestId: string
+  fieldId: string
+  status: number
+  scheduledAt: string
+  completedAt?: string
+  images: PrePlantingAssessmentImage[]
+}
+
 export type ResourceCategory = {
   id: string
   name: string

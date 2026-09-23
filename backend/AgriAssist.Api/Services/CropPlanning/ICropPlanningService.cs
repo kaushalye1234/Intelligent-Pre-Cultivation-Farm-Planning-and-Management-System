@@ -30,6 +30,8 @@ public interface ICropPlanningService
     Task<CropPlanRequestResponse> GeneratePreliminaryRequestAsync(CropPlanRequestCreate request, CancellationToken cancellationToken);
     Task<IReadOnlyList<CropPlanHistoryResponse>> GetCropPlanHistoryAsync(Guid requestId, CancellationToken cancellationToken);
     Task<CropPlanningWorkflowStartResponse> StartAiWorkflowAsync(Guid requestId, CancellationToken cancellationToken);
+    Task<PrePlantingAssessmentResponse?> GetPrePlantingAssessmentAsync(Guid requestId, CancellationToken cancellationToken);
+    Task<PrePlantingAssessmentResponse> SavePrePlantingAssessmentAsync(Guid requestId, PrePlantingAssessmentRequest request, CancellationToken cancellationToken);
     Task<FieldAnalysisRunResponse> RunFieldAnalysisAsync(Guid requestId, CancellationToken cancellationToken);
     Task<CropPlanningWorkflowStatusResponse> GetWorkflowStatusAsync(Guid requestId, CancellationToken cancellationToken);
     Task<CropPlanningResultResponse> GetPlanningResultAsync(Guid requestId, CancellationToken cancellationToken);

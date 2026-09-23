@@ -152,10 +152,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<FieldInspection>(entity =>
         {
             entity.Property(inspection => inspection.Status).HasConversion<string>().HasMaxLength(40);
+            entity.Property(inspection => inspection.Purpose).HasConversion<string>().HasMaxLength(40).HasDefaultValue(InspectionPurpose.Routine);
             entity.Property(inspection => inspection.Summary).HasMaxLength(1000);
             entity.HasOne(inspection => inspection.Field).WithMany().HasForeignKey(inspection => inspection.FieldId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(inspection => inspection.CropPlanRequest).WithMany().HasForeignKey(inspection => inspection.CropPlanRequestId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(inspection => inspection.InspectorUser).WithMany().HasForeignKey(inspection => inspection.InspectorUserId).OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(inspection => inspection.FieldId);
+            entity.HasIndex(inspection => new { inspection.CropPlanRequestId, inspection.Purpose }).IsUnique();
             entity.HasIndex(inspection => inspection.Status);
             entity.HasIndex(inspection => inspection.ScheduledAt);
         });

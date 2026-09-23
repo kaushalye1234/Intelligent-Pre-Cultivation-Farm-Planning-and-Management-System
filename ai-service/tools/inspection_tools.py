@@ -15,27 +15,60 @@ class InspectionTools:
     async def get_crop_cycle_details(self, crop_cycle_id: UUID, workflow_id: UUID, agent_step_id: UUID | None = None) -> dict[str, Any]:
         return await self._get_dict(f"/api/internal/agent-tools/crop-cycles/{crop_cycle_id}", workflow_id, agent_step_id)
 
-    async def get_recent_inspections(self, field_id: UUID, workflow_id: UUID, agent_step_id: UUID | None = None) -> list[InspectionEvidence]:
+    async def get_recent_inspections(
+        self,
+        field_id: UUID,
+        crop_plan_request_id: UUID,
+        pre_planting_inspection_id: UUID,
+        workflow_id: UUID,
+        agent_step_id: UUID | None = None,
+    ) -> list[InspectionEvidence]:
         envelope = await self._client.get(
             "/api/internal/agent-tools/recent-inspections",
             workflow_id=workflow_id,
-            params=self._params(agent_step_id, {"fieldId": str(field_id)}),
+            params=self._params(agent_step_id, {
+                "fieldId": str(field_id),
+                "cropPlanRequestId": str(crop_plan_request_id),
+                "prePlantingInspectionId": str(pre_planting_inspection_id),
+            }),
         )
         return [InspectionEvidence.model_validate(item) for item in list(envelope.data or [])]
 
-    async def get_open_crop_issues(self, field_id: UUID, workflow_id: UUID, agent_step_id: UUID | None = None) -> list[dict[str, Any]]:
+    async def get_open_crop_issues(
+        self,
+        field_id: UUID,
+        crop_plan_request_id: UUID,
+        pre_planting_inspection_id: UUID,
+        workflow_id: UUID,
+        agent_step_id: UUID | None = None,
+    ) -> list[dict[str, Any]]:
         envelope = await self._client.get(
             "/api/internal/agent-tools/open-crop-issues",
             workflow_id=workflow_id,
-            params=self._params(agent_step_id, {"fieldId": str(field_id)}),
+            params=self._params(agent_step_id, {
+                "fieldId": str(field_id),
+                "cropPlanRequestId": str(crop_plan_request_id),
+                "prePlantingInspectionId": str(pre_planting_inspection_id),
+            }),
         )
         return list(envelope.data or [])
 
-    async def get_inspection_image_metadata(self, field_id: UUID, workflow_id: UUID, agent_step_id: UUID | None = None) -> list[dict[str, Any]]:
+    async def get_inspection_image_metadata(
+        self,
+        field_id: UUID,
+        crop_plan_request_id: UUID,
+        pre_planting_inspection_id: UUID,
+        workflow_id: UUID,
+        agent_step_id: UUID | None = None,
+    ) -> list[dict[str, Any]]:
         envelope = await self._client.get(
             "/api/internal/agent-tools/inspection-image-metadata",
             workflow_id=workflow_id,
-            params=self._params(agent_step_id, {"fieldId": str(field_id)}),
+            params=self._params(agent_step_id, {
+                "fieldId": str(field_id),
+                "cropPlanRequestId": str(crop_plan_request_id),
+                "prePlantingInspectionId": str(pre_planting_inspection_id),
+            }),
         )
         return list(envelope.data or [])
 
@@ -61,4 +94,3 @@ class InspectionTools:
         if agent_step_id:
             params["agentStepId"] = str(agent_step_id)
         return params
-

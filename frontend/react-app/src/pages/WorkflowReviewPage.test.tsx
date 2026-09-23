@@ -42,7 +42,11 @@ afterEach(() => vi.restoreAllMocks())
 
 describe('WorkflowReviewPage', () => {
   it('submits the reviewed candidate revision and workflow version', async () => {
-    vi.spyOn(api, 'get').mockResolvedValue({ data: review } as never)
+    vi.spyOn(api, 'get').mockImplementation(async (url) => {
+      if (url === '/task-approval/workflows/workflow-1') return { data: review } as never
+      if (url === '/crop-plans/plan-1/pre-planting-assessment') return { data: null } as never
+      throw new Error('Unexpected GET ' + url)
+    })
     const post = vi.spyOn(api, 'post').mockResolvedValue({ data: {} } as never)
 
     render(

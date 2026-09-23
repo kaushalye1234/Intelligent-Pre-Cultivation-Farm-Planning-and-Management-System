@@ -15,12 +15,15 @@ STEP_ID = UUID("44444444-4444-4444-4444-444444444444")
 INSPECTION_ID = UUID("55555555-5555-5555-5555-555555555555")
 ISSUE_ID = UUID("66666666-6666-6666-6666-666666666666")
 PROFILE_ID = UUID("77777777-7777-7777-7777-777777777777")
+PLAN_REQUEST_ID = UUID("88888888-8888-8888-8888-888888888888")
 
 
 def field_input() -> FieldAnalysisInput:
     return FieldAnalysisInput.model_validate(
         {
             "workflowId": str(WORKFLOW_ID),
+            "cropPlanRequestId": str(PLAN_REQUEST_ID),
+            "prePlantingInspectionId": str(INSPECTION_ID),
             "fieldId": str(FIELD_ID),
             "cropCycleId": str(CYCLE_ID),
             "requestedAnalysis": ["condition", "issues"],
@@ -47,8 +50,10 @@ class FakeTools:
         self.calls.append("GetCropCycleDetails")
         return {"id": str(crop_cycle_id), "status": "Active"}
 
-    async def get_recent_inspections(self, field_id, workflow_id, agent_step_id=None):
+    async def get_recent_inspections(self, field_id, crop_plan_request_id, pre_planting_inspection_id, workflow_id, agent_step_id=None):
         self.calls.append("GetRecentInspections")
+        assert crop_plan_request_id == PLAN_REQUEST_ID
+        assert pre_planting_inspection_id == INSPECTION_ID
         if not self.inspections:
             return []
         return [
@@ -63,8 +68,10 @@ class FakeTools:
             }
         ]
 
-    async def get_open_crop_issues(self, field_id, workflow_id, agent_step_id=None):
+    async def get_open_crop_issues(self, field_id, crop_plan_request_id, pre_planting_inspection_id, workflow_id, agent_step_id=None):
         self.calls.append("GetOpenCropIssues")
+        assert crop_plan_request_id == PLAN_REQUEST_ID
+        assert pre_planting_inspection_id == INSPECTION_ID
         return [
             {
                 "id": str(ISSUE_ID),
@@ -76,8 +83,10 @@ class FakeTools:
             }
         ]
 
-    async def get_inspection_image_metadata(self, field_id, workflow_id, agent_step_id=None):
+    async def get_inspection_image_metadata(self, field_id, crop_plan_request_id, pre_planting_inspection_id, workflow_id, agent_step_id=None):
         self.calls.append("GetInspectionImageMetadata")
+        assert crop_plan_request_id == PLAN_REQUEST_ID
+        assert pre_planting_inspection_id == INSPECTION_ID
         if not self.images:
             return []
         return [{"id": "88888888-8888-8888-8888-888888888888", "fieldInspectionId": str(INSPECTION_ID), "contentType": "image/jpeg"}]
@@ -189,4 +198,3 @@ async def test_tool_selection_uses_allow_list():
         "GetInspectionImageMetadata",
         "GetCropReferenceProfile",
     ]
-

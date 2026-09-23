@@ -83,6 +83,41 @@ public sealed class InspectionWorkflowTests
     }
 
     [Fact]
+    public async Task Only_field_officer_can_mutate_pre_planting_inspection()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedFieldAsync(db);
+        var inspection = new FieldInspection
+        {
+            FieldId = data.FieldId,
+            InspectorUserId = data.OfficerId,
+            Purpose = InspectionPurpose.PrePlanting,
+            ScheduledAt = DateTime.UtcNow,
+            Status = InspectionStatus.InProgress,
+            Summary = "Linked pre-planting assessment."
+        };
+        db.FieldInspections.Add(inspection);
+        await db.SaveChangesAsync();
+        var adminService = NewService(db, ApplicationRole.Admin, data.OfficerId);
+
+        var submitError = await Assert.ThrowsAsync<ApiException>(() => adminService.SubmitInspectionAsync(inspection.Id, CancellationToken.None));
+        var uploadError = await Assert.ThrowsAsync<ApiException>(() => adminService.UploadImageAsync(inspection.Id, CreateFormFile(), CancellationToken.None));
+        var observationError = await Assert.ThrowsAsync<ApiException>(() => adminService.CreateObservationAsync(
+            new ObservationRequest(inspection.Id, "OfficerNotes", "Administrative edit."),
+            CancellationToken.None));
+
+        Assert.Equal("FIELD_OFFICER_REQUIRED", submitError.Code);
+        Assert.Equal("FIELD_OFFICER_REQUIRED", uploadError.Code);
+        Assert.Equal("FIELD_OFFICER_REQUIRED", observationError.Code);
+        Assert.Empty(await db.InspectionImages.ToListAsync());
+        Assert.Empty(await db.InspectionObservations.ToListAsync());
+
+        var fieldOfficerService = NewService(db, ApplicationRole.FieldOfficer, data.OfficerId);
+        var submitted = await fieldOfficerService.SubmitInspectionAsync(inspection.Id, CancellationToken.None);
+        Assert.Equal(InspectionStatus.Completed, submitted.Status);
+    }
+
+    [Fact]
     public async Task Cloudinary_failure_does_not_persist_image_metadata()
     {
         await using var db = NewDbContext();
