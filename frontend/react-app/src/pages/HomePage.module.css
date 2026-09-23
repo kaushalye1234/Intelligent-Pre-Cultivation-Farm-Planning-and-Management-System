@@ -19,7 +19,8 @@
 .hero {
   position: relative;
   isolation: isolate;
-  min-height: 560px;
+  min-height: calc(100vh - 76px);
+  min-height: calc(100svh - 76px);
   display: grid;
   align-items: center;
   padding: clamp(52px, 6vw, 78px) 24px;
