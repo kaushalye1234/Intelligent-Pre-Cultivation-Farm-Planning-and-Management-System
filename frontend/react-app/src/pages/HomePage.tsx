@@ -1,7 +1,7 @@
 import { ArrowRight, CalendarCheck, ClipboardCheck, PackageCheck, ShieldCheck, Sprout, Users } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import './HomePage.css'
 import { HomeGrowthPlant } from './HomeGrowthPlant'
+import styles from './HomePage.module.css'
 import { useHomeScrollReveal } from './useHomeScrollReveal'
 
 const features = [
@@ -44,49 +44,42 @@ const processSteps = [
 ]
 
 export function HomePage() {
-  const pageRef = useHomeScrollReveal()
+  const pageRef = useHomeScrollReveal(styles.revealReady, styles.revealed)
 
   return (
-    <div ref={pageRef} className="public-page home-page">
-      <section className="hero-section home-hero" aria-labelledby="home-hero-title">
-        <div className="home-hero-glow" aria-hidden="true" />
-        <div className="home-hero-grid">
-          <div className="hero-content home-hero-content" data-home-reveal="hero">
-            <p className="home-eyebrow"><span aria-hidden="true" />AgriAssist</p>
-            <h1 id="home-hero-title">Smart agricultural planning, <em>rooted in real farm operations.</em></h1>
-            <p className="home-hero-summary">
+    <div ref={pageRef} className={styles.page} data-testid="home-page">
+      <section className={styles.hero} aria-labelledby="home-hero-title">
+        <div className={styles.heroInner}>
+          <div className={styles.heroCopy} data-home-reveal>
+            <p className={styles.eyebrow}><span aria-hidden="true" />AgriAssist</p>
+            <h1 id="home-hero-title">
+              Smart agricultural planning, <em>rooted in real farm operations.</em>
+            </h1>
+            <p className={styles.heroSummary}>
               AgriAssist helps farmers and agricultural staff coordinate crop planning, field inspections, resources,
               schedules and manual approvals through a connected operations platform.
             </p>
-            <div className="hero-actions home-hero-actions">
-              <Link className="ui-button ui-button-primary home-primary-action" to="/about">
-                <span>Learn More</span>
-                <ArrowRight size={17} aria-hidden="true" />
+            <div className={styles.heroActions}>
+              <Link className={styles.primaryAction} to="/about">
+                Learn More <ArrowRight size={17} aria-hidden="true" />
               </Link>
-              <Link className="ui-button ui-button-secondary hero-secondary" to="/login">
-                <span>Staff Login</span>
-              </Link>
+              <Link className={styles.secondaryAction} to="/login">Staff Login</Link>
             </div>
-            <div className="home-hero-assurance" aria-label="Platform strengths">
-              <span>Plan</span>
-              <span>Coordinate</span>
-              <span>Approve</span>
+            <div className={styles.assurance} aria-hidden="true">
+              <span>Plan</span><span>Coordinate</span><span>Approve</span>
             </div>
           </div>
 
-          <div className="home-hero-landscape" aria-hidden="true" data-home-reveal="hero-visual">
-            <div className="home-field-sun" />
-            <div className="home-field-horizon" />
-            <div className="home-field-plot">
-              <span className="home-field-row home-field-row-one" />
-              <span className="home-field-row home-field-row-two" />
-              <span className="home-field-row home-field-row-three" />
-              <span className="home-field-row home-field-row-four" />
+          <div className={styles.heroVisual} aria-hidden="true" data-home-reveal>
+            <div className={styles.fieldSun} />
+            <div className={styles.fieldHorizon} />
+            <div className={styles.fieldPlot}>
+              <span /><span /><span /><span />
             </div>
-            <div className="home-field-marker home-field-marker-one"><Sprout size={18} /></div>
-            <div className="home-field-marker home-field-marker-two"><ClipboardCheck size={18} /></div>
-            <div className="home-field-marker home-field-marker-three"><ShieldCheck size={18} /></div>
-            <div className="home-landscape-label">
+            <div className={`${styles.fieldMarker} ${styles.markerOne}`}><Sprout size={17} /></div>
+            <div className={`${styles.fieldMarker} ${styles.markerTwo}`}><ClipboardCheck size={17} /></div>
+            <div className={`${styles.fieldMarker} ${styles.markerThree}`}><ShieldCheck size={17} /></div>
+            <div className={styles.visualCaption}>
               <span>One connected journey</span>
               <strong>From field insight to confident action</strong>
             </div>
@@ -94,77 +87,85 @@ export function HomePage() {
         </div>
       </section>
 
-      <div className="home-growth-journey">
-        <HomeGrowthPlant />
-        <section id="home-features" className="public-section home-section home-features" aria-labelledby="home-features-title">
-          <div className="home-heading-row">
-            <div className="public-section-heading" data-home-reveal="heading">
-              <p>Core Features</p>
+      <section className={styles.section} aria-labelledby="home-features-title">
+          <div className={styles.sectionHeader} data-home-reveal>
+            <div>
+              <p className={styles.sectionEyebrow}>Core Features</p>
               <h2 id="home-features-title">Built around real agricultural workflows</h2>
             </div>
-            <p className="home-section-intro" data-home-reveal="note">
+            <p className={styles.sectionIntro}>
               One connected workspace supports every stage of cultivation while keeping people responsible for each decision.
             </p>
           </div>
-          <div className="feature-grid home-feature-grid">
+          <div className={styles.featureGrid}>
             {features.map((feature, index) => {
               const Icon = feature.icon
               return (
-                <article className="feature-card home-feature-card" key={feature.title} data-home-reveal="card">
-                  <div className="home-card-topline">
+                <article className={styles.featureCard} key={feature.title} data-home-reveal>
+                  <div className={styles.cardTopline}>
                     <span>0{index + 1}</span>
-                    <div className="home-feature-icon"><Icon size={24} aria-hidden="true" /></div>
+                    <div className={styles.featureIcon}><Icon size={22} aria-hidden="true" /></div>
                   </div>
                   <h3>{feature.title}</h3>
                   <p>{feature.description}</p>
-                  <span className="home-card-detail" aria-hidden="true">Connected operation <ArrowRight size={15} /></span>
+                  <span className={styles.cardDetail} aria-hidden="true">
+                    Connected operation <ArrowRight size={14} />
+                  </span>
                 </article>
               )
             })}
           </div>
-        </section>
+      </section>
 
-        <section className="public-section process-section home-section home-process" aria-labelledby="home-process-title">
-          <div className="public-section-heading" data-home-reveal="heading">
-            <p>How It Works</p>
-            <h2 id="home-process-title">From request to approval</h2>
-          </div>
-          <ol className="process-list home-process-list" data-home-reveal="group">
-            {processSteps.map(([phaseName, step], index) => (
-              <li key={step}>
-                <span className="home-process-number">0{index + 1}</span>
-                <div>
-                  <small>{phaseName}</small>
-                  <span>{step}</span>
-                </div>
-                <ArrowRight size={17} aria-hidden="true" />
-              </li>
-            ))}
-          </ol>
-          <div className="home-project-note" data-home-reveal="note">
-            <Sprout size={21} aria-hidden="true" />
-            <div>
-              <strong>AI-ready foundation</strong>
-              <p className="public-muted">The platform is designed with an AI-ready architecture for future intelligent planning support. Real Agentic AI is not active in this phase.</p>
+      <section className={styles.workflowSection} aria-labelledby="home-process-title">
+        <div className={styles.workflowHeader} data-home-reveal>
+          <p className={styles.sectionEyebrow}>How It Works</p>
+          <h2 id="home-process-title">From request to approval</h2>
+          <p>Watch the cultivation spine grow as the operational plan moves from an initial request to a reviewed decision.</p>
+        </div>
+
+        <div className={styles.workflowGrid}>
+          <HomeGrowthPlant />
+          <div className={styles.workflowContent}>
+            <ol className={styles.processList} aria-label="Request to approval workflow" data-home-reveal>
+              {processSteps.map(([phaseName, step], index) => (
+                <li key={step}>
+                  <span className={styles.processNumber}>0{index + 1}</span>
+                  <div>
+                    <small>{phaseName}</small>
+                    <strong>{step}</strong>
+                  </div>
+                  <ArrowRight size={16} aria-hidden="true" />
+                </li>
+              ))}
+            </ol>
+
+            <div className={styles.projectNote} data-home-reveal>
+              <Sprout size={20} aria-hidden="true" />
+              <div>
+                <strong>AI-ready foundation</strong>
+                <p>The platform is designed with an AI-ready architecture for future intelligent planning support. Real Agentic AI is not active in this phase.</p>
+              </div>
             </div>
           </div>
-        </section>
+        </div>
+      </section>
 
-        <section className="public-section home-section home-roles" aria-labelledby="home-roles-title">
-          <div className="home-heading-row">
-            <div className="public-section-heading" data-home-reveal="heading">
-              <p>User Roles</p>
+      <section className={styles.section} aria-labelledby="home-roles-title">
+          <div className={styles.sectionHeader} data-home-reveal>
+            <div>
+              <p className={styles.sectionEyebrow}>User Roles</p>
               <h2 id="home-roles-title">Clear responsibilities across the farm operation</h2>
             </div>
-            <p className="home-section-intro" data-home-reveal="note">
+            <p className={styles.sectionIntro}>
               Role-aware access keeps each team focused while the wider agricultural operation stays connected.
             </p>
           </div>
-          <div className="role-card-grid home-role-grid">
+          <div className={styles.roleGrid}>
             {roles.map(([title, description], index) => (
-              <article className="role-card home-role-card" key={title} data-home-reveal="card">
-                <div className="home-role-card-header">
-                  <div className="home-role-icon"><Users size={20} aria-hidden="true" /></div>
+              <article className={styles.roleCard} key={title} data-home-reveal>
+                <div className={styles.roleCardHeader}>
+                  <div className={styles.roleIcon}><Users size={18} aria-hidden="true" /></div>
                   <span>Role 0{index + 1}</span>
                 </div>
                 <h3>{title}</h3>
@@ -172,19 +173,17 @@ export function HomePage() {
               </article>
             ))}
           </div>
-        </section>
-      </div>
+      </section>
 
-      <section className="public-cta home-cta" aria-labelledby="home-cta-title" data-home-reveal="group">
-        <div className="home-cta-icon"><ShieldCheck size={28} aria-hidden="true" /></div>
-        <div>
+      <section className={styles.cta} aria-labelledby="home-cta-title" data-home-reveal>
+        <div className={styles.ctaIcon}><ShieldCheck size={25} aria-hidden="true" /></div>
+        <div className={styles.ctaCopy}>
           <span>Secure staff access</span>
           <h2 id="home-cta-title">Staff member?</h2>
           <p>Sign in to access your AgriAssist operations dashboard.</p>
         </div>
-        <Link className="ui-button ui-button-primary home-cta-button" to="/login">
-          <span>Staff Login</span>
-          <ArrowRight size={17} aria-hidden="true" />
+        <Link className={styles.ctaAction} to="/login">
+          Staff Login <ArrowRight size={17} aria-hidden="true" />
         </Link>
       </section>
     </div>

@@ -2,6 +2,7 @@ import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { HomePage } from './HomePage'
+import styles from './HomePage.module.css'
 
 function setReducedMotion(matches: boolean) {
   Object.defineProperty(window, 'matchMedia', {
@@ -46,7 +47,7 @@ describe('HomePage', () => {
   it('keeps the complete request-to-approval workflow and all five roles', () => {
     renderHome()
 
-    const workflow = screen.getByRole('list')
+    const workflow = screen.getByRole('list', { name: /request to approval workflow/i })
     expect(within(workflow).getAllByRole('listitem')).toHaveLength(5)
     expect(within(workflow).getByText('Farmer submits crop plan request')).toBeInTheDocument()
     expect(within(workflow).getByText('Agricultural officer approval')).toBeInTheDocument()
@@ -58,11 +59,11 @@ describe('HomePage', () => {
 
   it('renders the mature plant without reveal setup when reduced motion is requested', () => {
     setReducedMotion(true)
-    const { container } = renderHome()
-    const page = container.querySelector('.home-page')
-    const plantRail = container.querySelector('.home-growth-rail')
+    renderHome()
+    const page = screen.getByTestId('home-page')
+    const plantRail = screen.getByTestId('home-growth-rail')
 
-    expect(page).not.toHaveClass('home-reveal-ready')
+    expect(page).not.toHaveClass(styles.revealReady)
     expect(plantRail).toHaveStyle({ '--root-growth': '1', '--stem-growth': '1', '--crown-growth': '1' })
     expect(plantRail).toHaveAttribute('aria-hidden', 'true')
   })

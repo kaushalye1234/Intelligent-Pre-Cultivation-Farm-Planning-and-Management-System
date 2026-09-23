@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 
-export function useHomeScrollReveal() {
+export function useHomeScrollReveal(readyClass: string, revealedClass: string) {
   const pageRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -16,21 +16,21 @@ export function useHomeScrollReveal() {
         for (const entry of entries) {
           if (!entry.isIntersecting) continue
 
-          entry.target.classList.add('is-revealed')
+          entry.target.classList.add(revealedClass)
           observer.unobserve(entry.target)
         }
       },
       { rootMargin: '0px 0px -8% 0px', threshold: 0.12 },
     )
 
-    page.classList.add('home-reveal-ready')
+    page.classList.add(readyClass)
     targets.forEach((target) => observer.observe(target))
 
     return () => {
       observer.disconnect()
-      page.classList.remove('home-reveal-ready')
+      page.classList.remove(readyClass)
     }
-  }, [])
+  }, [readyClass, revealedClass])
 
   return pageRef
 }

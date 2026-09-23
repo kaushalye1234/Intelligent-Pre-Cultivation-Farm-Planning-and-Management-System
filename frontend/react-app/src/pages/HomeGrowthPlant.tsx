@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import styles from './HomeGrowthPlant.module.css'
 
 function phase(progress: number, start: number, end: number) {
   return Math.min(1, Math.max(0, (progress - start) / (end - start)))
@@ -57,45 +58,59 @@ export function HomeGrowthPlant() {
   }, [])
 
   return (
-    <div ref={railRef} className="home-growth-rail" aria-hidden="true">
-      <div className="home-growth-sticky">
-        <span className="home-growth-label">Cultivation journey</span>
-        <svg className="home-growth-plant" viewBox="0 0 160 520" focusable="false">
-          <path className="home-plant-soil" d="M20 458 C58 448 106 448 140 458" />
-          <ellipse className="home-plant-seed" cx="80" cy="449" rx="12" ry="7" />
-          <g className="home-plant-roots">
+    <div ref={railRef} className={styles.rail} aria-hidden="true" data-testid="home-growth-rail">
+      <div className={styles.plantCard}>
+        <div className={styles.plantHeader}>
+          <span>Cultivation spine</span>
+          <small>Scroll to grow</small>
+        </div>
+        <svg className={styles.plant} viewBox="0 0 160 520" focusable="false">
+          <path className={styles.soil} d="M20 458 C58 448 106 448 140 458" />
+          <ellipse className={styles.seed} cx="80" cy="449" rx="12" ry="7" />
+          <g className={styles.roots}>
             <path pathLength="1" d="M80 449 C72 466 58 478 49 493" />
             <path pathLength="1" d="M80 449 C85 469 102 478 112 495" />
             <path pathLength="1" d="M78 455 C77 476 77 490 78 506" />
           </g>
-          <path className="home-plant-stem" pathLength="1" d="M80 449 C72 385 89 322 78 258 C69 205 84 142 80 82" />
-          <g className="home-plant-leaf home-plant-leaf-one-left">
+          <path className={styles.stem} pathLength="1" d="M80 449 C72 385 89 322 78 258 C69 205 84 142 80 82" />
+          <g className={`${styles.leaf} ${styles.leafOneLeft}`}>
             <path d="M77 352 C45 344 30 316 33 282 C68 284 91 309 77 352 Z" />
             <path d="M76 349 C61 326 49 308 36 290" />
           </g>
-          <g className="home-plant-leaf home-plant-leaf-one-right">
+          <g className={`${styles.leaf} ${styles.leafOneRight}`}>
             <path d="M79 319 C105 304 132 308 145 330 C122 351 96 350 79 319 Z" />
             <path d="M83 319 C106 324 123 328 139 331" />
           </g>
-          <g className="home-plant-leaf home-plant-leaf-two-left">
+          <g className={`${styles.leaf} ${styles.leafTwoLeft}`}>
             <path d="M78 245 C50 235 36 210 40 181 C71 185 90 209 78 245 Z" />
             <path d="M77 242 C64 220 53 202 43 188" />
           </g>
-          <g className="home-plant-leaf home-plant-leaf-two-right">
+          <g className={`${styles.leaf} ${styles.leafTwoRight}`}>
             <path d="M80 205 C104 186 129 188 145 207 C126 232 100 234 80 205 Z" />
             <path d="M84 204 C104 207 123 208 140 208" />
           </g>
-          <g className="home-plant-crown">
+          <g className={styles.crown}>
             <path d="M80 93 C64 72 67 45 80 23 C94 45 97 72 80 93 Z" />
             <ellipse cx="63" cy="77" rx="8" ry="18" transform="rotate(-28 63 77)" />
             <ellipse cx="97" cy="77" rx="8" ry="18" transform="rotate(28 97 77)" />
             <circle cx="80" cy="45" r="6" />
           </g>
         </svg>
-        <div className="home-growth-stage-labels">
-          <span>Seed</span>
-          <span>Sprout</span>
-          <span>Thrive</span>
+        <div className={styles.stageLabels}>
+          <span>Seed</span><span>Sprout</span><span>Mature</span>
+        </div>
+        <div className={styles.mobileStages}>
+          <div className={`${styles.mobileStage} ${styles.mobileSeed}`}>
+            <span /><strong>Seed</strong>
+          </div>
+          <i />
+          <div className={`${styles.mobileStage} ${styles.mobileSprout}`}>
+            <span /><strong>Sprout</strong>
+          </div>
+          <i />
+          <div className={`${styles.mobileStage} ${styles.mobileMature}`}>
+            <span /><strong>Mature</strong>
+          </div>
         </div>
       </div>
     </div>
