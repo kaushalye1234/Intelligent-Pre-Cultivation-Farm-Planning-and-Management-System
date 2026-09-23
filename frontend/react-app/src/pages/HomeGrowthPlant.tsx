@@ -21,7 +21,8 @@ export function HomeGrowthPlant() {
 
     if (!rail || !journey) return
 
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const reduceMotion = typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches
     if (reduceMotion) {
       setGrowthProgress(rail, 1)
       return

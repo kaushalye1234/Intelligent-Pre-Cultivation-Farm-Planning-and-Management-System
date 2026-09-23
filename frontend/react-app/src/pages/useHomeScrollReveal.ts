@@ -5,7 +5,8 @@ export function useHomeScrollReveal() {
 
   useEffect(() => {
     const page = pageRef.current
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const reduceMotion = typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
     if (!page || reduceMotion || !('IntersectionObserver' in window)) return
 
