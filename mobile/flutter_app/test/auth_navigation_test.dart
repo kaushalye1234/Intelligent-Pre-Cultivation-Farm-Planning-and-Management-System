@@ -1,5 +1,6 @@
 import 'package:agriassist_mobile/main.dart';
 import 'package:agriassist_mobile/models/api_models.dart';
+import 'package:agriassist_mobile/screens/home_shell.dart';
 import 'package:agriassist_mobile/state/app_state.dart';
 import 'package:agriassist_mobile/utils/password_validation.dart';
 import 'package:flutter/material.dart';
@@ -22,6 +23,48 @@ Widget _authGateHarness(AppState state) {
 }
 
 void main() {
+  testWidgets('Farmer shell exposes only Dashboard, Plans and My status', (
+    tester,
+  ) async {
+    final state = AppState()..user = _farmer;
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: state,
+        child: const MaterialApp(home: HomeShell()),
+      ),
+    );
+
+    expect(find.text('Dashboard'), findsOneWidget);
+    expect(find.text('Plans'), findsOneWidget);
+    expect(find.text('My status'), findsOneWidget);
+    expect(find.text('Inspect'), findsNothing);
+    expect(find.text('Resources'), findsNothing);
+  });
+
+  testWidgets('staff profile cannot enter the Farmer application shell', (
+    tester,
+  ) async {
+    final state = AppState()
+      ..user = const UserProfile(
+        id: 'officer-1',
+        fullName: 'Field Officer',
+        email: 'officer@example.test',
+        role: 2,
+        isActive: true,
+      );
+
+    await tester.pumpWidget(_authGateHarness(state));
+
+    expect(
+      find.text(
+        'This account is for staff. Please use the React Staff Portal.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.byType(HomeShell), findsNothing);
+  });
+
   testWidgets('login exposes public Farmer registration with no role input', (
     tester,
   ) async {
@@ -36,7 +79,7 @@ void main() {
     expect(find.byType(DropdownButtonFormField<int>), findsNothing);
   });
 
-  testWidgets('temporary session opens only the first-login password screen', (
+  testWidgets('staff temporary session is blocked from Farmer screens', (
     tester,
   ) async {
     final state = AppState()
@@ -55,7 +98,13 @@ void main() {
 
     await tester.pumpWidget(_authGateHarness(state));
 
-    expect(find.text('Replace your temporary password'), findsOneWidget);
+    expect(
+      find.text(
+        'This account is for staff. Please use the React Staff Portal.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Replace your temporary password'), findsNothing);
     expect(find.text('Dashboard'), findsNothing);
     expect(find.text('Return to sign in'), findsOneWidget);
   });

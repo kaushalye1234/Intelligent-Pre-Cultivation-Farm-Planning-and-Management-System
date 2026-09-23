@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:agriassist_mobile/services/api_client.dart';
+import 'package:agriassist_mobile/state/app_state.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -103,6 +104,41 @@ void main() {
       expect(await storage.read(key: 'agriassist.token'), isNull);
     },
   );
+
+  test('staff login is rejected and its access token is cleared', () async {
+    final requests = <http.Request>[];
+    final httpClient = MockClient((request) async {
+      requests.add(request);
+      return http.Response(
+        jsonEncode({
+          'authenticationStatus': 'authenticated',
+          'accessToken': 'staff-access-token',
+          'accessTokenExpiresAt': null,
+          'passwordChangeToken': null,
+          'passwordChangeTokenExpiresAt': null,
+          'user': {..._userJson, 'role': 2, 'fullName': 'Field Officer'},
+        }),
+        200,
+      );
+    });
+    const storage = FlutterSecureStorage();
+    final state = AppState(
+      apiClient: ApiClient(
+        httpClient: httpClient,
+        secureStorage: storage,
+        baseUrl: 'https://api.example.test/api',
+      ),
+    );
+
+    await state.login('officer@example.test', 'staff password');
+
+    expect(state.user, isNull);
+    expect(state.isAuthenticated, isFalse);
+    expect(state.error, AppState.staffPortalMessage);
+    expect(await storage.read(key: 'agriassist.token'), isNull);
+    expect(requests, hasLength(1));
+    expect(requests.single.url.path, '/api/auth/login');
+  });
 
   test(
     'temporary password change uses its token then stores the new access token',

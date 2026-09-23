@@ -51,22 +51,69 @@ class AuthGate extends StatelessWidget {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
+    if (state.passwordChangeSession?.user.role != null &&
+        state.passwordChangeSession?.user.role != 1) {
+      return const _StaffPortalRequired();
+    }
+
     if (state.requiresTemporaryPasswordChange) {
       return const ChangeTemporaryPasswordScreen();
     }
 
     if (!state.isAuthenticated) return const LoginScreen();
 
-    if (state.user?.role == 1) {
-      return switch (state.farmerOnboarding?.stage) {
-        'farm' => const FarmOnboardingScreen(),
-        'field' => const FieldOnboardingScreen(),
-        'complete' => const HomeShell(),
-        _ => const _OnboardingStatusUnavailable(),
-      };
-    }
+    if (state.user?.role != 1) return const _StaffPortalRequired();
 
-    return const HomeShell();
+    return switch (state.farmerOnboarding?.stage) {
+      'farm' => const FarmOnboardingScreen(),
+      'field' => const FieldOnboardingScreen(),
+      'complete' => const HomeShell(),
+      _ => const _OnboardingStatusUnavailable(),
+    };
+  }
+}
+
+class _StaffPortalRequired extends StatelessWidget {
+  const _StaffPortalRequired();
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.watch<AppState>();
+
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 440),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.admin_panel_settings_outlined, size: 52),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Staff portal required',
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'This account is for staff. Please use the React Staff Portal.',
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
+                  OutlinedButton.icon(
+                    onPressed: state.logout,
+                    icon: const Icon(Icons.logout),
+                    label: const Text('Return to sign in'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

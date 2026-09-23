@@ -43,21 +43,9 @@
 					<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
 					<key>UISceneStoryboardFile</key>
 					<string>Main</string>
-					<key>NSCameraUsageDescription</key>
-	<string>Capture inspection photos.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Capture field inspection location.</string>
 </dict>
 			</array>
-			<key>NSCameraUsageDescription</key>
-	<string>Capture inspection photos.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Capture field inspection location.</string>
 </dict>
-		<key>NSCameraUsageDescription</key>
-	<string>Capture inspection photos.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Capture field inspection location.</string>
 </dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
@@ -78,9 +66,5 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<key>NSCameraUsageDescription</key>
-	<string>Capture inspection photos.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Capture field inspection location.</string>
 </dict>
 </plist>
