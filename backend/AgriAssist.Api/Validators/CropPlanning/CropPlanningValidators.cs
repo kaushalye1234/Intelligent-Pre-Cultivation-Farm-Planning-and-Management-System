@@ -76,3 +76,28 @@ public sealed class CropPlanRequestUpdateValidator : IRequestValidator<CropPlanR
         return errors;
     }
 }
+
+public sealed class PrePlantingAssessmentRequestValidator : IRequestValidator<PrePlantingAssessmentRequest>
+{
+    public IReadOnlyList<string> Validate(PrePlantingAssessmentRequest request)
+    {
+        var errors = new List<string>();
+        ValidateRequired(request.SoilCondition, 240, "Soil type / condition", errors);
+        ValidateRequired(request.WaterAvailability, 500, "Water availability", errors);
+        ValidateRequired(request.IrrigationAvailability, 500, "Irrigation availability", errors);
+        ValidateRequired(request.DrainageCondition, 500, "Drainage condition", errors);
+        ValidateRequired(request.GeneralFieldCondition, 1000, "General field condition", errors);
+        ValidateRequired(request.PlantingReadiness, 500, "Planting readiness", errors);
+        ValidateRequired(request.RisksAndConcerns, 1500, "Risks / concerns", errors);
+        ValidateRequired(request.OfficerNotes, 2000, "Officer notes", errors);
+        return errors;
+    }
+
+    private static void ValidateRequired(string value, int maxLength, string name, List<string> errors)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length > maxLength)
+        {
+            errors.Add($"{name} is required and must be {maxLength} characters or fewer.");
+        }
+    }
+}

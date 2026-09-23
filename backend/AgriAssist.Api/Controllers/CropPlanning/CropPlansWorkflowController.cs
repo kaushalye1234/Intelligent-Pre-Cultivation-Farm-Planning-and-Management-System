@@ -16,8 +16,21 @@ public sealed class CropPlansWorkflowController(ICropPlanningService cropPlannin
     public async Task<ActionResult<CropPlanningWorkflowStartResponse>> StartAiWorkflow(Guid id, CancellationToken cancellationToken) =>
         Ok(await cropPlanningService.StartAiWorkflowAsync(id, cancellationToken));
 
+    [HttpGet("{id:guid}/pre-planting-assessment")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.FieldOfficer)},{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
+    public async Task<ActionResult<PrePlantingAssessmentResponse?>> GetPrePlantingAssessment(Guid id, CancellationToken cancellationToken) =>
+        Ok(await cropPlanningService.GetPrePlantingAssessmentAsync(id, cancellationToken));
+
+    [HttpPut("{id:guid}/pre-planting-assessment")]
+    [Authorize(Roles = nameof(ApplicationRole.FieldOfficer))]
+    public async Task<ActionResult<PrePlantingAssessmentResponse>> SavePrePlantingAssessment(
+        Guid id,
+        PrePlantingAssessmentRequest request,
+        CancellationToken cancellationToken) =>
+        Ok(await cropPlanningService.SavePrePlantingAssessmentAsync(id, request, cancellationToken));
+
     [HttpPost("{id:guid}/run-field-analysis")]
-    [Authorize(Roles = $"{nameof(ApplicationRole.Admin)},{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.FieldOfficer)}")]
+    [Authorize(Roles = nameof(ApplicationRole.FieldOfficer))]
     public async Task<ActionResult<FieldAnalysisRunResponse>> RunFieldAnalysis(Guid id, CancellationToken cancellationToken) =>
         Ok(await cropPlanningService.RunFieldAnalysisAsync(id, cancellationToken));
 

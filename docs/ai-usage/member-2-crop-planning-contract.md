@@ -79,6 +79,17 @@ Member 2 must not treat `requiresHumanReview` as final officer approval. Member 
 
 ## Implemented Member 2 Execution
 
+The Field Officer records the request-specific assessment before Member 2 runs:
+
+```http
+GET /api/crop-plans/{cropPlanRequestId}/pre-planting-assessment
+PUT /api/crop-plans/{cropPlanRequestId}/pre-planting-assessment
+POST /api/inspections/{prePlantingInspectionId}/images
+POST /api/inspections/{prePlantingInspectionId}/submit
+```
+
+The assessment is stored as the single `FieldInspection` with `purpose = PrePlanting` linked to the exact crop-plan request and field. Only a Field Officer may create, edit, attach evidence to, or submit it. Agricultural Officers and Admins may read it. The field-analysis run is rejected until this linked inspection has been submitted.
+
 Run Member 2 from ASP.NET:
 
 ```http
@@ -143,6 +154,8 @@ AI-service input:
 ```json
 {
   "workflowId": "11111111-1111-1111-1111-111111111111",
+  "cropPlanRequestId": "22222222-2222-2222-2222-222222222222",
+  "prePlantingInspectionId": "44444444-4444-4444-4444-444444444444",
   "fieldId": "66666666-6666-6666-6666-666666666666",
   "cropCycleId": "77777777-7777-7777-7777-777777777777",
   "requestedAnalysis": ["FieldCondition", "OpenIssues", "InspectionEvidence"],
@@ -153,7 +166,7 @@ AI-service input:
 
 ## Internal Tool Scope
 
-`CropFieldAnalysisAgent` is evidence-linked and read-only. It uses only these ASP.NET internal tools:
+`CropFieldAnalysisAgent` is evidence-linked and read-only. Every inspection, issue, and image lookup is scoped by `workflowId`, `cropPlanRequestId`, `prePlantingInspectionId`, and `fieldId`; ASP.NET rejects a mismatched or unsubmitted inspection. It uses only these ASP.NET internal tools:
 
 - `GetFieldDetails`
 - `GetCropCycleDetails`
