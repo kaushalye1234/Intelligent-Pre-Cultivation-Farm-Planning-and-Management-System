@@ -185,6 +185,7 @@
 .fieldHorizon {
   position: absolute;
   inset: 112px 28px auto;
+  z-index: 0;
   height: 84px;
   border-top: 1px solid rgba(220, 233, 209, 0.34);
   border-radius: 50%;
@@ -194,6 +195,7 @@
 .fieldPlot {
   position: absolute;
   inset: 158px 28px 74px;
+  z-index: 1;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 12px;
@@ -206,8 +208,56 @@
   border-inline: 1px solid rgba(220, 233, 209, 0.15);
 }
 
+.heroCrop {
+  position: absolute;
+  bottom: 72px;
+  left: 50%;
+  z-index: 1;
+  width: 178px;
+  height: 278px;
+  opacity: 0.2;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.heroCrop svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  transform-origin: center bottom;
+}
+
+.heroCrop [data-crop-stem],
+.heroCrop [data-crop-vein] {
+  fill: none;
+  stroke: #c9dac1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.heroCrop [data-crop-stem] {
+  stroke-width: 5;
+}
+
+.heroCrop [data-crop-vein] {
+  stroke-width: 1.3;
+}
+
+.heroCrop [data-crop-leaf] {
+  fill: rgba(167, 197, 155, 0.36);
+  stroke: #c9dac1;
+  stroke-width: 1.6;
+}
+
+.heroCrop [data-crop-head] {
+  fill: #d7bb70;
+  stroke: #ead79e;
+  stroke-width: 1.2;
+}
+
 .fieldMarker {
   position: absolute;
+  z-index: 2;
   width: 39px;
   height: 39px;
   display: grid;
@@ -227,6 +277,7 @@
   right: 30px;
   bottom: 26px;
   left: 30px;
+  z-index: 3;
   display: grid;
   gap: 4px;
   padding-top: 15px;
@@ -621,6 +672,10 @@
     animation: aa-home-marker 6s ease-in-out infinite;
   }
 
+  .heroCrop svg {
+    animation: aa-home-crop-sway 9s ease-in-out infinite;
+  }
+
   .markerTwo { animation-delay: -2s; }
   .markerThree { animation-delay: -4s; }
 }
@@ -633,6 +688,11 @@
 @keyframes aa-home-marker {
   0%, 100% { transform: translate3d(0, 0, 0); }
   50% { transform: translate3d(0, -4px, 0); }
+}
+
+@keyframes aa-home-crop-sway {
+  0%, 100% { transform: rotate(-0.7deg); }
+  50% { transform: rotate(0.9deg); }
 }
 
 @media (max-width: 900px) {
@@ -714,6 +774,13 @@
 
   .fieldPlot {
     inset: 110px 22px 64px;
+  }
+
+  .heroCrop {
+    bottom: 62px;
+    width: 132px;
+    height: 198px;
+    opacity: 0.17;
   }
 
   .markerOne { top: 140px; }
@@ -824,6 +891,10 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     transition-delay: 0ms !important;
+  }
+
+  .heroCrop svg {
+    animation: none !important;
   }
 
   .featureCard:hover,

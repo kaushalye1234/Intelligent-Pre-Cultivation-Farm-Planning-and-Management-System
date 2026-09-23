@@ -76,6 +76,22 @@ export function HomePage() {
             <div className={styles.fieldPlot}>
               <span /><span /><span /><span />
             </div>
+            <div className={styles.heroCrop}>
+              <svg viewBox="0 0 180 280" focusable="false">
+                <path data-crop-stem d="M91 261 C87 218 96 176 89 134 C84 101 91 68 89 34" />
+                <path data-crop-leaf d="M89 198 C61 190 46 168 48 140 C76 143 96 165 89 198 Z" />
+                <path data-crop-vein d="M87 195 C73 173 61 157 51 146" />
+                <path data-crop-leaf d="M91 173 C113 157 137 159 150 178 C132 198 107 198 91 173 Z" />
+                <path data-crop-vein d="M95 173 C116 176 131 178 145 179" />
+                <path data-crop-leaf d="M88 121 C67 112 57 93 60 72 C83 76 96 94 88 121 Z" />
+                <path data-crop-leaf d="M90 92 C108 78 128 80 139 95 C124 112 104 112 90 92 Z" />
+                <g data-crop-head>
+                  <path d="M89 48 C76 32 78 15 89 4 C100 16 102 33 89 48 Z" />
+                  <ellipse cx="74" cy="39" rx="6" ry="14" transform="rotate(-30 74 39)" />
+                  <ellipse cx="104" cy="39" rx="6" ry="14" transform="rotate(30 104 39)" />
+                </g>
+              </svg>
+            </div>
             <div className={`${styles.fieldMarker} ${styles.markerOne}`}><Sprout size={17} /></div>
             <div className={`${styles.fieldMarker} ${styles.markerTwo}`}><ClipboardCheck size={17} /></div>
             <div className={`${styles.fieldMarker} ${styles.markerThree}`}><ShieldCheck size={17} /></div>
