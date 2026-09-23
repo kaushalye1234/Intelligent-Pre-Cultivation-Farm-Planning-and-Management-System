@@ -488,11 +488,12 @@
   padding: clamp(32px, 4vw, 48px);
   color: #f8f6ee;
   background:
-    radial-gradient(circle at 92% 4%, rgba(185, 153, 79, 0.16), transparent 24%),
-    linear-gradient(145deg, #28563a, #356849);
-  border: 1px solid rgba(30, 83, 52, 0.28);
+    radial-gradient(circle at 90% 5%, rgba(204, 171, 91, 0.17), transparent 25%),
+    radial-gradient(circle at 8% 94%, rgba(94, 145, 104, 0.17), transparent 34%),
+    linear-gradient(135deg, #173d2a 0%, #204b33 52%, #2b5b3f 100%);
+  border: 1px solid rgba(239, 234, 216, 0.16);
   border-radius: 26px;
-  box-shadow: 0 24px 58px rgba(15, 48, 29, 0.14);
+  box-shadow: 0 26px 64px rgba(15, 48, 29, 0.2);
 }
 
 .workflowHeader {
@@ -504,7 +505,7 @@
 
 .workflowHeader .sectionEyebrow {
   grid-column: 1 / -1;
-  color: #d5e4ce;
+  color: #d9c784;
 }
 
 .workflowHeader h2 {
@@ -513,7 +514,7 @@
 
 .workflowHeader > p:last-child {
   margin: 0;
-  color: rgba(255, 253, 248, 0.78);
+  color: rgba(231, 239, 229, 0.82);
   font-size: 15px;
   line-height: 1.65;
 }
@@ -546,13 +547,16 @@
   align-items: center;
   gap: 14px;
   padding: 13px 17px;
-  background: rgba(255, 253, 248, 0.09);
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: linear-gradient(135deg, rgba(255, 253, 248, 0.09), rgba(181, 211, 185, 0.055));
+  border: 1px solid rgba(232, 240, 229, 0.18);
   border-radius: 14px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 8px 22px rgba(8, 35, 21, 0.08);
 }
 
 .processNumber {
-  color: #d0b86f;
+  color: #ddc36e;
   font-family: Georgia, "Times New Roman", serif;
   font-size: 23px;
 }
@@ -563,7 +567,7 @@
 }
 
 .processList small {
-  color: #d1e2cc;
+  color: #cfe0cb;
   font-size: 9px;
   font-weight: 800;
   letter-spacing: 0.12em;
@@ -576,7 +580,7 @@
 }
 
 .processList li > svg {
-  color: #d0b86f;
+  color: #ddc36e;
 }
 
 .processList li:last-child > svg {
@@ -589,13 +593,14 @@
   align-items: start;
   gap: 13px;
   padding: 17px;
-  background: rgba(255, 253, 248, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: linear-gradient(135deg, rgba(255, 253, 248, 0.08), rgba(181, 211, 185, 0.045));
+  border: 1px solid rgba(232, 240, 229, 0.17);
   border-radius: 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
 }
 
 .projectNote > svg {
-  color: #d0b86f;
+  color: #ddc36e;
 }
 
 .projectNote strong {

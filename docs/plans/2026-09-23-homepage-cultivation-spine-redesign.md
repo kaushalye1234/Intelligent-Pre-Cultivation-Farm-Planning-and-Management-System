@@ -10,6 +10,7 @@ The homepage uses a clean premium farm-tech visual language: restrained serif di
 - **Capabilities:** Four equal cards in a two-column desktop grid, collapsing to one column on mobile. Decorative elements remain inside each card.
 - **Workflow:** A bounded two-column panel with the growing plant in a dedicated 300px column and the five operational steps in the adjacent content column. The plant never overlays cards.
 - **Mobile growth:** The tall plant is replaced below 768px with a compact Seed, Sprout, and Mature progression above the workflow steps.
+- **Workflow depth:** The cultivation workflow uses a layered `#173D2A` to `#2B5B3F` forest gradient with a restrained gold glow. Translucent sage step cards remain distinct, while the plant occupies a slightly deeper dedicated panel with brighter botanical strokes for clear separation and legibility.
 - **Roles:** Five cards use a 3+2 desktop grid, two columns on tablet, and one column on mobile.
 - **CTA:** A compact sign-in panel with no oversized or overlapping decoration.
 
