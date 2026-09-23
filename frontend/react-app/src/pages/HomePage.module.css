@@ -17,18 +17,37 @@
 }
 
 .hero {
+  position: relative;
+  isolation: isolate;
   min-height: 560px;
   display: grid;
   align-items: center;
   padding: clamp(52px, 6vw, 78px) 24px;
+  overflow: hidden;
   color: #fffaf1;
   background:
-    radial-gradient(circle at 12% 8%, rgba(255, 253, 247, 0.11), transparent 29%),
-    radial-gradient(circle at 84% 14%, rgba(185, 153, 79, 0.15), transparent 24%),
-    linear-gradient(135deg, #3f684c 0%, #57765c 54%, #768e78 100%);
+    radial-gradient(circle at 78% 46%, rgba(238, 232, 202, 0.13), transparent 31%),
+    radial-gradient(circle at 91% 8%, rgba(185, 153, 79, 0.11), transparent 23%),
+    linear-gradient(118deg, #234b35 0%, #315c43 43%, #52745c 72%, #6f8e75 100%);
+}
+
+.hero::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 4%;
+  z-index: -1;
+  width: min(46vw, 650px);
+  aspect-ratio: 1;
+  background: rgba(221, 232, 210, 0.13);
+  border-radius: 50%;
+  filter: blur(82px);
+  pointer-events: none;
 }
 
 .heroInner {
+  position: relative;
+  z-index: 1;
   width: min(1180px, 100%);
   display: grid;
   grid-template-columns: minmax(0, 1.08fr) minmax(360px, 0.92fr);
@@ -54,7 +73,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #e2ebdc;
+  color: #e1e6d9;
 }
 
 .eyebrow span {
@@ -65,34 +84,34 @@
 }
 
 .hero h1 {
-  max-width: 650px;
+  max-width: 630px;
   margin: 0;
   color: #fffdf7;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(42px, 4.6vw, 60px);
+  font-size: clamp(40px, 4.25vw, 56px);
   font-weight: 600;
-  line-height: 1.02;
-  letter-spacing: -0.035em;
+  line-height: 1.035;
+  letter-spacing: -0.03em;
 }
 
 .hero h1 em {
-  color: #d9e5d2;
+  color: #f0eadb;
   font-weight: inherit;
 }
 
 .heroSummary {
   max-width: 620px;
   margin: 22px 0 0;
-  color: rgba(255, 253, 248, 0.84);
-  font-size: 17px;
+  color: #d6ddd3;
+  font-size: 16.5px;
   line-height: 1.68;
 }
 
 .heroActions {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 28px;
+  gap: 14px;
+  margin-top: 30px;
 }
 
 .primaryAction,
@@ -109,25 +128,39 @@
   font-size: 14px;
   font-weight: 750;
   text-decoration: none;
-  transition: transform 180ms ease, background 180ms ease, border-color 180ms ease;
+  transition: transform 180ms ease, color 180ms ease, background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
 }
 
 .primaryAction {
-  color: #19482e;
-  background: #eef3e6;
-  border-color: #eef3e6;
+  color: #204832;
+  background: #f3eddf;
+  border-color: #f3eddf;
+  box-shadow: 0 12px 28px rgba(13, 37, 22, 0.2);
 }
 
 .secondaryAction {
   color: #fffdf8;
-  background: rgba(255, 253, 247, 0.08);
-  border-color: rgba(255, 253, 247, 0.46);
+  background: rgba(255, 253, 247, 0.045);
+  border-color: rgba(255, 253, 247, 0.42);
 }
 
 .primaryAction:hover,
 .secondaryAction:hover,
 .ctaAction:hover {
   transform: translateY(-2px);
+}
+
+.primaryAction:hover {
+  color: #173c28;
+  background: #fff9ec;
+  border-color: #fff9ec;
+  box-shadow: 0 16px 34px rgba(13, 37, 22, 0.25);
+}
+
+.secondaryAction:hover {
+  background: rgba(255, 253, 247, 0.12);
+  border-color: rgba(255, 253, 247, 0.68);
+  box-shadow: 0 10px 24px rgba(13, 37, 22, 0.13);
 }
 
 .primaryAction:focus-visible,
@@ -142,7 +175,7 @@
   flex-wrap: wrap;
   gap: 20px;
   margin-top: 28px;
-  color: rgba(255, 253, 248, 0.7);
+  color: rgba(232, 237, 226, 0.74);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.13em;
@@ -168,11 +201,21 @@
   min-height: 390px;
   overflow: hidden;
   background:
-    linear-gradient(180deg, rgba(255, 253, 247, 0.34), rgba(238, 244, 232, 0.15)),
-    rgba(225, 235, 218, 0.13);
-  border: 1px solid rgba(255, 253, 247, 0.3);
+    linear-gradient(145deg, rgba(255, 251, 241, 0.84), rgba(231, 239, 225, 0.63)),
+    rgba(245, 241, 230, 0.68);
+  border: 1px solid rgba(255, 251, 240, 0.58);
   border-radius: 28px 28px 74px 28px;
-  box-shadow: 0 24px 60px rgba(26, 56, 36, 0.2);
+  box-shadow: 0 30px 72px rgba(14, 39, 23, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.58);
+  backdrop-filter: blur(18px) saturate(108%);
+}
+
+.heroVisual::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: radial-gradient(circle at 78% 18%, rgba(185, 153, 79, 0.1), transparent 26%);
+  pointer-events: none;
 }
 
 .fieldSun {
@@ -181,7 +224,8 @@
   right: 54px;
   width: 68px;
   aspect-ratio: 1;
-  border: 1px solid rgba(231, 210, 146, 0.42);
+  z-index: 1;
+  border: 1px solid rgba(166, 132, 56, 0.48);
   border-radius: 50%;
 }
 
@@ -190,7 +234,7 @@
   inset: 112px 28px auto;
   z-index: 0;
   height: 84px;
-  border-top: 1px solid rgba(29, 75, 46, 0.43);
+  border-top: 1px solid rgba(27, 77, 46, 0.52);
   border-radius: 50%;
   transform: rotate(-4deg);
 }
@@ -207,8 +251,8 @@
 }
 
 .fieldPlot span {
-  background: linear-gradient(90deg, transparent, rgba(37, 91, 57, 0.36), transparent);
-  border-inline: 1px solid rgba(28, 72, 44, 0.28);
+  background: linear-gradient(90deg, transparent, rgba(32, 92, 56, 0.42), transparent);
+  border-inline: 1px solid rgba(25, 73, 44, 0.34);
 }
 
 .heroCrop {
@@ -218,7 +262,7 @@
   z-index: 1;
   width: 178px;
   height: 278px;
-  opacity: 0.25;
+  opacity: 0.42;
   pointer-events: none;
   transform: translateX(-50%);
 }
@@ -233,7 +277,7 @@
 .heroCrop [data-crop-stem],
 .heroCrop [data-crop-vein] {
   fill: none;
-  stroke: #24583a;
+  stroke: #245b3b;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -247,28 +291,29 @@
 }
 
 .heroCrop [data-crop-leaf] {
-  fill: rgba(35, 91, 57, 0.34);
-  stroke: #24583a;
+  fill: rgba(45, 110, 70, 0.3);
+  stroke: #245b3b;
   stroke-width: 1.6;
 }
 
 .heroCrop [data-crop-head] {
-  fill: #b39348;
-  stroke: #96783a;
+  fill: #b79548;
+  stroke: #8d7137;
   stroke-width: 1.2;
 }
 
 .fieldMarker {
   position: absolute;
   z-index: 2;
-  width: 39px;
-  height: 39px;
+  width: 41px;
+  height: 41px;
   display: grid;
   place-items: center;
   color: #f1f5eb;
-  background: #285d3d;
-  border: 1px solid rgba(255, 253, 247, 0.4);
+  background: #1f5637;
+  border: 1px solid rgba(255, 253, 247, 0.5);
   border-radius: 50%;
+  box-shadow: 0 10px 24px rgba(16, 48, 29, 0.2);
 }
 
 .markerOne { top: 205px; left: 17%; }
@@ -283,11 +328,11 @@
   display: grid;
   gap: 4px;
   padding-top: 15px;
-  border-top: 1px solid rgba(23, 63, 39, 0.2);
+  border-top: 1px solid rgba(24, 68, 42, 0.27);
 }
 
 .visualCaption span {
-  color: #285d3d;
+  color: #275d3c;
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.12em;
@@ -295,7 +340,7 @@
 }
 
 .visualCaption strong {
-  color: #173a26;
+  color: #173b27;
   font-family: Georgia, "Times New Roman", serif;
   font-size: 17px;
   font-weight: 500;

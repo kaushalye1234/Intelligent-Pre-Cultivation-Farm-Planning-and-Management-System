@@ -6,7 +6,7 @@ The homepage uses a clean premium farm-tech visual language: restrained serif di
 
 ## Section design
 
-- **Hero:** A compact 55/45 split within a 1180px container. The headline is capped at 60px, body copy at 17px, and the field illustration remains inside its own grid cell. A low-contrast crop silhouette grows visually from the center field row behind the journey markers, filling the composition without competing with content.
+- **Hero:** A compact 55/45 split within a 1180px container. A forest-weighted `#234B35` to muted-sage `#6F8E75` gradient anchors the copy side, while a localized radial glow adds depth behind the illustration. The headline is capped at 56px with warm ivory text and the supporting copy uses a softer warm gray-green. The illustration remains in its own warm-ivory glass card with stronger crop, field, icon, and label contrast. A subtle crop silhouette grows visually from the center field row behind the journey markers without competing with content.
 - **Capabilities:** Four equal cards in a two-column desktop grid, collapsing to one column on mobile. Decorative elements remain inside each card.
 - **Workflow:** A bounded two-column panel with the growing plant in a dedicated 300px column and the five operational steps in the adjacent content column. The plant never overlays cards.
 - **Mobile growth:** The tall plant is replaced below 768px with a compact Seed, Sprout, and Mature progression above the workflow steps.
