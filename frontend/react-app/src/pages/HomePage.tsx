@@ -1,6 +1,5 @@
 import { ArrowRight, CalendarCheck, ClipboardCheck, PackageCheck, ShieldCheck, Sprout, Users } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import heroImage from '../assets/hero.png'
 import './HomePage.css'
 
 const features = [
@@ -37,26 +36,53 @@ const roles = [
 export function HomePage() {
   return (
     <div className="public-page home-page">
-      <section className="hero-section home-hero" aria-labelledby="home-hero-title" style={{ backgroundImage: `linear-gradient(90deg, rgba(18, 35, 25, 0.82), rgba(18, 35, 25, 0.42)), url(${heroImage})` }}>
-        <div className="hero-content home-hero-content">
-          <p className="home-eyebrow">AgriAssist</p>
-          <h1 id="home-hero-title">Smart Agricultural Planning and Farm Operations Management</h1>
-          <span>
-            AgriAssist helps farmers and agricultural staff coordinate crop planning, field inspections, resources,
-            schedules and manual approvals through a connected operations platform.
-          </span>
-          <div className="hero-actions">
-            <Link className="ui-button ui-button-primary" to="/about">
-              <span>Learn More</span>
-            </Link>
-            <Link className="ui-button ui-button-secondary hero-secondary" to="/login">
-              <span>Staff Login</span>
-            </Link>
+      <section className="hero-section home-hero" aria-labelledby="home-hero-title">
+        <div className="home-hero-glow" aria-hidden="true" />
+        <div className="home-hero-grid">
+          <div className="hero-content home-hero-content">
+            <p className="home-eyebrow"><span aria-hidden="true" />AgriAssist</p>
+            <h1 id="home-hero-title">Smart agricultural planning, <em>rooted in real farm operations.</em></h1>
+            <p className="home-hero-summary">
+              AgriAssist helps farmers and agricultural staff coordinate crop planning, field inspections, resources,
+              schedules and manual approvals through a connected operations platform.
+            </p>
+            <div className="hero-actions home-hero-actions">
+              <Link className="ui-button ui-button-primary home-primary-action" to="/about">
+                <span>Learn More</span>
+                <ArrowRight size={17} aria-hidden="true" />
+              </Link>
+              <Link className="ui-button ui-button-secondary hero-secondary" to="/login">
+                <span>Staff Login</span>
+              </Link>
+            </div>
+            <div className="home-hero-assurance" aria-label="Platform strengths">
+              <span>Plan</span>
+              <span>Coordinate</span>
+              <span>Approve</span>
+            </div>
+          </div>
+
+          <div className="home-hero-landscape" aria-hidden="true">
+            <div className="home-field-sun" />
+            <div className="home-field-horizon" />
+            <div className="home-field-plot">
+              <span className="home-field-row home-field-row-one" />
+              <span className="home-field-row home-field-row-two" />
+              <span className="home-field-row home-field-row-three" />
+              <span className="home-field-row home-field-row-four" />
+            </div>
+            <div className="home-field-marker home-field-marker-one"><Sprout size={18} /></div>
+            <div className="home-field-marker home-field-marker-two"><ClipboardCheck size={18} /></div>
+            <div className="home-field-marker home-field-marker-three"><ShieldCheck size={18} /></div>
+            <div className="home-landscape-label">
+              <span>One connected journey</span>
+              <strong>From field insight to confident action</strong>
+            </div>
           </div>
         </div>
       </section>
 
-      <section className="public-section home-section home-features" aria-labelledby="home-features-title">
+      <section id="home-features" className="public-section home-section home-features" aria-labelledby="home-features-title">
         <div className="public-section-heading">
           <p>Core Features</p>
           <h2 id="home-features-title">Built around real agricultural workflows</h2>
