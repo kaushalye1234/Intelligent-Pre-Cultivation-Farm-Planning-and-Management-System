@@ -35,6 +35,14 @@ const roles = [
   ['Admin', 'Manages staff access and monitors the full operations platform.'],
 ]
 
+const processSteps = [
+  ['Request', 'Farmer submits crop plan request'],
+  ['Observe', 'Field inspection'],
+  ['Prepare', 'Resource and weather review'],
+  ['Coordinate', 'Task and schedule management'],
+  ['Decide', 'Agricultural officer approval'],
+]
+
 export function HomePage() {
   const pageRef = useHomeScrollReveal()
 
@@ -89,65 +97,94 @@ export function HomePage() {
       <div className="home-growth-journey">
         <HomeGrowthPlant />
         <section id="home-features" className="public-section home-section home-features" aria-labelledby="home-features-title">
-        <div className="public-section-heading" data-home-reveal="heading">
-          <p>Core Features</p>
-          <h2 id="home-features-title">Built around real agricultural workflows</h2>
-        </div>
-        <div className="feature-grid">
-          {features.map((feature) => {
-            const Icon = feature.icon
-            return (
-              <article className="feature-card" key={feature.title} data-home-reveal="card">
-                <Icon size={24} aria-hidden="true" />
-                <h3>{feature.title}</h3>
-                <p>{feature.description}</p>
-              </article>
-            )
-          })}
-        </div>
+          <div className="home-heading-row">
+            <div className="public-section-heading" data-home-reveal="heading">
+              <p>Core Features</p>
+              <h2 id="home-features-title">Built around real agricultural workflows</h2>
+            </div>
+            <p className="home-section-intro" data-home-reveal="note">
+              One connected workspace supports every stage of cultivation while keeping people responsible for each decision.
+            </p>
+          </div>
+          <div className="feature-grid home-feature-grid">
+            {features.map((feature, index) => {
+              const Icon = feature.icon
+              return (
+                <article className="feature-card home-feature-card" key={feature.title} data-home-reveal="card">
+                  <div className="home-card-topline">
+                    <span>0{index + 1}</span>
+                    <div className="home-feature-icon"><Icon size={24} aria-hidden="true" /></div>
+                  </div>
+                  <h3>{feature.title}</h3>
+                  <p>{feature.description}</p>
+                  <span className="home-card-detail" aria-hidden="true">Connected operation <ArrowRight size={15} /></span>
+                </article>
+              )
+            })}
+          </div>
         </section>
 
         <section className="public-section process-section home-section home-process" aria-labelledby="home-process-title">
-        <div className="public-section-heading" data-home-reveal="heading">
-          <p>How It Works</p>
-          <h2 id="home-process-title">From request to approval</h2>
-        </div>
-        <ol className="process-list" data-home-reveal="group">
-          {['Farmer submits crop plan request', 'Field inspection', 'Resource and weather review', 'Task and schedule management', 'Agricultural officer approval'].map((step) => (
-            <li key={step}>
-              <span>{step}</span>
-              <ArrowRight size={16} aria-hidden="true" />
-            </li>
-          ))}
-        </ol>
-        <p className="public-muted" data-home-reveal="note">The platform is designed with an AI-ready architecture for future intelligent planning support. Real Agentic AI is not active in this phase.</p>
+          <div className="public-section-heading" data-home-reveal="heading">
+            <p>How It Works</p>
+            <h2 id="home-process-title">From request to approval</h2>
+          </div>
+          <ol className="process-list home-process-list" data-home-reveal="group">
+            {processSteps.map(([phaseName, step], index) => (
+              <li key={step}>
+                <span className="home-process-number">0{index + 1}</span>
+                <div>
+                  <small>{phaseName}</small>
+                  <span>{step}</span>
+                </div>
+                <ArrowRight size={17} aria-hidden="true" />
+              </li>
+            ))}
+          </ol>
+          <div className="home-project-note" data-home-reveal="note">
+            <Sprout size={21} aria-hidden="true" />
+            <div>
+              <strong>AI-ready foundation</strong>
+              <p className="public-muted">The platform is designed with an AI-ready architecture for future intelligent planning support. Real Agentic AI is not active in this phase.</p>
+            </div>
+          </div>
         </section>
 
         <section className="public-section home-section home-roles" aria-labelledby="home-roles-title">
-        <div className="public-section-heading" data-home-reveal="heading">
-          <p>User Roles</p>
-          <h2 id="home-roles-title">Clear responsibilities across the farm operation</h2>
-        </div>
-        <div className="role-card-grid">
-          {roles.map(([title, description]) => (
-            <article className="role-card" key={title} data-home-reveal="card">
-              <Users size={20} aria-hidden="true" />
-              <h3>{title}</h3>
-              <p>{description}</p>
-            </article>
-          ))}
-        </div>
+          <div className="home-heading-row">
+            <div className="public-section-heading" data-home-reveal="heading">
+              <p>User Roles</p>
+              <h2 id="home-roles-title">Clear responsibilities across the farm operation</h2>
+            </div>
+            <p className="home-section-intro" data-home-reveal="note">
+              Role-aware access keeps each team focused while the wider agricultural operation stays connected.
+            </p>
+          </div>
+          <div className="role-card-grid home-role-grid">
+            {roles.map(([title, description], index) => (
+              <article className="role-card home-role-card" key={title} data-home-reveal="card">
+                <div className="home-role-card-header">
+                  <div className="home-role-icon"><Users size={20} aria-hidden="true" /></div>
+                  <span>Role 0{index + 1}</span>
+                </div>
+                <h3>{title}</h3>
+                <p>{description}</p>
+              </article>
+            ))}
+          </div>
         </section>
       </div>
 
       <section className="public-cta home-cta" aria-labelledby="home-cta-title" data-home-reveal="group">
-        <ShieldCheck size={28} aria-hidden="true" />
+        <div className="home-cta-icon"><ShieldCheck size={28} aria-hidden="true" /></div>
         <div>
+          <span>Secure staff access</span>
           <h2 id="home-cta-title">Staff member?</h2>
           <p>Sign in to access your AgriAssist operations dashboard.</p>
         </div>
-        <Link className="ui-button ui-button-primary" to="/login">
+        <Link className="ui-button ui-button-primary home-cta-button" to="/login">
           <span>Staff Login</span>
+          <ArrowRight size={17} aria-hidden="true" />
         </Link>
       </section>
     </div>
