@@ -801,3 +801,220 @@
 .resource-hub .status-info::before {
   background: var(--color-warning);
 }
+
+/* ---------- Empty, loading and error states ---------- */
+.resource-hub .state-box {
+  position: relative;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  color: var(--color-text);
+  background: var(--color-surface-muted);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: 12px;
+  overflow: hidden;
+  animation: rh-fade-up 220ms ease both;
+}
+
+.resource-hub .state-box > svg {
+  width: 36px;
+  height: 36px;
+  margin: 0;
+  padding: 8px;
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+  border-radius: 10px;
+}
+
+.resource-hub .state-box strong {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.resource-hub .state-box span {
+  margin-top: 2px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.resource-hub .state-box[role="status"] {
+  border-style: solid;
+  border-color: var(--color-border);
+  background: var(--color-surface);
+}
+
+.resource-hub .state-box[role="status"] > span {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+/* Loading shimmer along the bottom edge of loading boxes. */
+.resource-hub .state-box[role="status"]:has(.spin)::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--color-primary), transparent);
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation: rh-shimmer 1.2s ease-in-out infinite;
+}
+
+.resource-hub .state-box-error,
+.resource-hub .form-error {
+  color: var(--rh-bad-text);
+  background: var(--rh-bad-bg);
+  border: 1px solid var(--rh-bad-border);
+  border-radius: 12px;
+}
+
+.resource-hub .state-box-error > svg {
+  color: var(--rh-bad-text);
+  background: var(--rh-bad-bg);
+}
+
+.resource-hub .state-box-error span {
+  margin: 0;
+  color: var(--rh-bad-text);
+  font-weight: 600;
+}
+
+.resource-hub .form-error {
+  padding: var(--space-3);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ---------- Notices ---------- */
+.resource-hub .notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  animation: rh-fade-up 220ms ease both;
+}
+
+.resource-hub .notice > svg {
+  flex: 0 0 auto;
+}
+
+.resource-hub .notice-success {
+  color: var(--rh-good-text);
+  background: var(--rh-good-bg);
+  border-color: var(--rh-good-border);
+}
+
+.resource-hub .notice-warning {
+  color: var(--rh-warn-text);
+  background: var(--rh-warn-bg);
+  border-color: var(--rh-warn-border);
+}
+
+.resource-hub .notice-error {
+  color: var(--rh-bad-text);
+  background: var(--rh-bad-bg);
+  border-color: var(--rh-bad-border);
+}
+
+/* ---------- Pagination ---------- */
+.resource-hub .pagination {
+  padding-top: var(--space-4);
+  font-size: 13px;
+}
+
+.resource-hub .pagination-controls {
+  gap: var(--space-2);
+}
+
+.resource-hub .pagination-controls > span {
+  padding: 0 var(--space-2);
+  color: var(--color-text-muted);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Modals and forms ---------- */
+.resource-hub .modal-backdrop {
+  background: var(--rh-backdrop);
+  backdrop-filter: blur(4px);
+  animation: rh-fade-in 180ms ease both;
+}
+
+.resource-hub .modal-panel {
+  width: min(640px, 100%);
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-md), 0 0 0 1px var(--rh-glow);
+  animation: rh-modal-in 220ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+.resource-hub .modal-header {
+  padding: var(--space-5) var(--space-5) var(--space-4);
+  border-bottom-color: var(--color-border);
+}
+
+.resource-hub .modal-header h2 {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.resource-hub .modal-header p,
+.resource-hub .modal-message {
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
+
+.resource-hub .modal-footer {
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+  background: var(--color-surface-muted);
+  border-top-color: var(--color-border);
+}
+
+.resource-hub .surface-icon-button {
+  color: var(--color-text-muted);
+  background: transparent;
+  border-color: var(--color-border);
+  border-radius: 10px;
+  transition: color 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.resource-hub .surface-icon-button:hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--rh-glow);
+}
+
+.resource-hub .field-control {
+  gap: 6px;
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.resource-hub .field-control strong {
+  color: var(--color-danger);
+}
+
+.resource-hub .field-control small {
+  color: var(--color-danger);
+  font-weight: 600;
+}
+
+.resource-hub .field-control [aria-invalid="true"] {
+  border-color: var(--color-danger);
+}
+
+.resource-hub .field-control textarea {
+  min-height: 100px;
+  padding-top: 10px;
+}

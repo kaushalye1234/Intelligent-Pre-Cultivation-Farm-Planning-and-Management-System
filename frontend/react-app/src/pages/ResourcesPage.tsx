@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import {
   AlertTriangle,
   Boxes,
+  CheckCircle2,
   ClipboardList,
   CloudSun,
   History,
@@ -533,8 +534,8 @@ export function ResourcesPage() {
       </section>
 
       <Tabs tabs={tabs} activeTab={activeTab} onChange={(tab) => switchTab(tab as ResourceTab)} ariaLabel="Resource sections" />
-      {success ? <Notice tone="success">{success}</Notice> : null}
-      {actionError && !activeModal ? <Notice tone="error">{actionError}</Notice> : null}
+      {success ? <Notice tone="success"><CheckCircle2 size={16} aria-hidden="true" />{success}</Notice> : null}
+      {actionError && !activeModal ? <Notice tone="error"><AlertTriangle size={16} aria-hidden="true" />{actionError}</Notice> : null}
       {error ? <ErrorState message={error} /> : null}
 
       {isPagedTab(activeTab) && isLoading ? <LoadingState /> : null}
