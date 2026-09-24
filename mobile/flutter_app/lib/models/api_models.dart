@@ -588,3 +588,163 @@ class CropPlanningWorkflowStart {
     );
   }
 }
+
+class PagedList<T> {
+  const PagedList({
+    required this.items,
+    required this.page,
+    required this.totalPages,
+    required this.totalCount,
+  });
+
+  final List<T> items;
+  final int page;
+  final int totalPages;
+  final int totalCount;
+
+  bool get hasMore => page < totalPages;
+
+  factory PagedList.fromJson(
+    Map<String, dynamic> json,
+    T Function(Map<String, dynamic>) parse,
+  ) {
+    final items = (json['items'] as List<dynamic>? ?? const [])
+        .cast<Map<String, dynamic>>()
+        .map(parse)
+        .toList();
+    return PagedList(
+      items: items,
+      page: json['page'] as int? ?? 1,
+      totalPages: json['totalPages'] as int? ?? 1,
+      totalCount: json['totalCount'] as int? ?? items.length,
+    );
+  }
+}
+
+class StockRecord {
+  const StockRecord({
+    required this.id,
+    required this.resourceId,
+    required this.resourceName,
+    required this.unit,
+    required this.quantityOnHand,
+    required this.reservedQuantity,
+    required this.availableQuantity,
+    required this.lowStockThreshold,
+  });
+
+  final String id;
+  final String resourceId;
+  final String resourceName;
+  final String unit;
+  final num quantityOnHand;
+  final num reservedQuantity;
+  final num availableQuantity;
+  final num lowStockThreshold;
+
+  bool get isOutOfStock => availableQuantity <= 0;
+  bool get isLowStock => !isOutOfStock && availableQuantity <= lowStockThreshold;
+
+  factory StockRecord.fromJson(Map<String, dynamic> json) {
+    return StockRecord(
+      id: json['id'] as String,
+      resourceId: json['resourceId'] as String,
+      resourceName: json['resourceName'] as String? ?? 'Unnamed resource',
+      unit: json['unit'] as String? ?? '',
+      quantityOnHand: json['quantityOnHand'] as num,
+      reservedQuantity: json['reservedQuantity'] as num,
+      availableQuantity: json['availableQuantity'] as num,
+      lowStockThreshold: json['lowStockThreshold'] as num,
+    );
+  }
+}
+
+/// Backend ResourceReservationStatus: 1 Active, 2 Released, 3 Cancelled.
+class ReservationRecord {
+  const ReservationRecord({
+    required this.id,
+    required this.inventoryStockId,
+    required this.requestedByUserId,
+    required this.quantity,
+    required this.status,
+    required this.purpose,
+    required this.resourceName,
+    required this.unit,
+    required this.createdAt,
+    this.releasedAt,
+  });
+
+  static const statusActive = 1;
+  static const statusReleased = 2;
+  static const statusCancelled = 3;
+
+  final String id;
+  final String inventoryStockId;
+  final String requestedByUserId;
+  final num quantity;
+  final int status;
+  final String purpose;
+  final String resourceName;
+  final String unit;
+  final String createdAt;
+  final String? releasedAt;
+
+  bool get isActive => status == statusActive;
+
+  String get statusLabel => switch (status) {
+    statusActive => 'Reserved',
+    statusReleased => 'Released',
+    statusCancelled => 'Cancelled',
+    _ => 'Unknown',
+  };
+
+  factory ReservationRecord.fromJson(Map<String, dynamic> json) {
+    return ReservationRecord(
+      id: json['id'] as String,
+      inventoryStockId: json['inventoryStockId'] as String,
+      requestedByUserId: json['requestedByUserId'] as String,
+      quantity: json['quantity'] as num,
+      status: json['status'] as int,
+      purpose: json['purpose'] as String? ?? '',
+      resourceName: json['resourceName'] as String? ?? 'Unnamed resource',
+      unit: json['unit'] as String? ?? '',
+      createdAt: json['createdAt'] as String? ?? '',
+      releasedAt: json['releasedAt'] as String?,
+    );
+  }
+}
+
+/// Backend StockTransactionType: 1 Add, 2 Remove, 3 Reserve, 4 Release.
+class StockTransactionRecord {
+  const StockTransactionRecord({
+    required this.id,
+    required this.type,
+    required this.quantity,
+    required this.note,
+    required this.createdAt,
+  });
+
+  final String id;
+  final int type;
+  final num quantity;
+  final String note;
+  final String createdAt;
+
+  String get typeLabel => switch (type) {
+    1 => 'Stock added',
+    2 => 'Stock removed',
+    3 => 'Reserved',
+    4 => 'Released',
+    _ => 'Stock change',
+  };
+
+  factory StockTransactionRecord.fromJson(Map<String, dynamic> json) {
+    return StockTransactionRecord(
+      id: json['id'] as String,
+      type: json['type'] as int,
+      quantity: json['quantity'] as num,
+      note: json['note'] as String? ?? '',
+      createdAt: json['createdAt'] as String? ?? '',
+    );
+  }
+}

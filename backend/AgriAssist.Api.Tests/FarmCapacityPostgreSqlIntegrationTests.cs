@@ -9,6 +9,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AgriAssist.Api.Tests;
 
+// Shares a collection with the inventory tests: both migrate the same database, so they must not run in parallel.
+[Collection(PostgreSqlCollection.Name)]
 public sealed class FarmCapacityPostgreSqlIntegrationTests
 {
     private const string ConnectionVariable = "AGRIASSIST_TEST_POSTGRES_CONNECTION_STRING";

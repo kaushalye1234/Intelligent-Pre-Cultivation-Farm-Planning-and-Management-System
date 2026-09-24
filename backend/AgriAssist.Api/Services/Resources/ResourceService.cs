@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using System.Net;
 using AgriAssist.Api.Data;
 using AgriAssist.Api.Dtos.Resources;
@@ -23,9 +24,14 @@ public sealed class ResourceService(
     public async Task<PagedResult<ResourceCategoryResponse>> SearchCategoriesAsync(PagedQuery query, CancellationToken cancellationToken)
     {
         query.Normalize();
+        var descending = query.SortDirection == "desc";
         var categories = dbContext.ResourceCategories.AsNoTracking().Where(item => !item.IsDeleted);
         if (!string.IsNullOrWhiteSpace(query.Search)) categories = categories.Where(item => item.Name.ToLower().Contains(query.Search.ToLower()));
-        categories = categories.OrderBy(item => item.Name);
+        categories = (query.SortBy?.ToLowerInvariant() switch
+        {
+            "createdat" => Sort(categories, item => item.CreatedAt, descending),
+            _ => Sort(categories, item => item.Name, descending)
+        }).ThenBy(item => item.Id);
         var total = await categories.CountAsync(cancellationToken);
         var items = await categories.Skip((query.Page - 1) * query.PageSize).Take(query.PageSize).Select(item => new ResourceCategoryResponse(item.Id, item.Name, item.Description)).ToListAsync(cancellationToken);
         return new PagedResult<ResourceCategoryResponse>(items, query.Page, query.PageSize, total);
@@ -34,18 +40,50 @@ public sealed class ResourceService(
     public async Task<ResourceCategoryResponse> CreateCategoryAsync(ResourceCategoryRequest request, CancellationToken cancellationToken)
     {
         Validate(categoryValidator.Validate(request));
+        await EnsureCategoryNameIsFreeAsync(request.Name, null, cancellationToken);
         var category = new ResourceCategory { Name = request.Name.Trim(), Description = request.Description?.Trim(), CreatedByUserId = currentUser.UserId };
         dbContext.ResourceCategories.Add(category);
         await dbContext.SaveChangesAsync(cancellationToken);
         return new ResourceCategoryResponse(category.Id, category.Name, category.Description);
     }
 
+    public async Task<ResourceCategoryResponse> UpdateCategoryAsync(Guid id, ResourceCategoryRequest request, CancellationToken cancellationToken)
+    {
+        Validate(categoryValidator.Validate(request));
+        var category = await dbContext.ResourceCategories.SingleOrDefaultAsync(item => item.Id == id && !item.IsDeleted, cancellationToken) ?? throw NotFound("Resource category");
+        await EnsureCategoryNameIsFreeAsync(request.Name, id, cancellationToken);
+        category.Name = request.Name.Trim();
+        category.Description = request.Description?.Trim();
+        category.UpdatedAt = DateTime.UtcNow;
+        category.UpdatedByUserId = currentUser.UserId;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return new ResourceCategoryResponse(category.Id, category.Name, category.Description);
+    }
+
+    public async Task DeleteCategoryAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var category = await dbContext.ResourceCategories.SingleOrDefaultAsync(item => item.Id == id && !item.IsDeleted, cancellationToken) ?? throw NotFound("Resource category");
+        if (await dbContext.Resources.AnyAsync(item => item.ResourceCategoryId == id && !item.IsDeleted, cancellationToken))
+            throw new ApiException(HttpStatusCode.Conflict, "CATEGORY_IN_USE", "This category is used by resources. Move or delete those resources first.");
+        category.IsDeleted = true;
+        category.UpdatedAt = DateTime.UtcNow;
+        category.UpdatedByUserId = currentUser.UserId;
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task<PagedResult<SupplierResponse>> SearchSuppliersAsync(PagedQuery query, CancellationToken cancellationToken)
     {
         query.Normalize();
+        var descending = query.SortDirection == "desc";
         var suppliers = dbContext.Suppliers.AsNoTracking().Where(item => !item.IsDeleted);
         if (!string.IsNullOrWhiteSpace(query.Search)) suppliers = suppliers.Where(item => item.Name.ToLower().Contains(query.Search.ToLower()));
-        suppliers = suppliers.OrderBy(item => item.Name);
+        suppliers = (query.SortBy?.ToLowerInvariant() switch
+        {
+            "email" or "contactemail" => Sort(suppliers, item => item.ContactEmail, descending),
+            "phone" => Sort(suppliers, item => item.Phone, descending),
+            "createdat" => Sort(suppliers, item => item.CreatedAt, descending),
+            _ => Sort(suppliers, item => item.Name, descending)
+        }).ThenBy(item => item.Id);
         var total = await suppliers.CountAsync(cancellationToken);
         var items = await suppliers.Skip((query.Page - 1) * query.PageSize).Take(query.PageSize).Select(item => new SupplierResponse(item.Id, item.Name, item.ContactEmail, item.Phone)).ToListAsync(cancellationToken);
         return new PagedResult<SupplierResponse>(items, query.Page, query.PageSize, total);
@@ -60,12 +98,46 @@ public sealed class ResourceService(
         return new SupplierResponse(supplier.Id, supplier.Name, supplier.ContactEmail, supplier.Phone);
     }
 
-    public async Task<PagedResult<ResourceResponse>> SearchResourcesAsync(PagedQuery query, CancellationToken cancellationToken)
+    public async Task<SupplierResponse> UpdateSupplierAsync(Guid id, SupplierRequest request, CancellationToken cancellationToken)
+    {
+        Validate(supplierValidator.Validate(request));
+        var supplier = await dbContext.Suppliers.SingleOrDefaultAsync(item => item.Id == id && !item.IsDeleted, cancellationToken) ?? throw NotFound("Supplier");
+        supplier.Name = request.Name.Trim();
+        supplier.ContactEmail = request.ContactEmail.Trim();
+        supplier.Phone = request.Phone.Trim();
+        supplier.UpdatedAt = DateTime.UtcNow;
+        supplier.UpdatedByUserId = currentUser.UserId;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return new SupplierResponse(supplier.Id, supplier.Name, supplier.ContactEmail, supplier.Phone);
+    }
+
+    public async Task DeleteSupplierAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var supplier = await dbContext.Suppliers.SingleOrDefaultAsync(item => item.Id == id && !item.IsDeleted, cancellationToken) ?? throw NotFound("Supplier");
+        if (await dbContext.Resources.AnyAsync(item => item.SupplierId == id && !item.IsDeleted, cancellationToken))
+            throw new ApiException(HttpStatusCode.Conflict, "SUPPLIER_IN_USE", "This supplier is used by resources. Reassign or delete those resources first.");
+        supplier.IsDeleted = true;
+        supplier.UpdatedAt = DateTime.UtcNow;
+        supplier.UpdatedByUserId = currentUser.UserId;
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<PagedResult<ResourceResponse>> SearchResourcesAsync(PagedQuery query, Guid? categoryId, Guid? supplierId, CancellationToken cancellationToken)
     {
         query.Normalize();
+        var descending = query.SortDirection == "desc";
         var resources = dbContext.Resources.AsNoTracking().Where(item => !item.IsDeleted);
         if (!string.IsNullOrWhiteSpace(query.Search)) resources = resources.Where(item => item.Name.ToLower().Contains(query.Search.ToLower()));
-        resources = resources.OrderBy(item => item.Name);
+        if (categoryId.HasValue) resources = resources.Where(item => item.ResourceCategoryId == categoryId.Value);
+        if (supplierId.HasValue) resources = resources.Where(item => item.SupplierId == supplierId.Value);
+        resources = (query.SortBy?.ToLowerInvariant() switch
+        {
+            "unit" => Sort(resources, item => item.Unit, descending),
+            "isactive" => Sort(resources, item => item.IsActive, descending),
+            "createdat" => Sort(resources, item => item.CreatedAt, descending),
+            "category" => Sort(resources, item => item.ResourceCategory!.Name, descending),
+            _ => Sort(resources, item => item.Name, descending)
+        }).ThenBy(item => item.Id);
         var total = await resources.CountAsync(cancellationToken);
         var items = await resources.Skip((query.Page - 1) * query.PageSize).Take(query.PageSize).Select(item => MapResource(item)).ToListAsync(cancellationToken);
         return new PagedResult<ResourceResponse>(items, query.Page, query.PageSize, total);
@@ -74,18 +146,62 @@ public sealed class ResourceService(
     public async Task<ResourceResponse> CreateResourceAsync(ResourceRequest request, CancellationToken cancellationToken)
     {
         Validate(resourceValidator.Validate(request));
-        if (!await dbContext.ResourceCategories.AnyAsync(item => item.Id == request.ResourceCategoryId && !item.IsDeleted, cancellationToken)) throw NotFound("Resource category");
-        if (request.SupplierId.HasValue && !await dbContext.Suppliers.AnyAsync(item => item.Id == request.SupplierId && !item.IsDeleted, cancellationToken)) throw NotFound("Supplier");
+        await EnsureCategoryAndSupplierExistAsync(request, cancellationToken);
         var resource = new Resource { ResourceCategoryId = request.ResourceCategoryId, SupplierId = request.SupplierId, Name = request.Name.Trim(), Unit = request.Unit.Trim(), IsActive = request.IsActive, CreatedByUserId = currentUser.UserId };
         dbContext.Resources.Add(resource);
         await dbContext.SaveChangesAsync(cancellationToken);
         return MapResource(resource);
     }
 
+    public async Task<ResourceResponse> UpdateResourceAsync(Guid id, ResourceRequest request, CancellationToken cancellationToken)
+    {
+        Validate(resourceValidator.Validate(request));
+        var resource = await dbContext.Resources.SingleOrDefaultAsync(item => item.Id == id && !item.IsDeleted, cancellationToken) ?? throw NotFound("Resource");
+        await EnsureCategoryAndSupplierExistAsync(request, cancellationToken);
+        resource.ResourceCategoryId = request.ResourceCategoryId;
+        resource.SupplierId = request.SupplierId;
+        resource.Name = request.Name.Trim();
+        resource.Unit = request.Unit.Trim();
+        resource.IsActive = request.IsActive;
+        resource.UpdatedAt = DateTime.UtcNow;
+        resource.UpdatedByUserId = currentUser.UserId;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return MapResource(resource);
+    }
+
+    /// <summary>
+    /// Soft-deletes a resource together with its stock row. Refused while stock is still reserved, because
+    /// deleting it would strand active reservations. The stock RowVersion is advanced so a reservation
+    /// racing with the delete fails with STOCK_CHANGED instead of committing against a deleted stock.
+    /// </summary>
+    public async Task DeleteResourceAsync(Guid id, CancellationToken cancellationToken)
+    {
+        await using var transaction = await BeginTransactionIfRelationalAsync(cancellationToken);
+        var resource = await dbContext.Resources.SingleOrDefaultAsync(item => item.Id == id && !item.IsDeleted, cancellationToken) ?? throw NotFound("Resource");
+        var stock = await dbContext.InventoryStocks.SingleOrDefaultAsync(item => item.ResourceId == id && !item.IsDeleted, cancellationToken);
+        if (stock is not null)
+        {
+            var hasActiveReservations = stock.ReservedQuantity > 0
+                || await dbContext.ResourceReservations.AnyAsync(item => item.InventoryStockId == stock.Id && !item.IsDeleted && item.Status == ResourceReservationStatus.Active, cancellationToken);
+            if (hasActiveReservations)
+                throw new ApiException(HttpStatusCode.Conflict, "RESOURCE_HAS_ACTIVE_RESERVATIONS", "This resource has active reservations. Release or cancel them before deleting it.");
+            stock.IsDeleted = true;
+            stock.RowVersion = NewRowVersion();
+            stock.UpdatedAt = DateTime.UtcNow;
+            stock.UpdatedByUserId = currentUser.UserId;
+        }
+
+        resource.IsDeleted = true;
+        resource.UpdatedAt = DateTime.UtcNow;
+        resource.UpdatedByUserId = currentUser.UserId;
+        await SaveStockChangesAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+    }
+
     public async Task<InventoryStockResponse> UpsertStockAsync(InventoryStockRequest request, CancellationToken cancellationToken)
     {
         Validate(stockValidator.Validate(request));
-        if (!await dbContext.Resources.AnyAsync(item => item.Id == request.ResourceId && item.IsActive && !item.IsDeleted, cancellationToken)) throw NotFound("Resource");
+        var resource = await dbContext.Resources.SingleOrDefaultAsync(item => item.Id == request.ResourceId && item.IsActive && !item.IsDeleted, cancellationToken) ?? throw NotFound("Resource");
         var stock = await dbContext.InventoryStocks.SingleOrDefaultAsync(item => item.ResourceId == request.ResourceId, cancellationToken);
         var previousQuantity = stock?.QuantityOnHand ?? 0;
         if (stock is null)
@@ -117,17 +233,38 @@ public sealed class ResourceService(
         }
 
         await SaveStockChangesAsync(cancellationToken);
-        return MapStock(stock);
+        return MapStock(stock, resource);
     }
 
     public async Task<PagedResult<InventoryStockResponse>> SearchStocksAsync(PagedQuery query, bool? lowStockOnly, CancellationToken cancellationToken)
     {
         query.Normalize();
+        var descending = query.SortDirection == "desc";
         var stocks = dbContext.InventoryStocks.AsNoTracking().Where(item => !item.IsDeleted);
         if (lowStockOnly == true) stocks = stocks.Where(item => item.QuantityOnHand - item.ReservedQuantity <= item.LowStockThreshold);
-        stocks = stocks.OrderBy(item => item.ResourceId);
+        if (!string.IsNullOrWhiteSpace(query.Search)) stocks = stocks.Where(item => item.Resource!.Name.ToLower().Contains(query.Search.ToLower()));
+        stocks = (query.SortBy?.ToLowerInvariant() switch
+        {
+            "resourcename" or "resource" => Sort(stocks, item => item.Resource!.Name, descending),
+            "quantityonhand" => Sort(stocks, item => item.QuantityOnHand, descending),
+            "reservedquantity" => Sort(stocks, item => item.ReservedQuantity, descending),
+            "availablequantity" => Sort(stocks, item => item.QuantityOnHand - item.ReservedQuantity, descending),
+            "lowstockthreshold" => Sort(stocks, item => item.LowStockThreshold, descending),
+            "createdat" => Sort(stocks, item => item.CreatedAt, descending),
+            _ => Sort(stocks, item => item.ResourceId, descending)
+        }).ThenBy(item => item.Id);
         var total = await stocks.CountAsync(cancellationToken);
-        var items = await stocks.Skip((query.Page - 1) * query.PageSize).Take(query.PageSize).Select(item => MapStock(item)).ToListAsync(cancellationToken);
+        var items = await stocks.Skip((query.Page - 1) * query.PageSize).Take(query.PageSize)
+            .Select(item => new InventoryStockResponse(
+                item.Id,
+                item.ResourceId,
+                item.QuantityOnHand,
+                item.ReservedQuantity,
+                item.QuantityOnHand - item.ReservedQuantity,
+                item.LowStockThreshold,
+                item.Resource!.Name,
+                item.Resource.Unit))
+            .ToListAsync(cancellationToken);
         return new PagedResult<InventoryStockResponse>(items, query.Page, query.PageSize, total);
     }
 
@@ -143,9 +280,21 @@ public sealed class ResourceService(
         if (!IsResourceManager()) reservations = reservations.Where(item => item.RequestedByUserId == currentUser.UserId);
         if (status.HasValue) reservations = reservations.Where(item => item.Status == status.Value);
         if (!string.IsNullOrWhiteSpace(query.Search)) reservations = reservations.Where(item => item.Purpose.ToLower().Contains(query.Search.ToLower()));
-        reservations = reservations.OrderByDescending(item => item.CreatedAt);
-        var total = await reservations.CountAsync(cancellationToken);
-        var items = await reservations.Skip((query.Page - 1) * query.PageSize).Take(query.PageSize).Select(item => MapReservation(item)).ToListAsync(cancellationToken);
+        var ordered = reservations.OrderByDescending(item => item.CreatedAt).ThenBy(item => item.Id);
+        var total = await ordered.CountAsync(cancellationToken);
+        var items = await ordered.Skip((query.Page - 1) * query.PageSize).Take(query.PageSize)
+            .Select(item => new ResourceReservationResponse(
+                item.Id,
+                item.InventoryStockId,
+                item.RequestedByUserId,
+                item.Quantity,
+                item.Status,
+                item.ReleasedAt,
+                item.Purpose,
+                item.InventoryStock!.Resource!.Name,
+                item.InventoryStock.Resource.Unit,
+                item.CreatedAt))
+            .ToListAsync(cancellationToken);
         return new PagedResult<ResourceReservationResponse>(items, query.Page, query.PageSize, total);
     }
 
@@ -153,13 +302,13 @@ public sealed class ResourceService(
     {
         Validate(reservationValidator.Validate(request));
         await using var transaction = await BeginTransactionIfRelationalAsync(cancellationToken);
-        var stock = await dbContext.InventoryStocks.SingleOrDefaultAsync(item => item.Id == request.InventoryStockId && !item.IsDeleted, cancellationToken) ?? throw NotFound("Inventory stock");
+        var stock = await dbContext.InventoryStocks.Include(item => item.Resource).SingleOrDefaultAsync(item => item.Id == request.InventoryStockId && !item.IsDeleted, cancellationToken) ?? throw NotFound("Inventory stock");
         if (stock.AvailableQuantity < request.Quantity) throw new ApiException(HttpStatusCode.Conflict, "INSUFFICIENT_STOCK", "Reservation cannot exceed available stock.");
         stock.ReservedQuantity += request.Quantity;
         stock.RowVersion = NewRowVersion();
         stock.UpdatedAt = DateTime.UtcNow;
 
-        var reservation = new ResourceReservation { InventoryStockId = stock.Id, RequestedByUserId = RequireUser(), Quantity = request.Quantity, Purpose = request.Purpose.Trim(), CreatedByUserId = currentUser.UserId };
+        var reservation = new ResourceReservation { InventoryStockId = stock.Id, InventoryStock = stock, RequestedByUserId = RequireUser(), Quantity = request.Quantity, Purpose = request.Purpose.Trim(), CreatedByUserId = currentUser.UserId };
         dbContext.ResourceReservations.Add(reservation);
         dbContext.StockTransactions.Add(new StockTransaction { InventoryStockId = stock.Id, Type = StockTransactionType.Reserve, Quantity = request.Quantity, Note = request.Purpose.Trim(), CreatedByUserId = currentUser.UserId });
         await SaveStockChangesAsync(cancellationToken);
@@ -180,7 +329,7 @@ public sealed class ResourceService(
         if (!await dbContext.Users.AnyAsync(item => item.Id == requestedByUserId && item.IsActive && !item.IsDeleted, cancellationToken))
             throw NotFound("Reservation requester");
 
-        var stock = await dbContext.InventoryStocks.SingleOrDefaultAsync(
+        var stock = await dbContext.InventoryStocks.Include(item => item.Resource).SingleOrDefaultAsync(
             item => item.Id == request.InventoryStockId && !item.IsDeleted,
             cancellationToken) ?? throw NotFound("Inventory stock");
         if (stock.AvailableQuantity < request.Quantity)
@@ -193,6 +342,7 @@ public sealed class ResourceService(
         var reservation = new ResourceReservation
         {
             InventoryStockId = stock.Id,
+            InventoryStock = stock,
             RequestedByUserId = requestedByUserId,
             Quantity = request.Quantity,
             Purpose = request.Purpose.Trim(),
@@ -223,7 +373,7 @@ public sealed class ResourceService(
     {
         var action = newStatus == ResourceReservationStatus.Released ? "released" : "cancelled";
         await using var transaction = await BeginTransactionIfRelationalAsync(cancellationToken);
-        var reservation = await dbContext.ResourceReservations.Include(item => item.InventoryStock).SingleOrDefaultAsync(item => item.Id == reservationId && !item.IsDeleted, cancellationToken) ?? throw NotFound("Reservation");
+        var reservation = await dbContext.ResourceReservations.Include(item => item.InventoryStock).ThenInclude(item => item!.Resource).SingleOrDefaultAsync(item => item.Id == reservationId && !item.IsDeleted, cancellationToken) ?? throw NotFound("Reservation");
         if (!IsResourceManager() && reservation.RequestedByUserId != currentUser.UserId)
         {
             throw new ApiException(HttpStatusCode.Forbidden, "RESERVATION_FORBIDDEN", $"Only the requester or a resource officer can have this reservation {action}.");
@@ -259,6 +409,24 @@ public sealed class ResourceService(
         }
     }
 
+    // The category name column has a unique index that also covers soft-deleted rows, so check every row
+    // (ignoring case) and answer with a clear 409 instead of a database error.
+    private async Task EnsureCategoryNameIsFreeAsync(string name, Guid? excludeId, CancellationToken cancellationToken)
+    {
+        var normalized = name.Trim().ToLower();
+        if (await dbContext.ResourceCategories.AnyAsync(item => item.Id != excludeId && item.Name.ToLower() == normalized, cancellationToken))
+            throw new ApiException(HttpStatusCode.Conflict, "CATEGORY_NAME_EXISTS", "A resource category with this name already exists.");
+    }
+
+    private async Task EnsureCategoryAndSupplierExistAsync(ResourceRequest request, CancellationToken cancellationToken)
+    {
+        if (!await dbContext.ResourceCategories.AnyAsync(item => item.Id == request.ResourceCategoryId && !item.IsDeleted, cancellationToken)) throw NotFound("Resource category");
+        if (request.SupplierId.HasValue && !await dbContext.Suppliers.AnyAsync(item => item.Id == request.SupplierId && !item.IsDeleted, cancellationToken)) throw NotFound("Supplier");
+    }
+
+    private static IOrderedQueryable<T> Sort<T, TKey>(IQueryable<T> source, Expression<Func<T, TKey>> key, bool descending) =>
+        descending ? source.OrderByDescending(key) : source.OrderBy(key);
+
     private bool IsResourceManager() => currentUser.Role is ApplicationRole.ResourceOfficer or ApplicationRole.Admin;
     private static byte[] NewRowVersion() => Guid.NewGuid().ToByteArray();
 
@@ -273,7 +441,7 @@ public sealed class ResourceService(
     private static ApiException NotFound(string name) => new(HttpStatusCode.NotFound, "NOT_FOUND", $"{name} was not found.");
     private static void Validate(IReadOnlyList<string> errors) { if (errors.Count > 0) throw new ApiException(HttpStatusCode.BadRequest, "VALIDATION_ERROR", string.Join(" ", errors)); }
     private static ResourceResponse MapResource(Resource item) => new(item.Id, item.ResourceCategoryId, item.SupplierId, item.Name, item.Unit, item.IsActive);
-    private static InventoryStockResponse MapStock(InventoryStock item) => new(item.Id, item.ResourceId, item.QuantityOnHand, item.ReservedQuantity, item.AvailableQuantity, item.LowStockThreshold);
+    private static InventoryStockResponse MapStock(InventoryStock item, Resource? resource = null) => new(item.Id, item.ResourceId, item.QuantityOnHand, item.ReservedQuantity, item.AvailableQuantity, item.LowStockThreshold, (resource ?? item.Resource)?.Name ?? string.Empty, (resource ?? item.Resource)?.Unit ?? string.Empty);
     private static StockTransactionResponse MapTransaction(StockTransaction item) => new(item.Id, item.InventoryStockId, item.Type, item.Quantity, item.Note, item.CreatedAt);
-    private static ResourceReservationResponse MapReservation(ResourceReservation item) => new(item.Id, item.InventoryStockId, item.RequestedByUserId, item.Quantity, item.Status, item.ReleasedAt, item.Purpose);
+    private static ResourceReservationResponse MapReservation(ResourceReservation item) => new(item.Id, item.InventoryStockId, item.RequestedByUserId, item.Quantity, item.Status, item.ReleasedAt, item.Purpose, item.InventoryStock?.Resource?.Name ?? string.Empty, item.InventoryStock?.Resource?.Unit ?? string.Empty, item.CreatedAt);
 }

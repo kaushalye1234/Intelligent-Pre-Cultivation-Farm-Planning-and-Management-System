@@ -9,6 +9,13 @@ class AppState extends ChangeNotifier {
   final ApiClient _apiClient;
   static const staffPortalMessage =
       'This account is for staff. Please use the React Staff Portal.';
+  static const farmerRole = 1;
+  static const resourceOfficerRole = 3;
+
+  /// Mobile serves Farmers, plus Resource Officers for inventory and reservations.
+  /// Every other staff role must use the React Staff Portal.
+  static bool isMobileRole(int role) =>
+      role == farmerRole || role == resourceOfficerRole;
 
   UserProfile? user;
   AuthenticationSession? passwordChangeSession;
@@ -30,7 +37,9 @@ class AppState extends ChangeNotifier {
   String? error;
   bool isBusy = false;
 
+  ApiClient get apiClient => _apiClient;
   bool get isAuthenticated => user != null;
+  bool get isResourceOfficer => user?.role == resourceOfficerRole;
   bool get requiresTemporaryPasswordChange =>
       passwordChangeSession?.requiresPasswordChange ?? false;
   Future<void> restoreSession() async {
@@ -40,7 +49,7 @@ class AppState extends ChangeNotifier {
       final token = await _apiClient.loadToken();
       if (token != null) {
         user = await _apiClient.profile();
-        if (user?.role != 1) {
+        if (!isMobileRole(user!.role)) {
           await _rejectStaffSession();
           return;
         }
@@ -58,7 +67,7 @@ class AppState extends ChangeNotifier {
   Future<void> login(String email, String password) async {
     await _guard(() async {
       final session = await _apiClient.login(email, password);
-      if (session.user.role != 1) {
+      if (!isMobileRole(session.user.role)) {
         await _rejectStaffSession();
         return;
       }
@@ -106,7 +115,7 @@ class AppState extends ChangeNotifier {
         passwordChangeToken: session!.passwordChangeToken!,
         newPassword: newPassword,
       );
-      if (authenticatedSession.user.role != 1) {
+      if (!isMobileRole(authenticatedSession.user.role)) {
         await _rejectStaffSession();
         return;
       }
@@ -200,10 +209,13 @@ class AppState extends ChangeNotifier {
       _apiClient.approvedWorkflowDetail(workflowId);
 
   Future<void> _loadAuthenticatedLanding() async {
-    if (user?.role != 1) {
+    if (user == null || !isMobileRole(user!.role)) {
       await _rejectStaffSession();
       return;
     }
+
+    // Resource Officers have no farm to onboard; their screens load their own data.
+    if (isResourceOfficer) return;
 
     farmerOnboarding = await _apiClient.farmerOnboardingStatus();
     if (farmerOnboarding?.stage == 'field') {

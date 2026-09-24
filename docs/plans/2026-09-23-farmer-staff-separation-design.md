@@ -50,3 +50,11 @@ Login and restored-session flows reject non-Farmer roles, clear staff tokens, an
 ## Verification
 
 Tests cover backward-compatible inspection persistence, role enforcement, exact linked evidence, run-before-submit rejection, React operation ordering/read-only roles, Farmer-only Flutter navigation/session rejection, and preserved Farmer crop-plan/status behavior. All backend, AI, React, and Flutter checks required by `AGENTS.md` run before local commits.
+
+## Amendment: Resource Officer on mobile (2026-09-24)
+
+Flutter also accepts Resource Officer (role 3) sessions. They land in a separate Resource Officer shell
+(Inventory and Reservations) backed by its own `ResourceState`; the Farmer shell, the `AppState` farmer data and the
+Farmer-only tab set are unchanged. Field Officer, Agricultural Officer and Admin accounts are still rejected with the
+staff-portal message. Release and cancel actions are shown only when `ResourceState.canManage` is true and remain
+enforced by the backend.

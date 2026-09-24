@@ -12,7 +12,7 @@ STOCK_ID = UUID("44444444-4444-4444-4444-444444444444")
 RESOURCE_ID = UUID("55555555-5555-5555-5555-555555555555")
 
 
-def weather_input(*, available=True, rain=2, temperature=31, wind=5, stock_quantity=20, threshold=8, stocks=True):
+def weather_input(*, available=True, rain=2, temperature=31, wind=5, stock_quantity=20, threshold=8, stocks=True, requirements=None):
     payload = {
         "workflowId": str(WORKFLOW_ID),
         "agentStepId": str(STEP_ID),
@@ -50,6 +50,8 @@ def weather_input(*, available=True, rain=2, temperature=31, wind=5, stock_quant
             }
         ],
     }
+    if requirements is not None:
+        payload["resourceRequirements"] = requirements
     return WeatherResourceInput.model_validate(payload)
 
 
@@ -106,3 +108,53 @@ async def test_missing_inventory_snapshot_requires_review():
     assert result.requires_human_review is True
     assert result.resource_checks == []
     assert "No active inventory rows" in result.warnings[0]
+
+
+@pytest.mark.asyncio
+async def test_missing_requirement_is_unknown_and_never_invented():
+    result = await WeatherResourceAgent().run(weather_input())
+
+    check = result.resource_checks[0]
+    assert check.requested is None
+    assert check.sufficient is None
+    assert check.requirement_status == "ResourceRequirementUnknown"
+    assert any("ResourceRequirementUnknown" in warning for warning in result.warnings)
+    dumped = result.model_dump(by_alias=True)["resourceChecks"][0]
+    assert dumped["requested"] is None and dumped["sufficient"] is None
+    assert dumped["requirementStatus"] == "ResourceRequirementUnknown"
+
+
+@pytest.mark.asyncio
+async def test_sufficient_requirement_reports_requested_quantity():
+    result = await WeatherResourceAgent().run(
+        weather_input(stock_quantity=20, requirements=[{"resourceId": str(RESOURCE_ID), "requestedQuantity": 15}])
+    )
+
+    check = result.resource_checks[0]
+    assert (check.requested, check.sufficient, check.requirement_status) == (15, True, "Sufficient")
+    assert not any("ResourceRequirementUnknown" in warning for warning in result.warnings)
+    assert result.requires_human_review is False
+
+
+@pytest.mark.asyncio
+async def test_insufficient_requirement_requires_human_review():
+    result = await WeatherResourceAgent().run(
+        weather_input(stock_quantity=20, requirements=[{"resourceId": str(RESOURCE_ID), "requestedQuantity": 25}])
+    )
+
+    check = result.resource_checks[0]
+    assert (check.requested, check.sufficient, check.requirement_status) == (25, False, "Insufficient")
+    assert result.requires_human_review is True
+    assert any("20 kg available, 25 kg requested" in warning for warning in result.warnings)
+
+
+@pytest.mark.asyncio
+async def test_requirement_for_unstocked_resource_is_flagged_not_invented():
+    other = "99999999-9999-9999-9999-999999999999"
+    result = await WeatherResourceAgent().run(
+        weather_input(requirements=[{"resourceId": other, "requestedQuantity": 3}])
+    )
+
+    assert result.requires_human_review is True
+    assert any(other in warning for warning in result.warnings)
+    assert result.resource_checks[0].requirement_status == "ResourceRequirementUnknown"
