@@ -85,6 +85,12 @@ function stockLabel(stock: InventoryStock) {
   return 'Available'
 }
 
+/** Share of on-hand stock still available, for the inventory level bar. */
+function availablePercent(stock: InventoryStock) {
+  if (stock.quantityOnHand <= 0) return 0
+  return Math.max(0, Math.min(100, (stock.availableQuantity / stock.quantityOnHand) * 100))
+}
+
 const iconProps = { size: 15, 'aria-hidden': true } as const
 
 const emptyCategoryForm = { name: '', description: '' }
@@ -549,10 +555,22 @@ export function ResourcesPage() {
             sort={sort}
             onSort={sortBy}
             columns={[
-              { header: 'Resource', sortKey: 'resourceName', render: (row) => stockName(row) },
+              { header: 'Resource', sortKey: 'resourceName', render: (row) => (
+                <span className="resource-name-cell">
+                  <strong>{stockName(row)}</strong>
+                  {row.unit ? <span className="unit-badge">{row.unit}</span> : null}
+                </span>
+              ) },
               { header: 'On Hand', sortKey: 'quantityOnHand', render: (row) => formatNumber(row.quantityOnHand) },
               { header: 'Reserved', sortKey: 'reservedQuantity', render: (row) => formatNumber(row.reservedQuantity) },
-              { header: 'Available', sortKey: 'availableQuantity', render: (row) => formatNumber(row.availableQuantity) },
+              { header: 'Available', sortKey: 'availableQuantity', render: (row) => (
+                <span className="stock-cell-value">
+                  <strong>{formatNumber(row.availableQuantity)}</strong>
+                  <span className="stock-level-bar" aria-hidden="true">
+                    <span className={`stock-level-fill stock-level-fill-${stockTone(row)}`} style={{ width: `${availablePercent(row)}%` }} />
+                  </span>
+                </span>
+              ) },
               { header: 'Condition', render: (row) => <StatusPill label={stockLabel(row)} tone={stockTone(row)} /> },
               { header: 'Actions', className: 'actions-cell', render: (row) => (
                 <div className="row-actions">
@@ -587,7 +605,7 @@ export function ResourcesPage() {
               { header: 'Resource', sortKey: 'name', render: (row) => <strong className="cell-strong">{row.name}</strong> },
               { header: 'Category', sortKey: 'category', render: (row) => categoryNameById.get(row.resourceCategoryId) ?? row.resourceCategoryId.slice(0, 8) },
               { header: 'Supplier', render: (row) => row.supplierId ? supplierNameById.get(row.supplierId) ?? row.supplierId.slice(0, 8) : <span className="muted-text">Not assigned</span> },
-              { header: 'Unit', sortKey: 'unit', render: (row) => row.unit },
+              { header: 'Unit', sortKey: 'unit', render: (row) => <span className="unit-badge">{row.unit}</span> },
               { header: 'Status', sortKey: 'isActive', render: (row) => <StatusPill label={row.isActive ? 'Active' : 'Inactive'} tone={row.isActive ? 'good' : 'bad'} /> },
               { header: 'Actions', className: 'actions-cell', render: (row) => (
                 <div className="row-actions">
