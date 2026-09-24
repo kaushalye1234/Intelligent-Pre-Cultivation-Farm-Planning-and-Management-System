@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../state/app_state.dart';
@@ -19,6 +19,20 @@ class _CropPlanScreenState extends State<CropPlanScreen> {
   String? _farmId;
   String? _fieldId;
   String? _cropTypeId;
+  String? _varietyId;
+  String? _previousCropId;
+  int _season = 0;
+  final Set<String> _previousProblems = {};
+
+  static const _problemOptions = <String, String>{
+    'PreviousFlooding': 'Previous flooding',
+    'PreviousWaterShortage': 'Previous water shortage',
+    'PreviousPestIssue': 'Previous pest issue',
+    'PreviousDiseaseIssue': 'Previous disease issue',
+    'PreviousSoilProblem': 'Previous soil problem',
+    'Other': 'Other',
+    'NoneKnown': 'None known',
+  };
 
   @override
   void dispose() {
@@ -43,24 +57,46 @@ class _CropPlanScreenState extends State<CropPlanScreen> {
   }
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate() || _farmId == null || _cropTypeId == null) {
+    if (!_formKey.currentState!.validate() ||
+        _farmId == null ||
+        _fieldId == null ||
+        _cropTypeId == null) {
       return;
     }
 
     await context.read<AppState>().createAndStartAiCropPlan(
-          farmId: _farmId!,
-          fieldId: _fieldId,
-          cropTypeId: _cropTypeId!,
-          startDate: _startController.text,
-          endDate: _endController.text,
-          budget: num.parse(_budgetController.text),
-          objective: _objectiveController.text.trim(),
-        );
+      farmId: _farmId!,
+      fieldId: _fieldId!,
+      cropTypeId: _cropTypeId!,
+      cropVarietyId: _varietyId,
+      cultivationSeason: _season,
+      previousCropTypeId:
+          _previousCropId == 'none' || _previousCropId == 'unknown'
+          ? null
+          : _previousCropId,
+      previousKnownProblems: _previousProblems.toList(),
+      startDate: _startController.text,
+      endDate: _endController.text,
+      budget: num.parse(_budgetController.text),
+      objective: _objectiveController.text.trim(),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
+    final fields = state.fields
+        .where((field) => field.farmId == _farmId && field.isActive)
+        .toList();
+    final crops = state.cropTypes.where((crop) => crop.isActive).toList();
+    final varieties = state.cropVarieties
+        .where(
+          (variety) => variety.cropTypeId == _cropTypeId && variety.isActive,
+        )
+        .toList();
+    final selectedFarm = state.farms
+        .where((farm) => farm.id == _farmId)
+        .firstOrNull;
 
     return RefreshIndicator(
       onRefresh: () async {
@@ -70,7 +106,14 @@ class _CropPlanScreenState extends State<CropPlanScreen> {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text('AI crop planning', style: Theme.of(context).textTheme.headlineSmall),
+          Text(
+            'Create crop plan',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Tell us what you want to grow. Field officers and later workflow stages will review the current conditions.',
+          ),
           const SizedBox(height: 12),
           Card(
             child: Padding(
@@ -80,32 +123,136 @@ class _CropPlanScreenState extends State<CropPlanScreen> {
                 child: Column(
                   children: [
                     DropdownButtonFormField<String>(
+                      key: const ValueKey('plan-farm'),
                       initialValue: _farmId,
                       decoration: const InputDecoration(labelText: 'Farm'),
-                      items: state.farms.map((farm) => DropdownMenuItem(value: farm.id, child: Text(farm.name))).toList(),
-                      onChanged: (value) => setState(() => _farmId = value),
-                      validator: (value) => value == null ? 'Farm is required' : null,
+                      items: state.farms
+                          .map(
+                            (farm) => DropdownMenuItem(
+                              value: farm.id,
+                              child: Text(farm.name),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) => setState(() {
+                        _farmId = value;
+                        _fieldId = null;
+                      }),
+                      validator: (value) =>
+                          value == null ? 'Farm is required' : null,
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
+                      key: ValueKey('plan-field-$_farmId'),
                       initialValue: _fieldId,
                       decoration: const InputDecoration(labelText: 'Field'),
-                      items: state.fields.map((field) => DropdownMenuItem(value: field.id, child: Text(field.name))).toList(),
+                      items: fields
+                          .map(
+                            (field) => DropdownMenuItem(
+                              value: field.id,
+                              child: Text(field.name),
+                            ),
+                          )
+                          .toList(),
                       onChanged: (value) => setState(() => _fieldId = value),
+                      validator: (value) =>
+                          value == null ? 'Field is required' : null,
                     ),
                     const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
+                    InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Location',
+                        helperText: 'Automatically loaded from the farm',
+                      ),
+                      child: Text(selectedFarm?.location ?? 'Select a farm'),
+                    ),
+                    const SizedBox(height: 12),
+                    FormField<String>(
                       initialValue: _cropTypeId,
-                      decoration: const InputDecoration(labelText: 'Crop type'),
-                      items: state.cropTypes.map((crop) => DropdownMenuItem(value: crop.id, child: Text(crop.name))).toList(),
-                      onChanged: (value) => setState(() => _cropTypeId = value),
-                      validator: (value) => value == null ? 'Crop type is required' : null,
+                      validator: (value) =>
+                          value == null ? 'Crop is required' : null,
+                      builder: (field) => Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          DropdownMenu<String>(
+                            key: const ValueKey('plan-crop'),
+                            label: const Text('Crop'),
+                            enableFilter: true,
+                            requestFocusOnTap: true,
+                            initialSelection: _cropTypeId,
+                            dropdownMenuEntries: crops
+                                .map(
+                                  (crop) => DropdownMenuEntry(
+                                    value: crop.id,
+                                    label: crop.name,
+                                  ),
+                                )
+                                .toList(),
+                            onSelected: (value) {
+                              field.didChange(value);
+                              setState(() {
+                                _cropTypeId = value;
+                                _varietyId = null;
+                              });
+                            },
+                          ),
+                          if (field.hasError)
+                            Text(
+                              field.errorText!,
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownMenu<String>(
+                      key: ValueKey('plan-variety-$_cropTypeId'),
+                      label: const Text('Crop variety'),
+                      enableFilter: true,
+                      requestFocusOnTap: true,
+                      initialSelection: _varietyId ?? '',
+                      dropdownMenuEntries: [
+                        const DropdownMenuEntry(value: '', label: 'Not sure'),
+                        ...varieties.map(
+                          (variety) => DropdownMenuEntry(
+                            value: variety.id,
+                            label: variety.name,
+                          ),
+                        ),
+                      ],
+                      onSelected: (value) => setState(
+                        () =>
+                            _varietyId = value?.isEmpty == true ? null : value,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<int>(
+                      initialValue: _season,
+                      decoration: const InputDecoration(
+                        labelText: 'Cultivation season',
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 1, child: Text('Maha')),
+                        DropdownMenuItem(value: 2, child: Text('Yala')),
+                        DropdownMenuItem(
+                          value: 3,
+                          child: Text('Other / Off-season'),
+                        ),
+                        DropdownMenuItem(value: 0, child: Text('Not sure')),
+                      ],
+                      onChanged: (value) =>
+                          setState(() => _season = value ?? 0),
                     ),
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: _startController,
                       readOnly: true,
-                      decoration: const InputDecoration(labelText: 'Preferred start date', prefixIcon: Icon(Icons.event_outlined)),
+                      decoration: const InputDecoration(
+                        labelText: 'Preferred planting date',
+                        prefixIcon: Icon(Icons.event_outlined),
+                      ),
                       validator: _required,
                       onTap: () => _pickDate(_startController),
                     ),
@@ -113,30 +260,104 @@ class _CropPlanScreenState extends State<CropPlanScreen> {
                     TextFormField(
                       controller: _endController,
                       readOnly: true,
-                      decoration: const InputDecoration(labelText: 'Preferred end date', prefixIcon: Icon(Icons.event_available_outlined)),
-                      validator: _required,
+                      decoration: const InputDecoration(
+                        labelText: 'Expected harvest / end date',
+                        prefixIcon: Icon(Icons.event_available_outlined),
+                      ),
+                      validator: _endDate,
                       onTap: () => _pickDate(_endController),
                     ),
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: _budgetController,
-                      decoration: const InputDecoration(labelText: 'Budget', prefixIcon: Icon(Icons.payments_outlined)),
+                      decoration: const InputDecoration(
+                        labelText: 'Budget (LKR)',
+                        prefixIcon: Icon(Icons.payments_outlined),
+                      ),
                       keyboardType: TextInputType.number,
                       validator: _budget,
                     ),
                     const SizedBox(height: 12),
+                    DropdownMenu<String>(
+                      key: const ValueKey('plan-previous-crop'),
+                      label: const Text('Previous crop (optional)'),
+                      enableFilter: true,
+                      requestFocusOnTap: true,
+                      initialSelection: _previousCropId ?? 'unknown',
+                      dropdownMenuEntries: [
+                        const DropdownMenuEntry(
+                          value: 'unknown',
+                          label: 'Unknown',
+                        ),
+                        const DropdownMenuEntry(
+                          value: 'none',
+                          label: 'No previous crop',
+                        ),
+                        ...crops.map(
+                          (crop) => DropdownMenuEntry(
+                            value: crop.id,
+                            label: crop.name,
+                          ),
+                        ),
+                      ],
+                      onSelected: (value) =>
+                          setState(() => _previousCropId = value),
+                    ),
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Previous known problems (optional)',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                    ),
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        for (final entry in _problemOptions.entries)
+                          FilterChip(
+                            label: Text(entry.value),
+                            selected: _previousProblems.contains(entry.key),
+                            onSelected: (selected) => setState(() {
+                              if (selected) {
+                                if (entry.key == 'NoneKnown') {
+                                  _previousProblems.clear();
+                                } else {
+                                  _previousProblems.remove('NoneKnown');
+                                }
+                                _previousProblems.add(entry.key);
+                              } else {
+                                _previousProblems.remove(entry.key);
+                              }
+                            }),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
                     TextFormField(
                       controller: _objectiveController,
-                      decoration: const InputDecoration(labelText: 'Objective', prefixIcon: Icon(Icons.flag_outlined)),
+                      decoration: const InputDecoration(
+                        labelText: 'Objective',
+                        prefixIcon: Icon(Icons.flag_outlined),
+                      ),
+                      maxLength: 500,
                       minLines: 2,
                       maxLines: 4,
-                      validator: _required,
+                      validator: (value) =>
+                          _required(value) ??
+                          (value!.length > 500
+                              ? 'Objective must be 500 characters or fewer'
+                              : null),
                     ),
                     const SizedBox(height: 16),
                     FilledButton.icon(
                       onPressed: state.isBusy ? null : _submit,
                       icon: const Icon(Icons.auto_awesome),
-                      label: Text(state.isBusy ? 'Starting AI planning...' : 'Submit and start AI planning'),
+                      label: Text(
+                        state.isBusy
+                            ? 'Starting AI crop planning...'
+                            : 'Start AI crop planning',
+                      ),
                     ),
                   ],
                 ),
@@ -150,7 +371,17 @@ class _CropPlanScreenState extends State<CropPlanScreen> {
     );
   }
 
-  String? _required(String? value) => value == null || value.trim().isEmpty ? 'Required' : null;
+  String? _required(String? value) =>
+      value == null || value.trim().isEmpty ? 'Required' : null;
+  String? _endDate(String? value) {
+    if (_required(value) != null) return 'Required';
+    final start = DateTime.tryParse(_startController.text);
+    final end = DateTime.tryParse(value!);
+    if (start != null && end != null && !end.isAfter(start)) {
+      return 'End date must be after planting date';
+    }
+    return null;
+  }
 
   String? _budget(String? value) {
     final parsed = num.tryParse(value ?? '');
@@ -175,7 +406,9 @@ class _WorkflowSummaryCard extends StatelessWidget {
         child: ListTile(
           leading: Icon(Icons.spa_outlined),
           title: Text('No AI workflow started'),
-          subtitle: Text('Submit a crop plan request to start coordinator planning.'),
+          subtitle: Text(
+            'Submit a crop plan request to start coordinator planning.',
+          ),
         ),
       );
     }
@@ -194,15 +427,25 @@ class _WorkflowSummaryCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(Icons.account_tree_outlined, color: Theme.of(context).colorScheme.primary),
+                Icon(
+                  Icons.account_tree_outlined,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
                 const SizedBox(width: 8),
-                Expanded(child: Text('Workflow status', style: Theme.of(context).textTheme.titleMedium)),
+                Expanded(
+                  child: Text(
+                    'Workflow status',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
                 if (status != null) Chip(label: Text(status.statusLabel)),
               ],
             ),
             if (status != null) ...[
               const SizedBox(height: 8),
-              Text('Current step: ${status.currentStep.isEmpty ? 'Pending' : status.currentStep}'),
+              Text(
+                'Current step: ${status.currentStep.isEmpty ? 'Pending' : status.currentStep}',
+              ),
             ],
             if (result != null) ...[
               const SizedBox(height: 12),
@@ -219,7 +462,9 @@ class _WorkflowSummaryCard extends StatelessWidget {
                   runSpacing: 8,
                   children: [
                     for (final step in result.steps)
-                      Chip(label: Text('${step.sequence}. ${step.assignedAgent}')),
+                      Chip(
+                        label: Text('${step.sequence}. ${step.assignedAgent}'),
+                      ),
                   ],
                 ),
               ],
@@ -232,7 +477,11 @@ class _WorkflowSummaryCard extends StatelessWidget {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.warning_amber_outlined, size: 18, color: Theme.of(context).colorScheme.error),
+                      Icon(
+                        Icons.warning_amber_outlined,
+                        size: 18,
+                        color: Theme.of(context).colorScheme.error,
+                      ),
                       const SizedBox(width: 6),
                       Expanded(child: Text(warning)),
                     ],
@@ -240,7 +489,9 @@ class _WorkflowSummaryCard extends StatelessWidget {
                 ),
             ],
             const SizedBox(height: 12),
-            const Text('Final execution status will appear after downstream agents and officer approval.'),
+            const Text(
+              'Final execution status will appear after downstream agents and officer approval.',
+            ),
           ],
         ),
       ),

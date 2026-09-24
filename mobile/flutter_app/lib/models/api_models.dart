@@ -240,28 +240,68 @@ class FarmOption {
 }
 
 class FieldOption {
-  const FieldOption({required this.id, required this.name});
+  const FieldOption({
+    required this.id,
+    required this.farmId,
+    required this.name,
+    required this.isActive,
+  });
 
   final String id;
+  final String farmId;
   final String name;
+  final bool isActive;
 
   factory FieldOption.fromJson(Map<String, dynamic> json) {
-    return FieldOption(id: json['id'] as String, name: json['name'] as String);
+    return FieldOption(
+      id: json['id'] as String,
+      farmId: json['farmId'] as String,
+      name: json['name'] as String,
+      isActive: json['isActive'] as bool? ?? true,
+    );
   }
 }
 
 class CropTypeOption {
-  const CropTypeOption({required this.id, required this.name});
+  const CropTypeOption({
+    required this.id,
+    required this.name,
+    required this.isActive,
+  });
 
   final String id;
   final String name;
+  final bool isActive;
 
   factory CropTypeOption.fromJson(Map<String, dynamic> json) {
     return CropTypeOption(
       id: json['id'] as String,
       name: json['name'] as String,
+      isActive: json['isActive'] as bool? ?? true,
     );
   }
+}
+
+class CropVarietyOption {
+  const CropVarietyOption({
+    required this.id,
+    required this.cropTypeId,
+    required this.name,
+    required this.isActive,
+  });
+
+  final String id;
+  final String cropTypeId;
+  final String name;
+  final bool isActive;
+
+  factory CropVarietyOption.fromJson(Map<String, dynamic> json) =>
+      CropVarietyOption(
+        id: json['id'] as String,
+        cropTypeId: json['cropTypeId'] as String,
+        name: json['name'] as String,
+        isActive: json['isActive'] as bool? ?? true,
+      );
 }
 
 class CropPlanningDelegatedStep {

@@ -136,18 +136,23 @@ class ApiClient {
   }
 
   Future<List<FarmOption>> farms() async {
-    final response = await _get('/crop-planning/farms');
-    return _items(response).map(FarmOption.fromJson).toList();
+    final items = await _allItems('/crop-planning/farms');
+    return items.map(FarmOption.fromJson).toList();
   }
 
   Future<List<FieldOption>> fields() async {
-    final response = await _get('/crop-planning/fields');
-    return _items(response).map(FieldOption.fromJson).toList();
+    final items = await _allItems('/crop-planning/fields');
+    return items.map(FieldOption.fromJson).toList();
   }
 
   Future<List<CropTypeOption>> cropTypes() async {
-    final response = await _get('/crop-planning/crop-types');
-    return _items(response).map(CropTypeOption.fromJson).toList();
+    final items = await _allItems('/crop-planning/crop-types');
+    return items.map(CropTypeOption.fromJson).toList();
+  }
+
+  Future<List<CropVarietyOption>> cropVarieties() async {
+    final items = await _allItems('/crop-planning/crop-varieties');
+    return items.map(CropVarietyOption.fromJson).toList();
   }
 
   Future<List<FarmTaskRecord>> tasks() async {
@@ -173,11 +178,19 @@ class ApiClient {
     required String preferredEndDate,
     required num budget,
     required String objective,
+    String? cropVarietyId,
+    int cultivationSeason = 0,
+    String? previousCropTypeId,
+    List<String> previousKnownProblems = const [],
   }) async {
-    final response = await _post('/crop-planning/requests/preliminary', {
+    final response = await _post('/crop-planning/requests', {
       'farmId': farmId,
       'fieldId': fieldId,
       'cropTypeId': cropTypeId,
+      'cropVarietyId': cropVarietyId,
+      'cultivationSeason': cultivationSeason,
+      'previousCropTypeId': previousCropTypeId,
+      'previousKnownProblems': previousKnownProblems,
       'preferredStartDate': preferredStartDate,
       'preferredEndDate': preferredEndDate,
       'budget': budget,
@@ -321,5 +334,18 @@ class ApiClient {
   List<Map<String, dynamic>> _items(Map<String, dynamic> response) {
     final items = response['items'] as List<dynamic>? ?? const [];
     return items.cast<Map<String, dynamic>>();
+  }
+
+  Future<List<Map<String, dynamic>>> _allItems(String path) async {
+    final result = <Map<String, dynamic>>[];
+    var page = 1;
+    while (true) {
+      final separator = path.contains('?') ? '&' : '?';
+      final response = await _get('$path${separator}page=$page&pageSize=100');
+      result.addAll(_items(response));
+      final totalPages = response['totalPages'] as int? ?? 1;
+      if (page >= totalPages) return result;
+      page++;
+    }
   }
 }
