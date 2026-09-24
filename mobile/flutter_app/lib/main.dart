@@ -7,6 +7,7 @@ import 'screens/field_onboarding_screen.dart';
 import 'screens/home_shell.dart';
 import 'screens/login_screen.dart';
 import 'state/app_state.dart';
+import 'ui/agri_theme.dart';
 
 void main() {
   runApp(const AgriAssistMobileApp());
@@ -22,16 +23,7 @@ class AgriAssistMobileApp extends StatelessWidget {
       child: MaterialApp(
         title: 'AgriAssist Mobile',
         debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1F7A4A)),
-          useMaterial3: true,
-          inputDecorationTheme: const InputDecorationTheme(
-            border: OutlineInputBorder(),
-          ),
-          cardTheme: const CardThemeData(
-            margin: EdgeInsets.symmetric(vertical: 8),
-          ),
-        ),
+        theme: AgriTheme.light(),
         home: const AuthGate(),
       ),
     );

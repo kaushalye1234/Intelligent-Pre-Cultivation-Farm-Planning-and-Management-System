@@ -15,13 +15,14 @@ void main() {
   testWidgets('shows mobile login form', (tester) async {
     await tester.pumpWidget(loginHarness());
 
-    expect(find.text('AgriAssist Mobile'), findsOneWidget);
+    expect(find.text('AgriAssist'), findsOneWidget);
     expect(find.byType(TextFormField), findsNWidgets(2));
   });
 
   testWidgets('validates empty password', (tester) async {
     await tester.pumpWidget(loginHarness());
 
+    await tester.ensureVisible(find.text('Sign in'));
     await tester.tap(find.text('Sign in'));
     await tester.pump();
 
