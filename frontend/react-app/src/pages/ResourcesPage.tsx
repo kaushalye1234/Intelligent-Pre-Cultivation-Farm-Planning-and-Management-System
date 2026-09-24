@@ -1,6 +1,32 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import { CloudSun, History, Package, Plus, Search, Warehouse } from 'lucide-react'
+import {
+  AlertTriangle,
+  Boxes,
+  CalendarDays,
+  CheckCircle2,
+  ClipboardList,
+  CloudRain,
+  CloudSun,
+  Droplets,
+  History,
+  MapPin,
+  Package,
+  PackageCheck,
+  PackageX,
+  Pencil,
+  Plus,
+  Search,
+  SlidersHorizontal,
+  Tags,
+  Thermometer,
+  Trash2,
+  Truck,
+  Undo2,
+  Warehouse,
+  Wind,
+  XCircle,
+} from 'lucide-react'
 import { api, getErrorMessage } from '../api/client'
 import { SelectInput, TextAreaInput, TextInput } from '../components/FormControls'
 import { DataTable } from '../components/DataTable'
@@ -8,10 +34,13 @@ import type { SortState } from '../components/DataTable'
 import { Pagination } from '../components/Pagination'
 import { EmptyState, ErrorState, LoadingState } from '../components/States'
 import { StatusPill } from '../components/StatusPill'
+import { ThemeToggle } from '../components/ThemeToggle'
 import { Button, ConfirmDialog, MetricCard, Modal, Notice, PageHeader, Tabs, Toolbar } from '../components/Ui'
 import { formatDate, formatDateTime, formatNumber } from '../format'
 import { reservationStatus, stockTransactionType } from '../labels'
+import { useThemeMode } from '../theme'
 import type { InventoryStock, PagedResult, Reservation, ResourceCategory, ResourceItem, StockTransaction, Supplier, WeatherForecast } from '../types'
+import './ResourcesPage.css'
 
 type ResourceTab = 'inventory' | 'resources' | 'categories' | 'suppliers' | 'reservations' | 'history' | 'weather'
 type PagedTab = 'inventory' | 'resources' | 'categories' | 'suppliers' | 'reservations'
@@ -63,6 +92,19 @@ function stockLabel(stock: InventoryStock) {
   return 'Available'
 }
 
+/** Share of on-hand stock still available, for the inventory level bar. */
+function availablePercent(stock: InventoryStock) {
+  if (stock.quantityOnHand <= 0) return 0
+  return Math.max(0, Math.min(100, (stock.availableQuantity / stock.quantityOnHand) * 100))
+}
+
+function weekday(value: string) {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat('en-GB', { weekday: 'long' }).format(date)
+}
+
+const iconProps = { size: 15, 'aria-hidden': true } as const
+
 const emptyCategoryForm = { name: '', description: '' }
 const emptySupplierForm = { name: '', contactEmail: '', phone: '' }
 const emptyResourceForm = { resourceCategoryId: '', supplierId: '', name: '', unit: '', isActive: 'true' }
@@ -74,6 +116,10 @@ export function ResourcesPage() {
   const [resources, setResources] = useState<ResourceItem[]>([])
   const [stocks, setStocks] = useState<InventoryStock[]>([])
   const [lowStockTotal, setLowStockTotal] = useState(0)
+  const [resourceTotal, setResourceTotal] = useState(0)
+  const [stockTotal, setStockTotal] = useState(0)
+  const [activeReservationTotal, setActiveReservationTotal] = useState<number | null>(null)
+  const { theme, toggleTheme } = useThemeMode()
 
   const [activeTab, setActiveTab] = useState<ResourceTab>('inventory')
   const [views, setViews] = useState<Record<PagedTab, TabView>>(DEFAULT_VIEWS)
@@ -141,11 +187,23 @@ export function ResourcesPage() {
         setResources(resourceResult.data.items)
         setStocks(stockResult.data.items)
         setLowStockTotal(lowResult.data.totalCount)
+        setResourceTotal(resourceResult.data.totalCount)
+        setStockTotal(stockResult.data.totalCount)
       } catch (err) {
         if (!cancelled) setError(getErrorMessage(err))
       }
     }
+    // The dashboard card is informational only, so a failure here must not block the rest of the page.
+    async function loadActiveReservations() {
+      try {
+        const response = await api.get<PagedResult<Reservation>>('/resources/reservations', { params: { pageSize: 1, status: 1 } })
+        if (!cancelled) setActiveReservationTotal(response.data.totalCount)
+      } catch {
+        if (!cancelled) setActiveReservationTotal(null)
+      }
+    }
     void loadLookups()
+    void loadActiveReservations()
     return () => { cancelled = true }
   }, [reloadKey])
 
@@ -415,14 +473,17 @@ export function ResourcesPage() {
   const selectedHistoryStock = stocks.find((stock) => stock.id === historyStockId)
   const showSearchToolbar = isPagedTab(activeTab)
 
+  const outOfStockCount = stocks.filter((stock) => stock.availableQuantity <= 0).length
+  const availableStockCount = Math.max(stockTotal - lowStockTotal, 0)
+
   const tabs = [
-    { id: 'inventory', label: 'Inventory', count: results.inventory?.totalCount },
-    { id: 'resources', label: 'Resources', count: results.resources?.totalCount },
-    { id: 'categories', label: 'Categories', count: results.categories?.totalCount },
-    { id: 'suppliers', label: 'Suppliers', count: results.suppliers?.totalCount },
-    { id: 'reservations', label: 'Reservations', count: results.reservations?.totalCount },
-    { id: 'history', label: 'Stock History' },
-    { id: 'weather', label: 'Weather' },
+    { id: 'inventory', label: 'Inventory', count: results.inventory?.totalCount, icon: <Warehouse {...iconProps} /> },
+    { id: 'resources', label: 'Resources', count: results.resources?.totalCount, icon: <Boxes {...iconProps} /> },
+    { id: 'categories', label: 'Categories', count: results.categories?.totalCount, icon: <Tags {...iconProps} /> },
+    { id: 'suppliers', label: 'Suppliers', count: results.suppliers?.totalCount, icon: <Truck {...iconProps} /> },
+    { id: 'reservations', label: 'Reservations', count: results.reservations?.totalCount, icon: <ClipboardList {...iconProps} /> },
+    { id: 'history', label: 'Stock History', icon: <History {...iconProps} /> },
+    { id: 'weather', label: 'Weather', icon: <CloudSun {...iconProps} /> },
   ]
 
   const pagination = current && view ? (
@@ -431,18 +492,25 @@ export function ResourcesPage() {
   const emptyFilterHint = hasFilters ? 'No records match the current search or filters.' : undefined
 
   return (
-    <section className="page-stack">
+    <section className="page-stack resource-hub" data-theme={theme}>
       <PageHeader
         eyebrow="Resource Operations"
         title="Resources"
         description="Track agricultural resource availability, suppliers, stock and reservations."
-        actions={<Button icon={<Plus size={16} aria-hidden="true" />} onClick={() => openResource()}>Add Resource</Button>}
+        actions={(
+          <>
+            <ThemeToggle theme={theme} onToggle={toggleTheme} />
+            <Button icon={<Plus size={16} aria-hidden="true" />} onClick={() => openResource()}>Add Resource</Button>
+          </>
+        )}
       >
         {showSearchToolbar ? (
           <Toolbar>
             <form className="search-box" onSubmit={applySearch}>
-              <Search size={16} aria-hidden="true" />
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search resources" aria-label="Search resources" />
+              <span className="search-field">
+                <Search size={16} aria-hidden="true" />
+                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search resources" aria-label="Search resources" />
+              </span>
               {activeTab === 'inventory' ? (
                 <label className="toolbar-check">
                   <input type="checkbox" checked={lowStockOnly} onChange={(event) => changeFilter(() => setLowStockOnly(event.target.checked))} />
@@ -468,19 +536,28 @@ export function ResourcesPage() {
         ) : null}
       </PageHeader>
 
+      <section className="metric-grid resource-metrics" aria-label="Resource overview">
+        <MetricCard label="Total Resources" value={formatNumber(resourceTotal)} description="Items in the resource catalog" icon={<Boxes size={20} aria-hidden="true" />} />
+        <MetricCard label="Available Stock" value={formatNumber(availableStockCount)} description="Stock records above their low threshold" icon={<PackageCheck size={20} aria-hidden="true" />} tone="good" />
+        <MetricCard label="Low Stock" value={formatNumber(lowStockTotal)} description="At or below the low-stock threshold" icon={<AlertTriangle size={20} aria-hidden="true" />} tone="warn" />
+        <MetricCard label="Out of Stock" value={formatNumber(outOfStockCount)} description="Nothing left available to reserve" icon={<PackageX size={20} aria-hidden="true" />} tone="bad" />
+        <MetricCard label="Active Reservations" value={activeReservationTotal === null ? '-' : formatNumber(activeReservationTotal)} description="Stock currently held for planned work" icon={<ClipboardList size={20} aria-hidden="true" />} />
+      </section>
+
       <Tabs tabs={tabs} activeTab={activeTab} onChange={(tab) => switchTab(tab as ResourceTab)} ariaLabel="Resource sections" />
-      {success ? <Notice tone="success">{success}</Notice> : null}
-      {actionError && !activeModal ? <Notice tone="error">{actionError}</Notice> : null}
+      {success ? <Notice tone="success"><CheckCircle2 size={16} aria-hidden="true" />{success}</Notice> : null}
+      {actionError && !activeModal ? <Notice tone="error"><AlertTriangle size={16} aria-hidden="true" />{actionError}</Notice> : null}
       {error ? <ErrorState message={error} /> : null}
 
       {isPagedTab(activeTab) && isLoading ? <LoadingState /> : null}
 
       {!isLoading && activeTab === 'inventory' ? (
         <section className="work-section">
-          <div className="metric-grid compact-metrics">
-            <MetricCard label="Stock Records" value={results.inventory?.totalCount ?? 0} icon={<Warehouse size={20} aria-hidden="true" />} />
-            <MetricCard label="Low Stock" value={lowStockTotal} tone="warn" />
-            <MetricCard label="Out of Stock (this page)" value={stockRows.filter((stock) => stock.availableQuantity <= 0).length} tone="bad" />
+          <div className="section-title">
+            <div>
+              <h2>Inventory</h2>
+              <p className="muted-text">On-hand, reserved and available quantities for every stocked resource.</p>
+            </div>
           </div>
           <DataTable
             rows={stockRows}
@@ -490,16 +567,28 @@ export function ResourcesPage() {
             sort={sort}
             onSort={sortBy}
             columns={[
-              { header: 'Resource', sortKey: 'resourceName', render: (row) => stockName(row) },
+              { header: 'Resource', sortKey: 'resourceName', render: (row) => (
+                <span className="resource-name-cell">
+                  <strong>{stockName(row)}</strong>
+                  {row.unit ? <span className="unit-badge">{row.unit}</span> : null}
+                </span>
+              ) },
               { header: 'On Hand', sortKey: 'quantityOnHand', render: (row) => formatNumber(row.quantityOnHand) },
               { header: 'Reserved', sortKey: 'reservedQuantity', render: (row) => formatNumber(row.reservedQuantity) },
-              { header: 'Available', sortKey: 'availableQuantity', render: (row) => formatNumber(row.availableQuantity) },
+              { header: 'Available', sortKey: 'availableQuantity', render: (row) => (
+                <span className="stock-cell-value">
+                  <strong>{formatNumber(row.availableQuantity)}</strong>
+                  <span className="stock-level-bar" aria-hidden="true">
+                    <span className={`stock-level-fill stock-level-fill-${stockTone(row)}`} style={{ width: `${availablePercent(row)}%` }} />
+                  </span>
+                </span>
+              ) },
               { header: 'Condition', render: (row) => <StatusPill label={stockLabel(row)} tone={stockTone(row)} /> },
               { header: 'Actions', className: 'actions-cell', render: (row) => (
                 <div className="row-actions">
-                  <Button variant="ghost" onClick={() => openStock(row.resourceId)}>Adjust Stock</Button>
-                  <Button variant="ghost" onClick={() => openReserve(row.id)} disabled={row.availableQuantity <= 0}>Reserve</Button>
-                  <Button variant="ghost" onClick={() => openHistory(row.id)}>History</Button>
+                  <Button variant="ghost" icon={<SlidersHorizontal {...iconProps} />} onClick={() => openStock(row.resourceId)}>Adjust Stock</Button>
+                  <Button variant="ghost" icon={<Package {...iconProps} />} onClick={() => openReserve(row.id)} disabled={row.availableQuantity <= 0}>Reserve</Button>
+                  <Button variant="ghost" icon={<History {...iconProps} />} onClick={() => openHistory(row.id)}>History</Button>
                 </div>
               ) },
             ]}
@@ -510,7 +599,13 @@ export function ResourcesPage() {
 
       {!isLoading && activeTab === 'resources' ? (
         <section className="work-section">
-          <div className="section-title section-title-actions"><h2>Resources</h2><Button variant="secondary" icon={<Plus size={16} aria-hidden="true" />} onClick={() => openResource()}>Add Resource</Button></div>
+          <div className="section-title section-title-actions">
+            <div>
+              <h2>Resources</h2>
+              <p className="muted-text">The catalog of seeds, fertilizers, tools and other farm inputs.</p>
+            </div>
+            <Button variant="secondary" icon={<Plus size={16} aria-hidden="true" />} onClick={() => openResource()}>Add Resource</Button>
+          </div>
           <DataTable
             rows={resourceRows}
             emptyTitle={hasFilters ? 'No matching resources' : 'No resources'}
@@ -519,16 +614,16 @@ export function ResourcesPage() {
             sort={sort}
             onSort={sortBy}
             columns={[
-              { header: 'Resource', sortKey: 'name', render: (row) => row.name },
+              { header: 'Resource', sortKey: 'name', render: (row) => <strong className="cell-strong">{row.name}</strong> },
               { header: 'Category', sortKey: 'category', render: (row) => categoryNameById.get(row.resourceCategoryId) ?? row.resourceCategoryId.slice(0, 8) },
-              { header: 'Supplier', render: (row) => row.supplierId ? supplierNameById.get(row.supplierId) ?? row.supplierId.slice(0, 8) : 'Not assigned' },
-              { header: 'Unit', sortKey: 'unit', render: (row) => row.unit },
+              { header: 'Supplier', render: (row) => row.supplierId ? supplierNameById.get(row.supplierId) ?? row.supplierId.slice(0, 8) : <span className="muted-text">Not assigned</span> },
+              { header: 'Unit', sortKey: 'unit', render: (row) => <span className="unit-badge">{row.unit}</span> },
               { header: 'Status', sortKey: 'isActive', render: (row) => <StatusPill label={row.isActive ? 'Active' : 'Inactive'} tone={row.isActive ? 'good' : 'bad'} /> },
               { header: 'Actions', className: 'actions-cell', render: (row) => (
                 <div className="row-actions">
-                  <Button variant="ghost" onClick={() => openStock(row.id)}>Set Stock</Button>
-                  <Button variant="ghost" onClick={() => openResource(row)}>Edit</Button>
-                  <Button variant="ghost" onClick={() => confirmDelete('Resource', row.name, `/resources/${row.id}`, 'Its stock record is removed too. Resources with active reservations cannot be deleted.')}>Delete</Button>
+                  <Button variant="ghost" icon={<SlidersHorizontal {...iconProps} />} onClick={() => openStock(row.id)}>Set Stock</Button>
+                  <Button variant="ghost" icon={<Pencil {...iconProps} />} onClick={() => openResource(row)}>Edit</Button>
+                  <Button variant="ghost" className="row-action-danger" icon={<Trash2 {...iconProps} />} onClick={() => confirmDelete('Resource', row.name, `/resources/${row.id}`, 'Its stock record is removed too. Resources with active reservations cannot be deleted.')}>Delete</Button>
                 </div>
               ) },
             ]}
@@ -539,7 +634,13 @@ export function ResourcesPage() {
 
       {!isLoading && activeTab === 'categories' ? (
         <section className="work-section">
-          <div className="section-title section-title-actions"><h2>Categories</h2><Button variant="secondary" icon={<Plus size={16} aria-hidden="true" />} onClick={() => openCategory()}>Add Category</Button></div>
+          <div className="section-title section-title-actions">
+            <div>
+              <h2>Categories</h2>
+              <p className="muted-text">Groups used to organize resources and inventory.</p>
+            </div>
+            <Button variant="secondary" icon={<Plus size={16} aria-hidden="true" />} onClick={() => openCategory()}>Add Category</Button>
+          </div>
           <DataTable
             rows={categoryRows}
             emptyTitle={hasFilters ? 'No matching categories' : 'No categories'}
@@ -548,12 +649,12 @@ export function ResourcesPage() {
             sort={sort}
             onSort={sortBy}
             columns={[
-              { header: 'Category', sortKey: 'name', render: (row) => row.name },
-              { header: 'Description', render: (row) => row.description || 'Not provided' },
+              { header: 'Category', sortKey: 'name', render: (row) => <strong className="cell-strong">{row.name}</strong> },
+              { header: 'Description', render: (row) => row.description || <span className="muted-text">Not provided</span> },
               { header: 'Actions', className: 'actions-cell', render: (row) => (
                 <div className="row-actions">
-                  <Button variant="ghost" onClick={() => openCategory(row)}>Edit</Button>
-                  <Button variant="ghost" onClick={() => confirmDelete('Category', row.name, `/resources/categories/${row.id}`, 'Categories used by resources cannot be deleted.')}>Delete</Button>
+                  <Button variant="ghost" icon={<Pencil {...iconProps} />} onClick={() => openCategory(row)}>Edit</Button>
+                  <Button variant="ghost" className="row-action-danger" icon={<Trash2 {...iconProps} />} onClick={() => confirmDelete('Category', row.name, `/resources/categories/${row.id}`, 'Categories used by resources cannot be deleted.')}>Delete</Button>
                 </div>
               ) },
             ]}
@@ -564,7 +665,13 @@ export function ResourcesPage() {
 
       {!isLoading && activeTab === 'suppliers' ? (
         <section className="work-section">
-          <div className="section-title section-title-actions"><h2>Suppliers</h2><Button variant="secondary" icon={<Plus size={16} aria-hidden="true" />} onClick={() => openSupplier()}>Add Supplier</Button></div>
+          <div className="section-title section-title-actions">
+            <div>
+              <h2>Suppliers</h2>
+              <p className="muted-text">Where resources are sourced from, with contact details.</p>
+            </div>
+            <Button variant="secondary" icon={<Plus size={16} aria-hidden="true" />} onClick={() => openSupplier()}>Add Supplier</Button>
+          </div>
           <DataTable
             rows={supplierRows}
             emptyTitle={hasFilters ? 'No matching suppliers' : 'No suppliers'}
@@ -573,13 +680,13 @@ export function ResourcesPage() {
             sort={sort}
             onSort={sortBy}
             columns={[
-              { header: 'Supplier', sortKey: 'name', render: (row) => row.name },
-              { header: 'Email', sortKey: 'email', render: (row) => row.contactEmail || 'Not provided' },
-              { header: 'Phone', sortKey: 'phone', render: (row) => row.phone || 'Not provided' },
+              { header: 'Supplier', sortKey: 'name', render: (row) => <strong className="cell-strong">{row.name}</strong> },
+              { header: 'Email', sortKey: 'email', render: (row) => row.contactEmail || <span className="muted-text">Not provided</span> },
+              { header: 'Phone', sortKey: 'phone', render: (row) => row.phone || <span className="muted-text">Not provided</span> },
               { header: 'Actions', className: 'actions-cell', render: (row) => (
                 <div className="row-actions">
-                  <Button variant="ghost" onClick={() => openSupplier(row)}>Edit</Button>
-                  <Button variant="ghost" onClick={() => confirmDelete('Supplier', row.name, `/resources/suppliers/${row.id}`, 'Suppliers used by resources cannot be deleted.')}>Delete</Button>
+                  <Button variant="ghost" icon={<Pencil {...iconProps} />} onClick={() => openSupplier(row)}>Edit</Button>
+                  <Button variant="ghost" className="row-action-danger" icon={<Trash2 {...iconProps} />} onClick={() => confirmDelete('Supplier', row.name, `/resources/suppliers/${row.id}`, 'Suppliers used by resources cannot be deleted.')}>Delete</Button>
                 </div>
               ) },
             ]}
@@ -603,14 +710,14 @@ export function ResourcesPage() {
             emptyMessage={emptyFilterHint ?? 'Reserve stock to hold it for a planned activity.'}
             getRowKey={(row) => row.id}
             columns={[
-              { header: 'Resource', render: (row) => row.resourceName || resourceNameById.get(stocks.find((stock) => stock.id === row.inventoryStockId)?.resourceId ?? '') || row.inventoryStockId.slice(0, 8) },
+              { header: 'Resource', render: (row) => <strong className="cell-strong">{row.resourceName || resourceNameById.get(stocks.find((stock) => stock.id === row.inventoryStockId)?.resourceId ?? '') || row.inventoryStockId.slice(0, 8)}</strong> },
               { header: 'Purpose', render: (row) => row.purpose },
               { header: 'Quantity', render: (row) => formatNumber(row.quantity) },
               { header: 'Status', render: (row) => <StatusPill label={reservationStatus[row.status] ?? String(row.status)} tone={row.status === 1 ? 'info' : row.status === 2 ? 'good' : 'bad'} /> },
               { header: 'Actions', className: 'actions-cell', render: (row) => row.status === 1 ? (
                 <div className="row-actions">
-                  <Button variant="ghost" onClick={() => setConfirmAction({ title: 'Release reservation?', message: 'This will return the reserved quantity through the existing backend release action.', label: 'Release', action: async () => updateReservation(row.id, 'release'), success: 'Reservation released successfully.' })}>Release</Button>
-                  <Button variant="ghost" onClick={() => setConfirmAction({ title: 'Cancel reservation?', message: 'This will cancel the reservation and return the quantity to available stock.', label: 'Cancel Reservation', variant: 'danger', action: async () => updateReservation(row.id, 'cancel'), success: 'Reservation cancelled successfully.' })}>Cancel</Button>
+                  <Button variant="ghost" icon={<Undo2 {...iconProps} />} onClick={() => setConfirmAction({ title: 'Release reservation?', message: 'This will return the reserved quantity through the existing backend release action.', label: 'Release', action: async () => updateReservation(row.id, 'release'), success: 'Reservation released successfully.' })}>Release</Button>
+                  <Button variant="ghost" className="row-action-danger" icon={<XCircle {...iconProps} />} onClick={() => setConfirmAction({ title: 'Cancel reservation?', message: 'This will cancel the reservation and return the quantity to available stock.', label: 'Cancel Reservation', variant: 'danger', action: async () => updateReservation(row.id, 'cancel'), success: 'Reservation cancelled successfully.' })}>Cancel</Button>
                 </div>
               ) : <span className="muted-text">Finalized</span> },
             ]}
@@ -628,11 +735,13 @@ export function ResourcesPage() {
             </div>
           </div>
           <div className="search-box">
-            <History size={16} aria-hidden="true" />
-            <select aria-label="Stock to view" value={historyStockId} onChange={(event) => setHistoryStockId(event.target.value)}>
-              <option value="">Select a resource</option>
-              {stockOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
+            <span className="search-field">
+              <History size={16} aria-hidden="true" />
+              <select aria-label="Stock to view" value={historyStockId} onChange={(event) => setHistoryStockId(event.target.value)}>
+                <option value="">Select a resource</option>
+                {stockOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </span>
           </div>
           {!historyStockId ? <EmptyState title="Choose a resource" message="Select a resource above to see its stock transactions." /> : null}
           {historyStockId && isHistoryLoading ? <LoadingState label="Loading stock history" /> : null}
@@ -663,20 +772,50 @@ export function ResourcesPage() {
             </div>
           </div>
           <form className="search-box" onSubmit={(event) => void loadForecast(event)}>
-            <CloudSun size={16} aria-hidden="true" />
-            <input value={weatherLocation} onChange={(event) => setWeatherLocation(event.target.value)} placeholder="Farm location, e.g. Kurunegala" aria-label="Weather location" required />
+            <span className="search-field">
+              <CloudSun size={16} aria-hidden="true" />
+              <input value={weatherLocation} onChange={(event) => setWeatherLocation(event.target.value)} placeholder="Farm location, e.g. Kurunegala" aria-label="Weather location" required />
+            </span>
             <Button variant="secondary" type="submit" disabled={isWeatherLoading}>{isWeatherLoading ? 'Loading...' : 'Get Forecast'}</Button>
           </form>
-          {weatherError ? <ErrorState message={weatherError} /> : null}
-          {forecast && !forecast.isAvailable ? <Notice tone="warning">{forecast.message}</Notice> : null}
-          {forecast?.isAvailable ? (
-            <DataTable rows={forecast.days} emptyTitle="No forecast" emptyMessage="No forecast days were returned." getRowKey={(row) => row.date} columns={[
-              { header: 'Date', render: (row) => formatDate(row.date) },
-              { header: 'Conditions', render: (row) => row.description },
-              { header: 'Temperature (C)', render: (row) => `${formatNumber(row.minTemperatureC)} - ${formatNumber(row.maxTemperatureC)}` },
-              { header: 'Rain (mm)', render: (row) => formatNumber(row.rainMm) },
-              { header: 'Wind (m/s)', render: (row) => formatNumber(row.maxWindSpeedMs) },
-            ]} />
+          {isWeatherLoading ? <LoadingState label="Fetching forecast" /> : null}
+          {!isWeatherLoading && weatherError ? <ErrorState message={weatherError} /> : null}
+          {!isWeatherLoading && forecast && !forecast.isAvailable ? <Notice tone="warning"><AlertTriangle size={16} aria-hidden="true" />{forecast.message}</Notice> : null}
+          {!isWeatherLoading && !forecast && !weatherError ? <EmptyState title="No forecast loaded" message="Enter a farm location to see the next five days of weather." /> : null}
+          {!isWeatherLoading && forecast?.isAvailable ? (
+            <>
+              <div className="weather-location-badge">
+                <MapPin size={15} aria-hidden="true" />
+                <span>{forecast.location}</span>
+                {forecast.message ? <small>{forecast.message}</small> : null}
+              </div>
+              {forecast.days.length === 0 ? <EmptyState title="No forecast" message="No forecast days were returned." /> : (
+                <ul className="weather-grid" aria-label="Forecast days">
+                  {forecast.days.map((day) => (
+                    <li key={day.date} className="weather-day-card">
+                      <div className="weather-day-card-head">
+                        <span className="weather-day-card-date"><CalendarDays size={14} aria-hidden="true" />{weekday(day.date)}</span>
+                        <small>{formatDate(day.date)}</small>
+                      </div>
+                      <span className="weather-day-card-desc">{day.description}</span>
+                      <div className="weather-day-card-temp">
+                        <Thermometer size={18} aria-hidden="true" />
+                        <strong>{formatNumber(day.maxTemperatureC)}&deg;</strong>
+                        <span>/ {formatNumber(day.minTemperatureC)}&deg;C</span>
+                      </div>
+                      <dl className="weather-day-card-stats">
+                        <div className="weather-day-card-stat"><dt><Droplets size={14} aria-hidden="true" />Rain</dt><dd>{formatNumber(day.rainMm)} mm</dd></div>
+                        <div className="weather-day-card-stat"><dt><Wind size={14} aria-hidden="true" />Wind</dt><dd>{formatNumber(day.maxWindSpeedMs)} m/s</dd></div>
+                      </dl>
+                      <span className={`weather-rain-flag ${day.rainMm > 0 ? 'is-wet' : 'is-dry'}`}>
+                        {day.rainMm > 0 ? <CloudRain size={13} aria-hidden="true" /> : <CheckCircle2 size={13} aria-hidden="true" />}
+                        {day.rainMm > 0 ? 'Rain expected' : 'Dry day'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
           ) : null}
         </section>
       ) : null}
