@@ -226,10 +226,18 @@ public sealed class CropPlanningService(
         return MapField(field);
     }
 
-    public async Task<PagedResult<CropTypeResponse>> SearchCropTypesAsync(PagedQuery query, CancellationToken cancellationToken)
+    public async Task<PagedResult<CropTypeResponse>> SearchCropTypesAsync(PagedQuery query, CancellationToken cancellationToken, bool includeInactive = false)
     {
         query.Normalize();
         var cropTypes = dbContext.CropTypes.AsNoTracking().Where(item => !item.IsDeleted);
+        if (includeInactive)
+        {
+            RequireAdmin();
+        }
+        else
+        {
+            cropTypes = cropTypes.Where(item => item.IsActive);
+        }
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             var search = query.Search.Trim().ToLowerInvariant();
@@ -245,7 +253,7 @@ public sealed class CropPlanningService(
     public async Task<CropTypeResponse> CreateCropTypeAsync(CropTypeRequest request, CancellationToken cancellationToken)
     {
         Validate(cropTypeValidator.Validate(request));
-        RequireStaff();
+        RequireAdmin();
         var duplicate = await dbContext.CropTypes.AnyAsync(item => item.Name.ToLower() == request.Name.Trim().ToLower(), cancellationToken);
         if (duplicate) throw new ApiException(HttpStatusCode.Conflict, "CROP_TYPE_EXISTS", "Crop type already exists.");
         var cropType = new CropType { Name = request.Name.Trim(), Description = request.Description?.Trim(), IsActive = request.IsActive, CreatedByUserId = currentUser.UserId };
@@ -257,14 +265,137 @@ public sealed class CropPlanningService(
     public async Task<CropTypeResponse> UpdateCropTypeAsync(Guid id, CropTypeRequest request, CancellationToken cancellationToken)
     {
         Validate(cropTypeValidator.Validate(request));
-        RequireStaff();
+        RequireAdmin();
         var cropType = await dbContext.CropTypes.SingleOrDefaultAsync(item => item.Id == id && !item.IsDeleted, cancellationToken) ?? throw NotFound("Crop type");
+        var duplicate = await dbContext.CropTypes.AnyAsync(item => item.Id != id && item.Name.ToLower() == request.Name.Trim().ToLower(), cancellationToken);
+        if (duplicate) throw new ApiException(HttpStatusCode.Conflict, "CROP_TYPE_EXISTS", "Crop type already exists.");
         cropType.Name = request.Name.Trim();
         cropType.Description = request.Description?.Trim();
         cropType.IsActive = request.IsActive;
         cropType.UpdatedAt = DateTime.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
         return MapCropType(cropType);
+    }
+
+    public async Task<PagedResult<CropVarietyResponse>> SearchCropVarietiesAsync(PagedQuery query, Guid? cropTypeId, CancellationToken cancellationToken, bool includeInactive = false)
+    {
+        query.Normalize();
+        var varieties = dbContext.CropVarieties.AsNoTracking().Include(item => item.CropType).Where(item => !item.IsDeleted);
+        if (includeInactive) RequireAdmin();
+        else varieties = varieties.Where(item => item.IsActive && item.CropType != null && item.CropType.IsActive && !item.CropType.IsDeleted);
+        if (cropTypeId.HasValue) varieties = varieties.Where(item => item.CropTypeId == cropTypeId.Value);
+        if (!string.IsNullOrWhiteSpace(query.Search))
+        {
+            var search = query.Search.Trim().ToLowerInvariant();
+            varieties = varieties.Where(item => item.Name.ToLower().Contains(search));
+        }
+        varieties = query.SortDirection == "desc" ? varieties.OrderByDescending(item => item.Name) : varieties.OrderBy(item => item.Name);
+        var total = await varieties.CountAsync(cancellationToken);
+        var items = await varieties.Skip((query.Page - 1) * query.PageSize).Take(query.PageSize)
+            .Select(item => new CropVarietyResponse(item.Id, item.CropTypeId, item.Name, item.IsActive)).ToListAsync(cancellationToken);
+        return new PagedResult<CropVarietyResponse>(items, query.Page, query.PageSize, total);
+    }
+
+    public async Task<CropVarietyResponse> CreateCropVarietyAsync(CropVarietyRequest request, CancellationToken cancellationToken)
+    {
+        RequireAdmin();
+        Validate(new CropVarietyRequestValidator().Validate(request));
+        await EnsureCropTypeAsync(request.CropTypeId, cancellationToken);
+        var name = request.Name.Trim();
+        if (await dbContext.CropVarieties.AnyAsync(item => item.CropTypeId == request.CropTypeId && item.Name.ToLower() == name.ToLower(), cancellationToken))
+            throw new ApiException(HttpStatusCode.Conflict, "CROP_VARIETY_EXISTS", "Crop variety already exists.");
+        var variety = new CropVariety { CropTypeId = request.CropTypeId, Name = name, IsActive = request.IsActive, CreatedByUserId = currentUser.UserId };
+        dbContext.CropVarieties.Add(variety);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return MapVariety(variety);
+    }
+
+    public async Task<CropVarietyResponse> UpdateCropVarietyAsync(Guid id, CropVarietyRequest request, CancellationToken cancellationToken)
+    {
+        RequireAdmin();
+        Validate(new CropVarietyRequestValidator().Validate(request));
+        var variety = await dbContext.CropVarieties.SingleOrDefaultAsync(item => item.Id == id && !item.IsDeleted, cancellationToken) ?? throw NotFound("Crop variety");
+        if (variety.CropTypeId != request.CropTypeId)
+            throw new ApiException(HttpStatusCode.BadRequest, "VARIETY_CROP_IMMUTABLE", "A variety cannot be moved to another crop type.");
+        var name = request.Name.Trim();
+        if (!name.Equals(variety.Name, StringComparison.OrdinalIgnoreCase))
+        {
+            if (await dbContext.CropVarieties.AnyAsync(item => item.Id != id && item.CropTypeId == request.CropTypeId && item.Name.ToLower() == name.ToLower(), cancellationToken))
+                throw new ApiException(HttpStatusCode.Conflict, "CROP_VARIETY_EXISTS", "Crop variety already exists.");
+            if (await dbContext.CropReferenceProfiles.AnyAsync(item => item.CropTypeId == request.CropTypeId && item.VarietyName == variety.Name, cancellationToken))
+                throw new ApiException(HttpStatusCode.Conflict, "VARIETY_REFERENCED", "Deactivate this variety instead of renaming it because reference data already uses its name.");
+            variety.Name = name;
+        }
+        variety.IsActive = request.IsActive;
+        variety.UpdatedAt = DateTime.UtcNow;
+        variety.UpdatedByUserId = currentUser.UserId;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return MapVariety(variety);
+    }
+
+    public async Task<PagedResult<CropReferenceProfileResponse>> SearchReferenceProfilesAsync(PagedQuery query, Guid? cropTypeId, CancellationToken cancellationToken)
+    {
+        RequireAdmin();
+        query.Normalize();
+        var profiles = dbContext.CropReferenceProfiles.AsNoTracking().Where(item => !item.IsDeleted);
+        if (cropTypeId.HasValue) profiles = profiles.Where(item => item.CropTypeId == cropTypeId.Value);
+        profiles = profiles.OrderByDescending(item => item.VerifiedAt);
+        var total = await profiles.CountAsync(cancellationToken);
+        var items = await profiles.Skip((query.Page - 1) * query.PageSize).Take(query.PageSize)
+            .Select(item => new CropReferenceProfileResponse(item.Id, item.CropTypeId, item.VarietyName, item.Region,
+                item.SourceName, item.SourceUrl, item.SourceVersion, item.VerifiedAt, item.IsActive,
+                item.Stages.Count, item.Rules.Count)).ToListAsync(cancellationToken);
+        return new PagedResult<CropReferenceProfileResponse>(items, query.Page, query.PageSize, total);
+    }
+
+    public async Task<CropReferenceProfileResponse> CreateReferenceProfileAsync(CropReferenceProfileRequest request, CancellationToken cancellationToken)
+    {
+        RequireAdmin();
+        Validate(new CropReferenceProfileRequestValidator().Validate(request));
+        await EnsureCropTypeAsync(request.CropTypeId, cancellationToken);
+        string? varietyName = null;
+        if (request.CropVarietyId.HasValue)
+        {
+            varietyName = await dbContext.CropVarieties.AsNoTracking()
+                .Where(item => item.Id == request.CropVarietyId.Value && item.CropTypeId == request.CropTypeId && item.IsActive && !item.IsDeleted)
+                .Select(item => item.Name).SingleOrDefaultAsync(cancellationToken)
+                ?? throw new ApiException(HttpStatusCode.BadRequest, "INVALID_CROP_VARIETY", "Selected variety is not active for this crop.");
+        }
+        var verifiedAt = request.VerifiedAt.ToUniversalTime();
+        var profile = new CropReferenceProfile
+        {
+            CropTypeId = request.CropTypeId, VarietyName = varietyName, Region = request.Region?.Trim(),
+            SourceName = request.SourceName.Trim(), SourceUrl = request.SourceUrl?.Trim(),
+            SourceVersion = request.SourceVersion.Trim(), VerifiedAt = verifiedAt,
+            CreatedByUserId = currentUser.UserId,
+            Stages = request.Stages.Select(item => new CropStageReference
+            {
+                StageName = item.StageName.Trim(), Sequence = item.Sequence, TypicalMinDays = item.TypicalMinDays,
+                TypicalMaxDays = item.TypicalMaxDays, Notes = item.Notes?.Trim(), SourceName = request.SourceName.Trim(),
+                SourceUrl = request.SourceUrl?.Trim(), CreatedByUserId = currentUser.UserId
+            }).ToList(),
+            Rules = request.Rules.Select(item => new CropRuleReference
+            {
+                RuleType = item.RuleType.Trim(), RuleKey = item.RuleKey.Trim(), StructuredValueJson = item.StructuredValueJson,
+                SourceName = request.SourceName.Trim(), SourceUrl = request.SourceUrl?.Trim(), VerifiedAt = verifiedAt,
+                CreatedByUserId = currentUser.UserId
+            }).ToList()
+        };
+        dbContext.CropReferenceProfiles.Add(profile);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return MapReferenceProfile(profile);
+    }
+
+    public async Task<CropReferenceProfileResponse> SetReferenceProfileActiveAsync(Guid id, bool isActive, CancellationToken cancellationToken)
+    {
+        RequireAdmin();
+        var profile = await dbContext.CropReferenceProfiles.Include(item => item.Stages).Include(item => item.Rules)
+            .SingleOrDefaultAsync(item => item.Id == id && !item.IsDeleted, cancellationToken) ?? throw NotFound("Crop reference profile");
+        profile.IsActive = isActive;
+        profile.UpdatedAt = DateTime.UtcNow;
+        profile.UpdatedByUserId = currentUser.UserId;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return MapReferenceProfile(profile);
     }
 
     public async Task<PagedResult<CropCycleResponse>> SearchCropCyclesAsync(PagedQuery query, Guid? fieldId, CancellationToken cancellationToken)
@@ -312,22 +443,23 @@ public sealed class CropPlanningService(
 
     public async Task<CropPlanRequestResponse> GeneratePreliminaryRequestAsync(CropPlanRequestCreate request, CancellationToken cancellationToken)
     {
-        return await CreateRequestCoreAsync(request, CropPlanRequestStatus.PreliminaryGenerated, "Preliminary crop planning request generated without AI execution.", cancellationToken);
+        return await CreateRequestCoreAsync(request, CropPlanRequestStatus.Submitted, "Crop plan request submitted for coordinator planning.", cancellationToken);
     }
 
     public async Task<CropPlanRequestResponse> UpdateCropPlanRequestAsync(Guid id, CropPlanRequestUpdate request, CancellationToken cancellationToken)
     {
         Validate(updateRequestValidator.Validate(request));
         var entity = await ApplyPlanRequestAccess(dbContext.CropPlanRequests).SingleOrDefaultAsync(item => item.Id == id, cancellationToken) ?? throw NotFound("Crop plan request");
-        var previous = entity.Status;
+        if (entity.Status != request.Status || entity.Status is CropPlanRequestStatus.Approved or CropPlanRequestStatus.Rejected or CropPlanRequestStatus.Cancelled)
+            throw new ApiException(HttpStatusCode.BadRequest, "CROP_PLAN_STATUS_MANAGED", "Crop plan status is managed by the workflow and approval process.");
+        if (await dbContext.AgentWorkflows.AnyAsync(item => item.CropPlanRequestId == id && !item.IsDeleted, cancellationToken))
+            throw new ApiException(HttpStatusCode.Conflict, "CROP_PLAN_WORKFLOW_STARTED", "A crop plan with workflow history cannot be edited.");
         entity.PreferredStartDate = request.PreferredStartDate;
         entity.PreferredEndDate = request.PreferredEndDate;
         entity.Budget = request.Budget;
         entity.Objective = request.Objective.Trim();
-        entity.Status = request.Status;
         entity.UpdatedAt = DateTime.UtcNow;
         entity.UpdatedByUserId = currentUser.UserId;
-        if (previous != request.Status) AddHistory(entity.Id, previous, request.Status, "Status updated.");
         await dbContext.SaveChangesAsync(cancellationToken);
         return MapRequest(entity);
     }
@@ -350,6 +482,8 @@ public sealed class CropPlanningService(
             .Include(item => item.Farm)
             .Include(item => item.Field)
             .Include(item => item.CropType)
+            .Include(item => item.CropVariety)
+            .Include(item => item.PreviousCropType)
             .SingleOrDefaultAsync(item => item.Id == requestId, cancellationToken)
             ?? throw NotFound("Crop plan request");
 
@@ -357,6 +491,13 @@ public sealed class CropPlanningService(
         {
             throw new ApiException(HttpStatusCode.BadRequest, "CROP_PLAN_STATE_NOT_ALLOWED", "Only submitted or preliminary crop plan requests can start AI planning.");
         }
+
+        await EnsureCropTypeAsync(request.CropTypeId, cancellationToken);
+        if (!request.FieldId.HasValue || !await ApplyFieldAccess(dbContext.Fields.AsNoTracking()).AnyAsync(item =>
+                item.Id == request.FieldId.Value && item.FarmId == request.FarmId && item.IsActive, cancellationToken))
+            throw new ApiException(HttpStatusCode.BadRequest, "FIELD_FARM_MISMATCH", "The selected active field must belong to the selected farm.");
+        if (request.CropVarietyId.HasValue && (request.CropVariety is null || !request.CropVariety.IsActive || request.CropVariety.IsDeleted || request.CropVariety.CropTypeId != request.CropTypeId))
+            throw new ApiException(HttpStatusCode.BadRequest, "INVALID_CROP_VARIETY", "Selected variety is not active for this crop.");
 
         var hasRunningWorkflow = await dbContext.AgentWorkflows.AsNoTracking().AnyAsync(workflow =>
             workflow.CropPlanRequestId == request.Id &&
@@ -396,7 +537,14 @@ public sealed class CropPlanningService(
             request.CropTypeId,
             request.Objective,
             request.Budget,
-            request.PreferredStartDate);
+            request.PreferredStartDate,
+            request.CropVarietyId,
+            request.CropVariety?.Name,
+            request.CultivationSeason.ToString(),
+            request.PreferredEndDate,
+            request.PreviousCropTypeId,
+            request.PreviousCropType?.Name,
+            JsonSerializer.Deserialize<List<string>>(request.PreviousKnownProblemsJson, JsonOptions) ?? []);
 
         var step = new AgentStep
         {
@@ -845,8 +993,14 @@ public sealed class CropPlanningService(
         Validate(createRequestValidator.Validate(request));
         var userId = RequireUser();
         await EnsureFarmAccessAsync(request.FarmId, cancellationToken);
-        if (request.FieldId.HasValue) await EnsureFieldAccessAsync(request.FieldId.Value, cancellationToken);
+        var fieldValid = await ApplyFieldAccess(dbContext.Fields.AsNoTracking()).AnyAsync(item =>
+            item.Id == request.FieldId!.Value && item.FarmId == request.FarmId && item.IsActive, cancellationToken);
+        if (!fieldValid) throw new ApiException(HttpStatusCode.BadRequest, "FIELD_FARM_MISMATCH", "The selected active field must belong to the selected farm.");
         await EnsureCropTypeAsync(request.CropTypeId, cancellationToken);
+        if (request.CropVarietyId.HasValue && !await dbContext.CropVarieties.AsNoTracking().AnyAsync(item =>
+                item.Id == request.CropVarietyId.Value && item.CropTypeId == request.CropTypeId && item.IsActive && !item.IsDeleted, cancellationToken))
+            throw new ApiException(HttpStatusCode.BadRequest, "INVALID_CROP_VARIETY", "Selected variety is not active for this crop.");
+        if (request.PreviousCropTypeId.HasValue) await EnsureCropTypeAsync(request.PreviousCropTypeId.Value, cancellationToken);
 
         var activeStatuses = new[] { CropPlanRequestStatus.Submitted, CropPlanRequestStatus.PreliminaryGenerated, CropPlanRequestStatus.Approved };
         var duplicate = await dbContext.CropPlanRequests.AnyAsync(item =>
@@ -863,6 +1017,10 @@ public sealed class CropPlanningService(
             FarmId = request.FarmId,
             FieldId = request.FieldId,
             CropTypeId = request.CropTypeId,
+            CropVarietyId = request.CropVarietyId,
+            CultivationSeason = request.CultivationSeason,
+            PreviousCropTypeId = request.PreviousCropTypeId,
+            PreviousKnownProblemsJson = JsonSerializer.Serialize(request.PreviousKnownProblems ?? [], JsonOptions),
             RequestedByUserId = userId,
             PreferredStartDate = request.PreferredStartDate,
             PreferredEndDate = request.PreferredEndDate,
@@ -1187,6 +1345,12 @@ public sealed class CropPlanningService(
         }
     }
 
+    private void RequireAdmin()
+    {
+        if (currentUser.Role != ApplicationRole.Admin)
+            throw new ApiException(HttpStatusCode.Forbidden, "ADMIN_REQUIRED", "An administrator is required.");
+    }
+
     private void RequirePrePlantingViewer()
     {
         if (currentUser.Role is not (ApplicationRole.FieldOfficer or ApplicationRole.AgriculturalOfficer or ApplicationRole.Admin))
@@ -1222,8 +1386,16 @@ public sealed class CropPlanningService(
     private static FarmResponse MapFarm(Farm farm) => new(farm.Id, farm.Name, farm.Location, farm.TotalArea, farm.OwnerUserId, farm.CreatedAt);
     private static FieldResponse MapField(Field field) => new(field.Id, field.FarmId, field.Name, field.Area, field.SoilType, field.IsActive);
     private static CropTypeResponse MapCropType(CropType cropType) => new(cropType.Id, cropType.Name, cropType.Description, cropType.IsActive);
+    private static CropVarietyResponse MapVariety(CropVariety variety) => new(variety.Id, variety.CropTypeId, variety.Name, variety.IsActive);
+    private static CropReferenceProfileResponse MapReferenceProfile(CropReferenceProfile profile) =>
+        new(profile.Id, profile.CropTypeId, profile.VarietyName, profile.Region, profile.SourceName, profile.SourceUrl,
+            profile.SourceVersion, profile.VerifiedAt, profile.IsActive, profile.Stages.Count, profile.Rules.Count);
     private static CropCycleResponse MapCycle(CropCycle cycle) => new(cycle.Id, cycle.FieldId, cycle.CropTypeId, cycle.PlannedStartDate, cycle.PlannedEndDate, cycle.Status);
-    private static CropPlanRequestResponse MapRequest(CropPlanRequest request) => new(request.Id, request.FarmId, request.FieldId, request.CropTypeId, request.RequestedByUserId, request.PreferredStartDate, request.PreferredEndDate, request.Budget, request.Objective, request.Status, request.CreatedAt);
+    private static CropPlanRequestResponse MapRequest(CropPlanRequest request) =>
+        new(request.Id, request.FarmId, request.FieldId, request.CropTypeId, request.RequestedByUserId,
+            request.PreferredStartDate, request.PreferredEndDate, request.Budget, request.Objective,
+            request.Status, request.CreatedAt, request.CropVarietyId, request.CultivationSeason,
+            request.PreviousCropTypeId, JsonSerializer.Deserialize<List<string>>(request.PreviousKnownProblemsJson, JsonOptions) ?? []);
 }
 
 

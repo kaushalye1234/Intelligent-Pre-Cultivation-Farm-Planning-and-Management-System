@@ -53,7 +53,14 @@ public sealed record CropPlanningCoordinatorInput(
     Guid CropTypeId,
     string Objective,
     decimal Budget,
-    DateOnly PreferredStartDate);
+    DateOnly PreferredStartDate,
+    Guid? CropVarietyId = null,
+    string? CropVarietyName = null,
+    string CultivationSeason = "NotSure",
+    DateOnly PreferredEndDate = default,
+    Guid? PreviousCropTypeId = null,
+    string? PreviousCropTypeName = null,
+    IReadOnlyList<string>? PreviousKnownProblems = null);
 
 public sealed record CropPlanningCoordinatorOutput(
     Guid WorkflowId,

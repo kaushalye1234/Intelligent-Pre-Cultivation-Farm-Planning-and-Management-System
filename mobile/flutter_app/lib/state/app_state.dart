@@ -17,6 +17,9 @@ class AppState extends ChangeNotifier {
   List<FarmOption> farms = [];
   List<FieldOption> fields = [];
   List<CropTypeOption> cropTypes = [];
+  List<CropVarietyOption> cropVarieties = [];
+  List<CropPlanRecord> cropPlans = [];
+  Map<String, CropPlanningWorkflowStatus> planWorkflows = {};
   List<FarmTaskRecord> tasks = [];
   List<IrrigationScheduleRecord> irrigationSchedules = [];
   List<ApprovalHistoryRecord> approvalHistory = [];
@@ -124,6 +127,8 @@ class AppState extends ChangeNotifier {
     user = null;
     passwordChangeSession = null;
     farmerOnboarding = null;
+    cropPlans = [];
+    planWorkflows = {};
     notifyListeners();
   }
 
@@ -168,10 +173,31 @@ class AppState extends ChangeNotifier {
     farms = await _apiClient.farms();
     fields = await _apiClient.fields();
     cropTypes = await _apiClient.cropTypes();
+    cropVarieties = await _apiClient.cropVarieties();
+    cropPlans = await _apiClient.cropPlans();
+    final workflowEntries = await Future.wait(
+      cropPlans.map((plan) async {
+        try {
+          final status = await _apiClient.cropPlanningWorkflowStatus(plan.id);
+          return MapEntry(plan.id, status);
+        } on ApiException catch (error) {
+          if (error.statusCode == 404) return null;
+          rethrow;
+        }
+      }),
+    );
+    planWorkflows = {
+      for (final entry in workflowEntries)
+        if (entry != null) entry.key: entry.value,
+    };
     tasks = await _apiClient.tasks();
     irrigationSchedules = await _apiClient.irrigationSchedules();
     approvalHistory = await _apiClient.approvalHistory();
+    notifyListeners();
   }
+
+  Future<ApprovedWorkflowDetail> approvedWorkflowDetail(String workflowId) =>
+      _apiClient.approvedWorkflowDetail(workflowId);
 
   Future<void> _loadAuthenticatedLanding() async {
     if (user?.role != 1) {
@@ -198,12 +224,20 @@ class AppState extends ChangeNotifier {
     required String endDate,
     required num budget,
     required String objective,
+    String? cropVarietyId,
+    int cultivationSeason = 0,
+    String? previousCropTypeId,
+    List<String> previousKnownProblems = const [],
   }) async {
     await _guard(() async {
       final requestId = await _apiClient.createPreliminaryCropPlan(
         farmId: farmId,
         fieldId: fieldId,
         cropTypeId: cropTypeId,
+        cropVarietyId: cropVarietyId,
+        cultivationSeason: cultivationSeason,
+        previousCropTypeId: previousCropTypeId,
+        previousKnownProblems: previousKnownProblems,
         preferredStartDate: startDate,
         preferredEndDate: endDate,
         budget: budget,
@@ -224,12 +258,20 @@ class AppState extends ChangeNotifier {
     required String endDate,
     required num budget,
     required String objective,
+    String? cropVarietyId,
+    int cultivationSeason = 0,
+    String? previousCropTypeId,
+    List<String> previousKnownProblems = const [],
   }) async {
     await _guard(() async {
       lastCropPlanRequestId = await _apiClient.createPreliminaryCropPlan(
         farmId: farmId,
         fieldId: fieldId,
         cropTypeId: cropTypeId,
+        cropVarietyId: cropVarietyId,
+        cultivationSeason: cultivationSeason,
+        previousCropTypeId: previousCropTypeId,
+        previousKnownProblems: previousKnownProblems,
         preferredStartDate: startDate,
         preferredEndDate: endDate,
         budget: budget,

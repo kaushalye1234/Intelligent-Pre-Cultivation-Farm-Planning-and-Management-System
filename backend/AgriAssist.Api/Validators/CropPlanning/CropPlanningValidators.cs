@@ -51,13 +51,75 @@ public sealed class CropCycleRequestValidator : IRequestValidator<CropCycleReque
     }
 }
 
+public sealed class CropVarietyRequestValidator : IRequestValidator<CropVarietyRequest>
+{
+    public IReadOnlyList<string> Validate(CropVarietyRequest request)
+    {
+        var errors = new List<string>();
+        if (request.CropTypeId == Guid.Empty) errors.Add("Crop type is required.");
+        if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Length > 120) errors.Add("Variety name is required and must be 120 characters or fewer.");
+        return errors;
+    }
+}
+
+public sealed class CropReferenceProfileRequestValidator : IRequestValidator<CropReferenceProfileRequest>
+{
+    public IReadOnlyList<string> Validate(CropReferenceProfileRequest request)
+    {
+        var errors = new List<string>();
+        if (request.CropTypeId == Guid.Empty) errors.Add("Crop type is required.");
+        if (request.Region?.Length > 120) errors.Add("Region must be 120 characters or fewer.");
+        if (string.IsNullOrWhiteSpace(request.SourceName) || request.SourceName.Length > 180) errors.Add("Source name is required and must be 180 characters or fewer.");
+        if (request.SourceUrl?.Length > 1000) errors.Add("Source URL must be 1000 characters or fewer.");
+        if (string.IsNullOrWhiteSpace(request.SourceVersion) || request.SourceVersion.Length > 120) errors.Add("Source version is required and must be 120 characters or fewer.");
+        if (request.VerifiedAt == default || request.VerifiedAt > DateTime.UtcNow) errors.Add("Verification date must be in the past.");
+        if (request.Stages is null || request.Rules is null || request.Stages.Count + request.Rules.Count == 0) errors.Add("At least one reference stage or rule is required.");
+        foreach (var stage in request.Stages ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(stage.StageName) || stage.StageName.Length > 120) errors.Add("Stage name is required and must be 120 characters or fewer.");
+            if (stage.Sequence < 1) errors.Add("Stage sequence must be positive.");
+            if (stage.TypicalMinDays < 0 || stage.TypicalMaxDays < 0 ||
+                (stage.TypicalMinDays.HasValue && stage.TypicalMaxDays.HasValue && stage.TypicalMaxDays < stage.TypicalMinDays)) errors.Add("Stage duration range is invalid.");
+            if (stage.Notes?.Length > 1000) errors.Add("Stage notes must be 1000 characters or fewer.");
+        }
+        foreach (var rule in request.Rules ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(rule.RuleType) || rule.RuleType.Length > 120) errors.Add("Rule type is required and must be 120 characters or fewer.");
+            if (string.IsNullOrWhiteSpace(rule.RuleKey) || rule.RuleKey.Length > 160) errors.Add("Rule key is required and must be 160 characters or fewer.");
+            if (string.IsNullOrWhiteSpace(rule.StructuredValueJson))
+            {
+                errors.Add("Rule value must be valid JSON.");
+                continue;
+            }
+            try { using var _ = System.Text.Json.JsonDocument.Parse(rule.StructuredValueJson); }
+            catch (System.Text.Json.JsonException) { errors.Add("Rule value must be valid JSON."); }
+        }
+        return errors;
+    }
+}
+
 public sealed class CropPlanRequestCreateValidator : IRequestValidator<CropPlanRequestCreate>
 {
+    private static readonly HashSet<string> KnownProblemCodes = new(StringComparer.Ordinal)
+    {
+        "PreviousFlooding", "PreviousWaterShortage", "PreviousPestIssue",
+        "PreviousDiseaseIssue", "PreviousSoilProblem", "Other", "NoneKnown"
+    };
+
     public IReadOnlyList<string> Validate(CropPlanRequestCreate request)
     {
         var errors = new List<string>();
         if (request.FarmId == Guid.Empty) errors.Add("Farm is required.");
+        if (!request.FieldId.HasValue || request.FieldId == Guid.Empty) errors.Add("Field is required.");
         if (request.CropTypeId == Guid.Empty) errors.Add("Crop type is required.");
+        if (request.CropVarietyId == Guid.Empty) errors.Add("Crop variety is invalid.");
+        if (request.PreviousCropTypeId == Guid.Empty) errors.Add("Previous crop is invalid.");
+        if (!Enum.IsDefined(request.CultivationSeason)) errors.Add("Cultivation season is invalid.");
+        var problems = request.PreviousKnownProblems ?? [];
+        if (problems.Count > 7 || problems.Any(code => !KnownProblemCodes.Contains(code)) || problems.Distinct(StringComparer.Ordinal).Count() != problems.Count)
+            errors.Add("Previous known problems contain invalid or duplicate values.");
+        if (problems.Contains("NoneKnown") && problems.Count > 1) errors.Add("None known cannot be combined with other previous problems.");
+        if (request.PreferredStartDate == default) errors.Add("Preferred start date is required.");
         if (request.PreferredEndDate <= request.PreferredStartDate) errors.Add("Preferred end date must be after preferred start date.");
         if (request.Budget <= 0) errors.Add("Budget must be positive.");
         if (string.IsNullOrWhiteSpace(request.Objective) || request.Objective.Length > 500) errors.Add("Objective is required and must be 500 characters or fewer.");

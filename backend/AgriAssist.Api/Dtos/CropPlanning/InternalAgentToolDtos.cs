@@ -20,7 +20,13 @@ public sealed record AgentCropPlanContextResponse(
     string Status,
     AgentFarmDetailsResponse Farm,
     AgentFieldDetailsResponse? Field,
-    AgentCropTypeDetailsResponse CropType);
+    AgentCropTypeDetailsResponse CropType,
+    Guid? CropVarietyId = null,
+    string? CropVarietyName = null,
+    string CultivationSeason = "NotSure",
+    Guid? PreviousCropTypeId = null,
+    string? PreviousCropTypeName = null,
+    IReadOnlyList<string>? PreviousKnownProblems = null);
 
 public sealed record AgentFarmDetailsResponse(Guid Id, string Name, string Location, decimal TotalArea, Guid OwnerUserId);
 public sealed record AgentFieldDetailsResponse(Guid Id, Guid FarmId, string Name, decimal Area, string SoilType, bool IsActive);

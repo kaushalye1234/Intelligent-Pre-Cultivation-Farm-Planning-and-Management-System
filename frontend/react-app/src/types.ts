@@ -71,6 +71,27 @@ export type CropType = {
   isActive: boolean
 }
 
+export type CropVariety = {
+  id: string
+  cropTypeId: string
+  name: string
+  isActive: boolean
+}
+
+export type CropReferenceProfile = {
+  id: string
+  cropTypeId: string
+  varietyName?: string | null
+  region?: string | null
+  sourceName: string
+  sourceUrl?: string | null
+  sourceVersion: string
+  verifiedAt: string
+  isActive: boolean
+  stageCount: number
+  ruleCount: number
+}
+
 export type CropPlan = {
   id: string
   farmId: string

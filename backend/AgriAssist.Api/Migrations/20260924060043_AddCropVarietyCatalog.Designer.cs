@@ -3,6 +3,7 @@ using System;
 using AgriAssist.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace AgriAssist.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260924060043_AddCropVarietyCatalog")]
+    partial class AddCropVarietyCatalog
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -90,16 +93,6 @@ namespace AgriAssist.Api.Migrations
                     b.Property<Guid>("CropTypeId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid?>("CropVarietyId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("CultivationSeason")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
-                        .HasDefaultValue("NotSure");
-
                     b.Property<Guid>("FarmId")
                         .HasColumnType("uuid");
 
@@ -120,15 +113,6 @@ namespace AgriAssist.Api.Migrations
                     b.Property<DateOnly>("PreferredStartDate")
                         .HasColumnType("date");
 
-                    b.Property<Guid?>("PreviousCropTypeId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("PreviousKnownProblemsJson")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("text")
-                        .HasDefaultValue("[]");
-
                     b.Property<Guid>("RequestedByUserId")
                         .HasColumnType("uuid");
 
@@ -147,13 +131,9 @@ namespace AgriAssist.Api.Migrations
 
                     b.HasIndex("CropTypeId");
 
-                    b.HasIndex("CropVarietyId");
-
                     b.HasIndex("FarmId");
 
                     b.HasIndex("FieldId");
-
-                    b.HasIndex("PreviousCropTypeId");
 
                     b.HasIndex("RequestedByUserId");
 
@@ -1671,11 +1651,6 @@ namespace AgriAssist.Api.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("AgriAssist.Api.Models.CropPlanning.CropVariety", "CropVariety")
-                        .WithMany()
-                        .HasForeignKey("CropVarietyId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("AgriAssist.Api.Models.CropPlanning.Farm", "Farm")
                         .WithMany()
                         .HasForeignKey("FarmId")
@@ -1687,11 +1662,6 @@ namespace AgriAssist.Api.Migrations
                         .HasForeignKey("FieldId")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("AgriAssist.Api.Models.CropPlanning.CropType", "PreviousCropType")
-                        .WithMany()
-                        .HasForeignKey("PreviousCropTypeId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("AgriAssist.Api.Models.Shared.AppUser", "RequestedByUser")
                         .WithMany()
                         .HasForeignKey("RequestedByUserId")
@@ -1700,13 +1670,9 @@ namespace AgriAssist.Api.Migrations
 
                     b.Navigation("CropType");
 
-                    b.Navigation("CropVariety");
-
                     b.Navigation("Farm");
 
                     b.Navigation("Field");
-
-                    b.Navigation("PreviousCropType");
 
                     b.Navigation("RequestedByUser");
                 });

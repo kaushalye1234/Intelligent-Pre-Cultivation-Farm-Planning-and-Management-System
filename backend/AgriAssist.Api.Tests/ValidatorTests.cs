@@ -24,6 +24,19 @@ public sealed class ValidatorTests
     }
 
     [Fact]
+    public void Crop_reference_validator_rejects_missing_rule_json_without_throwing()
+    {
+        var request = new CropReferenceProfileRequest(
+            Guid.NewGuid(), null, null, "Verified source", null, "1",
+            DateTime.UtcNow.AddDays(-1), [],
+            [new CropReferenceRuleRequest("Season", "Maha", null!)]);
+
+        var errors = new CropReferenceProfileRequestValidator().Validate(request);
+
+        Assert.Contains(errors, error => error.Contains("Rule value must be valid JSON."));
+    }
+
+    [Fact]
     public void Reservation_validator_rejects_zero_quantity()
     {
         var validator = new ResourceReservationRequestValidator();

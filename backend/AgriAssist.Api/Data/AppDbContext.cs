@@ -13,6 +13,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Farm> Farms => Set<Farm>();
     public DbSet<Field> Fields => Set<Field>();
     public DbSet<CropType> CropTypes => Set<CropType>();
+    public DbSet<CropVariety> CropVarieties => Set<CropVariety>();
     public DbSet<CropCycle> CropCycles => Set<CropCycle>();
     public DbSet<CropPlanRequest> CropPlanRequests => Set<CropPlanRequest>();
     public DbSet<CropPlanRequestHistory> CropPlanRequestHistories => Set<CropPlanRequestHistory>();
@@ -83,6 +84,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.HasIndex(cropType => cropType.IsActive);
         });
 
+        modelBuilder.Entity<CropVariety>(entity =>
+        {
+            entity.Property(variety => variety.Name).IsRequired().HasMaxLength(120);
+            entity.HasOne(variety => variety.CropType).WithMany().HasForeignKey(variety => variety.CropTypeId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(variety => new { variety.CropTypeId, variety.Name }).IsUnique();
+            entity.HasIndex(variety => variety.IsActive);
+        });
+
         modelBuilder.Entity<CropCycle>(entity =>
         {
             entity.Property(cycle => cycle.Status).HasConversion<string>().HasMaxLength(40);
@@ -95,14 +104,20 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<CropPlanRequest>(entity =>
         {
             entity.Property(request => request.Objective).IsRequired().HasMaxLength(500);
+            entity.Property(request => request.CultivationSeason).HasConversion<string>().HasMaxLength(32).HasDefaultValue(CultivationSeason.NotSure);
+            entity.Property(request => request.PreviousKnownProblemsJson).IsRequired().HasColumnType("text").HasDefaultValue("[]");
             entity.Property(request => request.Budget).HasPrecision(12, 2);
             entity.Property(request => request.Status).HasConversion<string>().HasMaxLength(40);
             entity.HasOne(request => request.Farm).WithMany().HasForeignKey(request => request.FarmId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(request => request.Field).WithMany().HasForeignKey(request => request.FieldId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(request => request.CropType).WithMany().HasForeignKey(request => request.CropTypeId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(request => request.CropVariety).WithMany().HasForeignKey(request => request.CropVarietyId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(request => request.PreviousCropType).WithMany().HasForeignKey(request => request.PreviousCropTypeId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(request => request.RequestedByUser).WithMany().HasForeignKey(request => request.RequestedByUserId).OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(request => request.FarmId);
             entity.HasIndex(request => request.FieldId);
+            entity.HasIndex(request => request.CropVarietyId);
+            entity.HasIndex(request => request.PreviousCropTypeId);
             entity.HasIndex(request => request.Status);
         });
 
