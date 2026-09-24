@@ -48,6 +48,28 @@ describe('ResourcesPage', () => {
     expect(get).toHaveBeenCalledWith('/resources/reservations', expect.anything())
   })
 
+  it('switches between light and dark mode and remembers the choice', async () => {
+    mockResourceApi()
+    window.localStorage.setItem('agriassist-theme', 'light')
+
+    const { container, unmount } = render(<MemoryRouter><ResourcesPage /></MemoryRouter>)
+    await screen.findByText('Paddy Seed')
+    const toggle = screen.getByRole('switch', { name: /dark mode/i })
+    expect(toggle).toHaveAttribute('aria-checked', 'false')
+    expect(container.querySelector('.resource-hub')).toHaveAttribute('data-theme', 'light')
+
+    await userEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-checked', 'true')
+    expect(container.querySelector('.resource-hub')).toHaveAttribute('data-theme', 'dark')
+    expect(window.localStorage.getItem('agriassist-theme')).toBe('dark')
+
+    unmount()
+    const again = render(<MemoryRouter><ResourcesPage /></MemoryRouter>)
+    await screen.findByText('Paddy Seed')
+    expect(again.container.querySelector('.resource-hub')).toHaveAttribute('data-theme', 'dark')
+    window.localStorage.removeItem('agriassist-theme')
+  })
+
   it('shows the weather forecast for a location', async () => {
     const get = mockResourceApi()
 

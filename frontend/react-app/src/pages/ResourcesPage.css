@@ -184,3 +184,66 @@
 .resource-hub .cell-strong {
   font-weight: 700;
 }
+
+/* ---------- Theme toggle ---------- */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 40px;
+  padding: 0 var(--space-3) 0 6px;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 10px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.theme-toggle-track {
+  position: relative;
+  width: 52px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 7px;
+  color: var(--color-text-muted);
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+}
+
+.theme-toggle-track svg {
+  position: relative;
+  z-index: 1;
+  transition: color 200ms ease;
+}
+
+.theme-toggle-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  background: var(--color-primary);
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px var(--rh-glow);
+  transition: transform 220ms cubic-bezier(0.3, 0.7, 0.4, 1);
+}
+
+.theme-toggle[aria-checked="true"] .theme-toggle-thumb {
+  transform: translateX(24px);
+}
+
+.theme-toggle[aria-checked="false"] .theme-toggle-sun,
+.theme-toggle[aria-checked="true"] .theme-toggle-moon {
+  color: var(--rh-on-primary);
+}
+
+.theme-toggle-label {
+  min-width: 32px;
+  text-align: left;
+}
