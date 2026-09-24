@@ -23,9 +23,7 @@ Widget _authGateHarness(AppState state) {
 }
 
 void main() {
-  testWidgets('Farmer shell exposes only Dashboard, Plans and My status', (
-    tester,
-  ) async {
+  testWidgets('Farmer shell exposes Home, Plans and Tasks', (tester) async {
     final state = AppState()..user = _farmer;
 
     await tester.pumpWidget(
@@ -35,9 +33,9 @@ void main() {
       ),
     );
 
-    expect(find.text('Dashboard'), findsOneWidget);
+    expect(find.text('Home'), findsOneWidget);
     expect(find.text('Plans'), findsOneWidget);
-    expect(find.text('My status'), findsOneWidget);
+    expect(find.text('Tasks'), findsOneWidget);
     expect(find.text('Inspect'), findsNothing);
     expect(find.text('Resources'), findsNothing);
   });
