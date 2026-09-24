@@ -38,6 +38,8 @@ public sealed class InternalAgentToolsController(
                     .Include(item => item.Farm)
                     .Include(item => item.Field)
                     .Include(item => item.CropType)
+                    .Include(item => item.CropVariety)
+                    .Include(item => item.PreviousCropType)
                     .SingleOrDefaultAsync(item => item.Id == cropPlanRequestId && !item.IsDeleted, cancellationToken)
                     ?? throw Safe(HttpStatusCode.NotFound, "Crop plan request was not found.");
 
@@ -54,7 +56,13 @@ public sealed class InternalAgentToolsController(
                     request.Status.ToString(),
                     MapFarm(request.Farm!),
                     request.Field is null ? null : MapField(request.Field),
-                    new AgentCropTypeDetailsResponse(request.CropType!.Id, request.CropType.Name, request.CropType.Description, request.CropType.IsActive));
+                    new AgentCropTypeDetailsResponse(request.CropType!.Id, request.CropType.Name, request.CropType.Description, request.CropType.IsActive),
+                    request.CropVarietyId,
+                    request.CropVariety?.Name,
+                    request.CultivationSeason.ToString(),
+                    request.PreviousCropTypeId,
+                    request.PreviousCropType?.Name,
+                    JsonSerializer.Deserialize<List<string>>(request.PreviousKnownProblemsJson, JsonOptions) ?? []);
             },
             cancellationToken);
 
@@ -124,6 +132,7 @@ public sealed class InternalAgentToolsController(
         [FromQuery] Guid? cropReferenceProfileId,
         [FromQuery] string? varietyName,
         [FromQuery] string? region,
+        [FromQuery] bool genericOnly,
         [FromQuery] Guid? workflowId,
         [FromQuery] Guid? agentStepId,
         CancellationToken cancellationToken) =>
@@ -154,7 +163,9 @@ public sealed class InternalAgentToolsController(
                 if (cropReferenceProfileId.HasValue) profiles = profiles.Where(item => item.Id == cropReferenceProfileId.Value);
                 if (cropTypeId.HasValue) profiles = profiles.Where(item => item.CropTypeId == cropTypeId.Value);
                 if (!string.IsNullOrWhiteSpace(varietyName)) profiles = profiles.Where(item => item.VarietyName == varietyName);
+                if (genericOnly) profiles = profiles.Where(item => item.VarietyName == null);
                 if (!string.IsNullOrWhiteSpace(region)) profiles = profiles.Where(item => item.Region == region);
+                profiles = profiles.Where(item => item.VerifiedAt <= DateTime.UtcNow && (item.Stages.Any() || item.Rules.Any()));
 
                 var profile = await profiles.OrderByDescending(item => item.VerifiedAt).FirstOrDefaultAsync(cancellationToken);
 

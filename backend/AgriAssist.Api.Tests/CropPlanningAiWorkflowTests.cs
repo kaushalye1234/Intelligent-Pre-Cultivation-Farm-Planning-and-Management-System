@@ -1,5 +1,6 @@
 ﻿using AgriAssist.Api.Data;
 using AgriAssist.Api.Dtos.CropPlanning;
+using System.Text.Json;
 using AgriAssist.Api.Dtos.Shared;
 using AgriAssist.Api.ExternalServices.AgenticAI;
 using AgriAssist.Api.Models.CropPlanning;
@@ -14,6 +15,36 @@ namespace AgriAssist.Api.Tests;
 
 public sealed class CropPlanningAiWorkflowTests
 {
+    [Fact]
+    public async Task Coordinator_receives_persisted_farmer_variety_season_dates_and_history()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.Submitted);
+        var variety = new CropVariety { CropTypeId = data.Request.CropTypeId, Name = "Bg 352", IsActive = true };
+        var previous = new CropType { Name = "Maize", IsActive = true };
+        data.Request.CropVariety = variety;
+        data.Request.PreviousCropType = previous;
+        data.Request.CultivationSeason = CultivationSeason.Maha;
+        data.Request.PreferredEndDate = new DateOnly(2027, 2, 15);
+        data.Request.PreviousKnownProblemsJson = JsonSerializer.Serialize(new[] { "PreviousFlooding" });
+        db.AddRange(variety, previous);
+        await db.SaveChangesAsync();
+        var client = new RecordingAiClient();
+
+        await NewService(db, data.Farmer.Id, client).StartAiWorkflowAsync(data.Request.Id, CancellationToken.None);
+
+        Assert.NotNull(client.LastInput);
+        Assert.Equal(variety.Id, client.LastInput.CropVarietyId);
+        Assert.Equal("Bg 352", client.LastInput.CropVarietyName);
+        Assert.Equal("Maha", client.LastInput.CultivationSeason);
+        Assert.Equal(new DateOnly(2027, 2, 15), client.LastInput.PreferredEndDate);
+        Assert.Equal(previous.Id, client.LastInput.PreviousCropTypeId);
+        Assert.Equal("Maize", client.LastInput.PreviousCropTypeName);
+        Assert.Equal(["PreviousFlooding"], client.LastInput.PreviousKnownProblems);
+        var inputJson = (await db.AgentSteps.SingleAsync(item => item.AgentName == "CropPlanningCoordinatorAgent")).InputJson;
+        Assert.Contains("\"cropVarietyName\":\"Bg 352\"", inputJson);
+    }
+
     [Fact]
     public async Task Farmer_request_persists_variety_season_previous_crop_and_historical_problems()
     {
@@ -345,7 +376,7 @@ public sealed class CropPlanningAiWorkflowTests
 
     private class PlannedAiClient : IAgenticAIClient
     {
-        public Task<CropPlanningCoordinatorOutput> RunCropPlanningCoordinatorAsync(CropPlanningCoordinatorInput input, CancellationToken cancellationToken) =>
+        public virtual Task<CropPlanningCoordinatorOutput> RunCropPlanningCoordinatorAsync(CropPlanningCoordinatorInput input, CancellationToken cancellationToken) =>
             Task.FromResult(new CropPlanningCoordinatorOutput(
                 input.WorkflowId,
                 "Planned",
@@ -361,6 +392,17 @@ public sealed class CropPlanningAiWorkflowTests
 
         public virtual Task<FieldAnalysisOutput> RunFieldAnalysisAsync(FieldAnalysisInput input, CancellationToken cancellationToken) =>
             Task.FromResult(new FieldAnalysisOutput(input.WorkflowId, "SafeFailure", true, ["Not configured for this test."], new FieldAnalysisFieldConditionResponse(string.Empty, []), [], "Unknown"));
+    }
+
+    private sealed class RecordingAiClient : PlannedAiClient
+    {
+        public CropPlanningCoordinatorInput? LastInput { get; private set; }
+
+        public override Task<CropPlanningCoordinatorOutput> RunCropPlanningCoordinatorAsync(CropPlanningCoordinatorInput input, CancellationToken cancellationToken)
+        {
+            LastInput = input;
+            return base.RunCropPlanningCoordinatorAsync(input, cancellationToken);
+        }
     }
 
     private sealed class FieldAnalysisAiClient(Guid inspectionId, Guid issueId, Guid cropPlanRequestId) : PlannedAiClient

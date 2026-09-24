@@ -16,9 +16,11 @@ FARM_ID = UUID("44444444-4444-4444-4444-444444444444")
 FIELD_ID = UUID("55555555-5555-5555-5555-555555555555")
 CYCLE_ID = UUID("66666666-6666-6666-6666-666666666666")
 CROP_TYPE_ID = UUID("77777777-7777-7777-7777-777777777777")
+VARIETY_ID = UUID("99999999-9999-9999-9999-999999999999")
+PREVIOUS_CROP_ID = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 
 
-def coordinator_input(objective: str = "Plan a safe crop season") -> CoordinatorInput:
+def coordinator_input(objective: str = "Plan a safe crop season", *, variety_id: UUID | None = None, variety_name: str | None = None) -> CoordinatorInput:
     return CoordinatorInput.model_validate(
         {
             "workflowId": str(WORKFLOW_ID),
@@ -31,15 +33,25 @@ def coordinator_input(objective: str = "Plan a safe crop season") -> Coordinator
             "objective": objective,
             "budget": 12000,
             "preferredStartDate": "2026-10-01",
+            "preferredEndDate": "2027-02-01",
+            "cropVarietyId": str(variety_id) if variety_id else None,
+            "cropVarietyName": variety_name,
+            "cultivationSeason": "Maha",
+            "previousCropTypeId": str(PREVIOUS_CROP_ID),
+            "previousCropTypeName": "Maize",
+            "previousKnownProblems": ["PreviousFlooding"],
         }
     )
 
 
 class FakeTools:
-    def __init__(self, *, reference_available: bool = True, fail: bool = False) -> None:
+    def __init__(self, *, reference_available: bool = True, fail: bool = False, variety_id: UUID | None = None, variety_name: str | None = None) -> None:
         self.reference_available = reference_available
         self.fail = fail
         self.calls: list[str] = []
+        self.variety_id = variety_id
+        self.variety_name = variety_name
+        self.reference_variety_name: str | None = None
 
     async def get_crop_plan_context(self, crop_plan_request_id, workflow_id):
         self.calls.append("GetCropPlanContext")
@@ -60,6 +72,12 @@ class FakeTools:
                 "farm": {"id": str(FARM_ID), "name": "North Farm"},
                 "field": {"id": str(FIELD_ID), "name": "Field A"},
                 "cropType": {"id": str(CROP_TYPE_ID), "name": "Rice"},
+                "cropVarietyId": str(self.variety_id) if self.variety_id else None,
+                "cropVarietyName": self.variety_name,
+                "cultivationSeason": "Maha",
+                "previousCropTypeId": str(PREVIOUS_CROP_ID),
+                "previousCropTypeName": "Maize",
+                "previousKnownProblems": ["PreviousFlooding"],
             }
         )
 
@@ -75,8 +93,9 @@ class FakeTools:
         self.calls.append("GetCropCycleDetails")
         return {"id": str(crop_cycle_id), "status": "Planned"}
 
-    async def get_crop_reference_profile(self, crop_type_id, workflow_id):
+    async def get_crop_reference_profile(self, crop_type_id, workflow_id, variety_name=None):
         self.calls.append("GetCropReferenceProfile")
+        self.reference_variety_name = variety_name
         if not self.reference_available:
             return CropReferenceProfile.model_validate(
                 {"referenceDataStatus": "Unavailable", "profile": None, "stages": [], "rules": [], "warnings": ["Verified crop reference data is missing."]}
@@ -102,8 +121,10 @@ class FakeProvider(BaseLLMProvider):
     def __init__(self, text: str, delay: float = 0) -> None:
         self.text = text
         self.delay = delay
+        self.prompt: str | None = None
 
     async def generate_json(self, prompt: str) -> LLMResponse:
+        self.prompt = prompt
         if self.delay:
             await asyncio.sleep(self.delay)
         return LLMResponse(self.text)
@@ -120,6 +141,33 @@ async def test_golden_case_delegates_three_downstream_agents():
     assert result.status == "Planned"
     assert result.requires_human_review is False
     assert [step.assigned_agent for step in result.steps] == ["CropFieldAnalysisAgent", "WeatherResourceAgent", "SchedulingValidationAgent"]
+
+
+@pytest.mark.asyncio
+async def test_selected_farmer_context_reaches_reference_lookup_and_llm_evidence():
+    tools = FakeTools(variety_id=VARIETY_ID, variety_name="Bg 352")
+    provider = FakeProvider('{"objectiveSummary":"Plan the selected rice variety."}')
+
+    result = await CropPlanningCoordinatorAgent(tools, provider).run(
+        coordinator_input(variety_id=VARIETY_ID, variety_name="Bg 352")
+    )
+
+    assert result.status == "Planned"
+    assert tools.reference_variety_name == "Bg 352"
+    assert provider.prompt is not None
+    assert '"crop_variety_name": "Bg 352"' in provider.prompt
+    assert '"cultivation_season": "Maha"' in provider.prompt
+    assert '"previous_crop_type_name": "Maize"' in provider.prompt
+    assert '"previous_known_problems": ["PreviousFlooding"]' in provider.prompt
+
+
+@pytest.mark.asyncio
+async def test_stale_variety_selection_fails_before_reference_lookup():
+    tools = FakeTools(variety_id=VARIETY_ID, variety_name="Bg 352")
+    result = await CropPlanningCoordinatorAgent(tools).run(coordinator_input())
+
+    assert result.status == "SafeFailure"
+    assert "GetCropReferenceProfile" not in tools.calls
 
 
 def test_invalid_input_rejects_empty_objective():

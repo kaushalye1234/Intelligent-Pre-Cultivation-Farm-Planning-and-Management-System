@@ -25,11 +25,16 @@ class CropPlanningTools:
         envelope = await self._client.get(f"/api/internal/agent-tools/crop-cycles/{crop_cycle_id}", workflow_id=workflow_id)
         return dict(envelope.data or {})
 
-    async def get_crop_reference_profile(self, crop_type_id: UUID, workflow_id: UUID) -> CropReferenceProfile:
+    async def get_crop_reference_profile(self, crop_type_id: UUID, workflow_id: UUID, variety_name: str | None = None) -> CropReferenceProfile:
+        params = {"cropTypeId": str(crop_type_id)}
+        if variety_name:
+            params["varietyName"] = variety_name
+        else:
+            params["genericOnly"] = "true"
         envelope = await self._client.get(
             "/api/internal/agent-tools/crop-reference-profiles",
             workflow_id=workflow_id,
-            params={"cropTypeId": str(crop_type_id)},
+            params=params,
         )
         return CropReferenceProfile.model_validate(envelope.data)
 

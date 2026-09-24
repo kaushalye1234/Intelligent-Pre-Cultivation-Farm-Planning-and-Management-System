@@ -482,6 +482,8 @@ public sealed class CropPlanningService(
             .Include(item => item.Farm)
             .Include(item => item.Field)
             .Include(item => item.CropType)
+            .Include(item => item.CropVariety)
+            .Include(item => item.PreviousCropType)
             .SingleOrDefaultAsync(item => item.Id == requestId, cancellationToken)
             ?? throw NotFound("Crop plan request");
 
@@ -489,6 +491,13 @@ public sealed class CropPlanningService(
         {
             throw new ApiException(HttpStatusCode.BadRequest, "CROP_PLAN_STATE_NOT_ALLOWED", "Only submitted or preliminary crop plan requests can start AI planning.");
         }
+
+        await EnsureCropTypeAsync(request.CropTypeId, cancellationToken);
+        if (!request.FieldId.HasValue || !await ApplyFieldAccess(dbContext.Fields.AsNoTracking()).AnyAsync(item =>
+                item.Id == request.FieldId.Value && item.FarmId == request.FarmId && item.IsActive, cancellationToken))
+            throw new ApiException(HttpStatusCode.BadRequest, "FIELD_FARM_MISMATCH", "The selected active field must belong to the selected farm.");
+        if (request.CropVarietyId.HasValue && (request.CropVariety is null || !request.CropVariety.IsActive || request.CropVariety.IsDeleted || request.CropVariety.CropTypeId != request.CropTypeId))
+            throw new ApiException(HttpStatusCode.BadRequest, "INVALID_CROP_VARIETY", "Selected variety is not active for this crop.");
 
         var hasRunningWorkflow = await dbContext.AgentWorkflows.AsNoTracking().AnyAsync(workflow =>
             workflow.CropPlanRequestId == request.Id &&
@@ -528,7 +537,14 @@ public sealed class CropPlanningService(
             request.CropTypeId,
             request.Objective,
             request.Budget,
-            request.PreferredStartDate);
+            request.PreferredStartDate,
+            request.CropVarietyId,
+            request.CropVariety?.Name,
+            request.CultivationSeason.ToString(),
+            request.PreferredEndDate,
+            request.PreviousCropTypeId,
+            request.PreviousCropType?.Name,
+            JsonSerializer.Deserialize<List<string>>(request.PreviousKnownProblemsJson, JsonOptions) ?? []);
 
         var step = new AgentStep
         {
