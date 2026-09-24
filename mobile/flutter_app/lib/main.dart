@@ -6,6 +6,7 @@ import 'screens/farm_onboarding_screen.dart';
 import 'screens/field_onboarding_screen.dart';
 import 'screens/home_shell.dart';
 import 'screens/login_screen.dart';
+import 'screens/resource_officer_shell.dart';
 import 'state/app_state.dart';
 import 'ui/agri_theme.dart';
 import 'ui/journey_widgets.dart';
@@ -44,8 +45,8 @@ class AuthGate extends StatelessWidget {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    if (state.passwordChangeSession?.user.role != null &&
-        state.passwordChangeSession?.user.role != 1) {
+    final pendingRole = state.passwordChangeSession?.user.role;
+    if (pendingRole != null && !AppState.isMobileRole(pendingRole)) {
       return const _StaffPortalRequired();
     }
 
@@ -55,7 +56,11 @@ class AuthGate extends StatelessWidget {
 
     if (!state.isAuthenticated) return const LoginScreen();
 
-    if (state.user?.role != 1) return const _StaffPortalRequired();
+    if (!AppState.isMobileRole(state.user!.role)) {
+      return const _StaffPortalRequired();
+    }
+
+    if (state.isResourceOfficer) return const ResourceOfficerShell();
 
     return switch (state.farmerOnboarding?.stage) {
       'farm' => const FarmOnboardingScreen(),

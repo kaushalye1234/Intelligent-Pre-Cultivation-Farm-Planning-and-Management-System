@@ -73,7 +73,8 @@ public sealed class WeatherResourceWorkflowService(
             handoff.Priority,
             handoff.FieldAnalysisSummary,
             weather,
-            stocks);
+            stocks,
+            LoadRequirements());
 
         var userId = currentUser.UserId ?? throw new ApiException(HttpStatusCode.Unauthorized, "AUTH_REQUIRED", "Authentication is required.");
         step.InputJson = JsonSerializer.Serialize(input, JsonOptions);
@@ -158,6 +159,7 @@ public sealed class WeatherResourceWorkflowService(
         if (!input.Weather.IsAvailable && output.WeatherRisk != "Unknown") errors.Add("WeatherResource reported a weather risk without forecast data.");
 
         var stocks = input.Stocks.ToDictionary(stock => stock.InventoryStockId);
+        var requirements = (input.ResourceRequirements ?? []).GroupBy(requirement => requirement.ResourceId).ToDictionary(group => group.Key, group => group.Sum(requirement => requirement.RequestedQuantity));
         foreach (var check in output.ResourceChecks)
         {
             if (!stocks.TryGetValue(check.InventoryStockId, out var stock))
@@ -168,10 +170,32 @@ public sealed class WeatherResourceWorkflowService(
             {
                 errors.Add($"WeatherResource figures for inventory stock {check.InventoryStockId} do not match the inventory snapshot.");
             }
+
+            ValidateRequirement(check, requirements, errors);
         }
 
         return errors;
     }
+
+    /// <summary>A requested quantity may only come from the input, and sufficiency must follow from it.</summary>
+    private static void ValidateRequirement(ResourceCheckResponse check, Dictionary<Guid, decimal> requirements, List<string> errors)
+    {
+        if (!requirements.TryGetValue(check.ResourceId, out var requested))
+        {
+            if (check.Requested is not null || check.Sufficient is not null || check.RequirementStatus != ResourceRequirementStatus.Unknown)
+                errors.Add($"WeatherResource invented a requirement for resource {check.ResourceId}; no requested quantity was provided.");
+            return;
+        }
+
+        var sufficient = check.AvailableQuantity >= requested;
+        var expectedStatus = sufficient ? ResourceRequirementStatus.Sufficient : ResourceRequirementStatus.Insufficient;
+        if (check.Requested != requested || check.Sufficient != sufficient || check.RequirementStatus != expectedStatus)
+            errors.Add($"WeatherResource requirement figures for resource {check.ResourceId} do not match the requested quantity and stock snapshot.");
+    }
+
+    // Crop planning (Member 1) does not currently state how much of any resource a plan needs, so there is
+    // nothing to send. Requirements are deliberately not derived or estimated here.
+    private static IReadOnlyList<ResourceRequirement> LoadRequirements() => [];
 
     private async Task<IReadOnlyList<StockSnapshot>> LoadStockSnapshotAsync(CancellationToken cancellationToken) =>
         await dbContext.InventoryStocks.AsNoTracking()

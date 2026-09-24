@@ -22,6 +22,19 @@ public sealed class ResourcesController(IResourceService resourceService) : Cont
     public async Task<ActionResult<ResourceCategoryResponse>> CreateCategory(ResourceCategoryRequest request, CancellationToken cancellationToken) =>
         Ok(await resourceService.CreateCategoryAsync(request, cancellationToken));
 
+    [HttpPut("categories/{id:guid}")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.ResourceOfficer)},{nameof(ApplicationRole.Admin)}")]
+    public async Task<ActionResult<ResourceCategoryResponse>> UpdateCategory(Guid id, ResourceCategoryRequest request, CancellationToken cancellationToken) =>
+        Ok(await resourceService.UpdateCategoryAsync(id, request, cancellationToken));
+
+    [HttpDelete("categories/{id:guid}")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.ResourceOfficer)},{nameof(ApplicationRole.Admin)}")]
+    public async Task<IActionResult> DeleteCategory(Guid id, CancellationToken cancellationToken)
+    {
+        await resourceService.DeleteCategoryAsync(id, cancellationToken);
+        return NoContent();
+    }
+
     [HttpGet("suppliers")]
     public async Task<ActionResult<PagedResult<SupplierResponse>>> Suppliers([FromQuery] PagedQuery query, CancellationToken cancellationToken) =>
         Ok(await resourceService.SearchSuppliersAsync(query, cancellationToken));
@@ -31,14 +44,40 @@ public sealed class ResourcesController(IResourceService resourceService) : Cont
     public async Task<ActionResult<SupplierResponse>> CreateSupplier(SupplierRequest request, CancellationToken cancellationToken) =>
         Ok(await resourceService.CreateSupplierAsync(request, cancellationToken));
 
+    [HttpPut("suppliers/{id:guid}")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.ResourceOfficer)},{nameof(ApplicationRole.Admin)}")]
+    public async Task<ActionResult<SupplierResponse>> UpdateSupplier(Guid id, SupplierRequest request, CancellationToken cancellationToken) =>
+        Ok(await resourceService.UpdateSupplierAsync(id, request, cancellationToken));
+
+    [HttpDelete("suppliers/{id:guid}")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.ResourceOfficer)},{nameof(ApplicationRole.Admin)}")]
+    public async Task<IActionResult> DeleteSupplier(Guid id, CancellationToken cancellationToken)
+    {
+        await resourceService.DeleteSupplierAsync(id, cancellationToken);
+        return NoContent();
+    }
+
     [HttpGet]
-    public async Task<ActionResult<PagedResult<ResourceResponse>>> Search([FromQuery] PagedQuery query, CancellationToken cancellationToken) =>
-        Ok(await resourceService.SearchResourcesAsync(query, cancellationToken));
+    public async Task<ActionResult<PagedResult<ResourceResponse>>> Search([FromQuery] PagedQuery query, [FromQuery] Guid? categoryId, [FromQuery] Guid? supplierId, CancellationToken cancellationToken) =>
+        Ok(await resourceService.SearchResourcesAsync(query, categoryId, supplierId, cancellationToken));
 
     [HttpPost]
     [Authorize(Roles = $"{nameof(ApplicationRole.ResourceOfficer)},{nameof(ApplicationRole.Admin)}")]
     public async Task<ActionResult<ResourceResponse>> Create(ResourceRequest request, CancellationToken cancellationToken) =>
         Ok(await resourceService.CreateResourceAsync(request, cancellationToken));
+
+    [HttpPut("{id:guid}")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.ResourceOfficer)},{nameof(ApplicationRole.Admin)}")]
+    public async Task<ActionResult<ResourceResponse>> Update(Guid id, ResourceRequest request, CancellationToken cancellationToken) =>
+        Ok(await resourceService.UpdateResourceAsync(id, request, cancellationToken));
+
+    [HttpDelete("{id:guid}")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.ResourceOfficer)},{nameof(ApplicationRole.Admin)}")]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
+    {
+        await resourceService.DeleteResourceAsync(id, cancellationToken);
+        return NoContent();
+    }
 
     [HttpGet("stocks")]
     public async Task<ActionResult<PagedResult<InventoryStockResponse>>> Stocks([FromQuery] PagedQuery query, [FromQuery] bool? lowStockOnly, CancellationToken cancellationToken) =>

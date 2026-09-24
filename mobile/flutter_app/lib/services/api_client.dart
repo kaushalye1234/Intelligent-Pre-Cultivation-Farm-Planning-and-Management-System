@@ -239,6 +239,74 @@ class ApiClient {
     return CropPlanningResult.fromJson(response);
   }
 
+  Future<PagedList<StockRecord>> resourceStocks({
+    String? search,
+    bool lowStockOnly = false,
+    int page = 1,
+    int pageSize = 20,
+  }) async {
+    final query = Uri(
+      queryParameters: {
+        'page': '$page',
+        'pageSize': '$pageSize',
+        'sortBy': 'resourceName',
+        if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
+        if (lowStockOnly) 'lowStockOnly': 'true',
+      },
+    ).query;
+    final response = await _get('/resources/stocks?$query');
+    return PagedList.fromJson(response, StockRecord.fromJson);
+  }
+
+  Future<PagedList<ReservationRecord>> resourceReservations({
+    int? status,
+    int page = 1,
+    int pageSize = 20,
+  }) async {
+    final query = Uri(
+      queryParameters: {
+        'page': '$page',
+        'pageSize': '$pageSize',
+        if (status != null) 'status': '$status',
+      },
+    ).query;
+    final response = await _get('/resources/reservations?$query');
+    return PagedList.fromJson(response, ReservationRecord.fromJson);
+  }
+
+  Future<List<StockTransactionRecord>> stockHistory(String stockId) async {
+    final response = await _httpClient.get(
+      Uri.parse('$baseUrl/resources/stocks/$stockId/history'),
+      headers: _headers(),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      _decode(response); // throws the API's error message
+    }
+    final items = jsonDecode(response.body) as List<dynamic>;
+    return items
+        .cast<Map<String, dynamic>>()
+        .map(StockTransactionRecord.fromJson)
+        .toList()
+        .reversed
+        .toList();
+  }
+
+  Future<ReservationRecord> releaseReservation(String reservationId) async {
+    final response = await _post(
+      '/resources/reservations/$reservationId/release',
+      {},
+    );
+    return ReservationRecord.fromJson(response);
+  }
+
+  Future<ReservationRecord> cancelReservation(String reservationId) async {
+    final response = await _post(
+      '/resources/reservations/$reservationId/cancel',
+      {},
+    );
+    return ReservationRecord.fromJson(response);
+  }
+
   Future<Map<String, dynamic>> _get(String path) async {
     final response = await _httpClient.get(
       Uri.parse('$baseUrl$path'),

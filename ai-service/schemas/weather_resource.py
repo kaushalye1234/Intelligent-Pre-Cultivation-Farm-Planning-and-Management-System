@@ -33,6 +33,13 @@ class StockSnapshot(CamelModel):
     low_stock_threshold: float = Field(alias="lowStockThreshold")
 
 
+class ResourceRequirement(CamelModel):
+    """How much of one resource crop planning says is needed. Never estimated by the agent."""
+
+    resource_id: UUID = Field(alias="resourceId")
+    requested_quantity: float = Field(alias="requestedQuantity", ge=0)
+
+
 class WeatherResourceInput(CamelModel):
     workflow_id: UUID = Field(alias="workflowId")
     agent_step_id: UUID = Field(alias="agentStepId")
@@ -44,6 +51,7 @@ class WeatherResourceInput(CamelModel):
     field_analysis_summary: str = Field(alias="fieldAnalysisSummary")
     weather: WeatherForecast
     stocks: list[StockSnapshot] = Field(default_factory=list)
+    resource_requirements: list[ResourceRequirement] = Field(default_factory=list, alias="resourceRequirements")
 
     @field_validator("location")
     @classmethod
@@ -68,6 +76,10 @@ class ResourceCheck(CamelModel):
     unit: str
     available_quantity: float = Field(alias="availableQuantity")
     is_low_stock: bool = Field(alias="isLowStock")
+    # requested/sufficient stay None (status ResourceRequirementUnknown) when no requirement was supplied.
+    requested: float | None = None
+    sufficient: bool | None = None
+    requirement_status: str = Field(default="ResourceRequirementUnknown", alias="requirementStatus")
 
 
 class WeatherResourceOutput(AgentEnvelope):

@@ -70,3 +70,10 @@ export const approvalDecision: Record<number, string> = {
   3: 'Revision Requested',
   4: 'Cancelled',
 }
+
+export const stockTransactionType: Record<number, string> = {
+  1: 'Stock added',
+  2: 'Stock removed',
+  3: 'Reserved',
+  4: 'Released',
+}

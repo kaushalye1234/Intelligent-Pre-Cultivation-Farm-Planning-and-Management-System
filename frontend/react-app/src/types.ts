@@ -241,6 +241,18 @@ export type InventoryStock = {
   reservedQuantity: number
   availableQuantity: number
   lowStockThreshold: number
+  resourceName?: string
+  unit?: string
+}
+
+// 1 Add, 2 Remove, 3 Reserve, 4 Release
+export type StockTransaction = {
+  id: string
+  inventoryStockId: string
+  type: number
+  quantity: number
+  note: string
+  createdAt: string
 }
 
 export type Reservation = {
@@ -251,6 +263,9 @@ export type Reservation = {
   status: number
   releasedAt?: string
   purpose: string
+  resourceName?: string
+  unit?: string
+  createdAt?: string
 }
 
 export type WeatherDay = {

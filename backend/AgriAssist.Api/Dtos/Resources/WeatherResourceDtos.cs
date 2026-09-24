@@ -13,6 +13,19 @@ public sealed record StockSnapshot(
     decimal AvailableQuantity,
     decimal LowStockThreshold);
 
+/// <summary>
+/// A quantity of one resource that crop planning says the plan needs. Crop planning does not produce
+/// these yet, so the list is normally empty and every resource check reports ResourceRequirementUnknown.
+/// </summary>
+public sealed record ResourceRequirement(Guid ResourceId, decimal RequestedQuantity);
+
+public static class ResourceRequirementStatus
+{
+    public const string Sufficient = "Sufficient";
+    public const string Insufficient = "Insufficient";
+    public const string Unknown = "ResourceRequirementUnknown";
+}
+
 /// <summary>Sent to the AI service. All evidence is gathered by ASP.NET so the agent needs no tool calls.</summary>
 public sealed record WeatherResourceInput(
     Guid WorkflowId,
@@ -24,15 +37,23 @@ public sealed record WeatherResourceInput(
     string FieldPriority,
     string FieldAnalysisSummary,
     WeatherForecastResponse Weather,
-    IReadOnlyList<StockSnapshot> Stocks);
+    IReadOnlyList<StockSnapshot> Stocks,
+    IReadOnlyList<ResourceRequirement>? ResourceRequirements = null);
 
+/// <summary>
+/// Requested and Sufficient are null (and RequirementStatus is ResourceRequirementUnknown) when crop
+/// planning did not state how much of the resource is needed. They are never guessed.
+/// </summary>
 public sealed record ResourceCheckResponse(
     Guid InventoryStockId,
     Guid ResourceId,
     string ResourceName,
     string Unit,
     decimal AvailableQuantity,
-    bool IsLowStock);
+    bool IsLowStock,
+    decimal? Requested = null,
+    bool? Sufficient = null,
+    string RequirementStatus = ResourceRequirementStatus.Unknown);
 
 /// <summary>Member 3 output, stored in the WeatherResourceAnalysis AgentStep and read by Member 4.</summary>
 public sealed record WeatherResourceOutput(
