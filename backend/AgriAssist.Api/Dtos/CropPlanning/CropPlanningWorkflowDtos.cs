@@ -1,4 +1,5 @@
-﻿using AgriAssist.Api.Models.Shared;
+﻿using AgriAssist.Api.Models.Inspections;
+using AgriAssist.Api.Models.Shared;
 
 namespace AgriAssist.Api.Dtos.CropPlanning;
 
@@ -52,7 +53,14 @@ public sealed record CropPlanningCoordinatorInput(
     Guid CropTypeId,
     string Objective,
     decimal Budget,
-    DateOnly PreferredStartDate);
+    DateOnly PreferredStartDate,
+    Guid? CropVarietyId = null,
+    string? CropVarietyName = null,
+    string CultivationSeason = "NotSure",
+    DateOnly PreferredEndDate = default,
+    Guid? PreviousCropTypeId = null,
+    string? PreviousCropTypeName = null,
+    IReadOnlyList<string>? PreviousKnownProblems = null);
 
 public sealed record CropPlanningCoordinatorOutput(
     Guid WorkflowId,
@@ -65,11 +73,46 @@ public sealed record CropPlanningCoordinatorOutput(
 
 public sealed record FieldAnalysisInput(
     Guid WorkflowId,
+    Guid CropPlanRequestId,
+    Guid PrePlantingInspectionId,
     Guid FieldId,
     Guid? CropCycleId,
     IReadOnlyList<string> RequestedAnalysis,
     Guid? CropReferenceProfileId,
     Guid? AgentStepId);
+
+public sealed record PrePlantingAssessmentRequest(
+    string SoilCondition,
+    string WaterAvailability,
+    string IrrigationAvailability,
+    string DrainageCondition,
+    string GeneralFieldCondition,
+    string PlantingReadiness,
+    string RisksAndConcerns,
+    string OfficerNotes);
+
+public sealed record PrePlantingAssessmentImageResponse(
+    Guid Id,
+    string Url,
+    string ContentType,
+    long SizeBytes);
+
+public sealed record PrePlantingAssessmentResponse(
+    Guid InspectionId,
+    Guid CropPlanRequestId,
+    Guid FieldId,
+    InspectionStatus Status,
+    DateTime ScheduledAt,
+    DateTime? CompletedAt,
+    string SoilCondition,
+    string WaterAvailability,
+    string IrrigationAvailability,
+    string DrainageCondition,
+    string GeneralFieldCondition,
+    string PlantingReadiness,
+    string RisksAndConcerns,
+    string OfficerNotes,
+    IReadOnlyList<PrePlantingAssessmentImageResponse> Images);
 
 public sealed record FieldAnalysisFieldConditionResponse(
     string Summary,

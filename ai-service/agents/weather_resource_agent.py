@@ -17,8 +17,13 @@ class WeatherResourceAgent:
 
     async def run(self, request: WeatherResourceInput) -> WeatherResourceOutput:
         risk, weather_summary, weather_warnings = self._analyze_weather(request)
-        resource_checks = [self._check_stock(stock) for stock in request.stocks]
+        requirements = self._requirements_by_resource(request)
+        resource_checks = [self._check_stock(stock, requirements.get(stock.resource_id)) for stock in request.stocks]
         low_stocks = [check for check in resource_checks if check.is_low_stock]
+        insufficient = [check for check in resource_checks if check.requirement_status == "Insufficient"]
+        unknown_count = sum(1 for check in resource_checks if check.requirement_status == "ResourceRequirementUnknown")
+        stocked_resources = {stock.resource_id for stock in request.stocks}
+        unstocked = [resource_id for resource_id in requirements if resource_id not in stocked_resources]
 
         warnings = list(weather_warnings)
         if not request.stocks:
@@ -26,10 +31,26 @@ class WeatherResourceAgent:
         if low_stocks:
             warnings.append(f"{len(low_stocks)} resource item(s) are at or below their low-stock threshold.")
 
+        if unknown_count:
+            warnings.append(
+                f"Crop planning did not state a required quantity for {unknown_count} resource(s); "
+                "ResourceRequirementUnknown, so sufficiency could not be determined."
+            )
+        warnings.extend(
+            f"{check.resource_name}: {self._format_quantity(check.available_quantity)} {check.unit} available, "
+            f"{self._format_quantity(check.requested or 0)} {check.unit} requested."
+            for check in insufficient
+        )
+        warnings.extend(f"No stock record exists for required resource {resource_id}." for resource_id in unstocked)
+
         recommendations = self._weather_recommendations(risk)
         recommendations.extend(
             f"Restock {stock.resource_name}: only {self._format_quantity(stock.available_quantity)} {stock.unit} available."
             for stock in low_stocks
+        )
+        recommendations.extend(
+            f"Increase stock of {check.resource_name} or reduce the requested quantity before scheduling."
+            for check in insufficient
         )
         if not recommendations:
             recommendations.append("Continue monitoring the stored forecast and inventory snapshot before scheduling.")
@@ -37,6 +58,8 @@ class WeatherResourceAgent:
         requires_human_review = (
             risk in {"High", "Unknown"}
             or bool(low_stocks)
+            or bool(insufficient)
+            or bool(unstocked)
             or not request.stocks
             or request.field_priority.casefold() in {"high", "unknown"}
         )
@@ -88,7 +111,20 @@ class WeatherResourceAgent:
         return risk, summary, []
 
     @staticmethod
-    def _check_stock(stock) -> ResourceCheck:
+    def _requirements_by_resource(request: WeatherResourceInput) -> dict:
+        totals: dict = {}
+        for requirement in request.resource_requirements:
+            totals[requirement.resource_id] = totals.get(requirement.resource_id, 0.0) + requirement.requested_quantity
+        return totals
+
+    @staticmethod
+    def _check_stock(stock, requested: float | None) -> ResourceCheck:
+        if requested is None:
+            requested_quantity, sufficient, requirement_status = None, None, "ResourceRequirementUnknown"
+        else:
+            requested_quantity = requested
+            sufficient = stock.available_quantity >= requested
+            requirement_status = "Sufficient" if sufficient else "Insufficient"
         return ResourceCheck(
             inventoryStockId=stock.inventory_stock_id,
             resourceId=stock.resource_id,
@@ -96,6 +132,9 @@ class WeatherResourceAgent:
             unit=stock.unit,
             availableQuantity=stock.available_quantity,
             isLowStock=stock.available_quantity <= stock.low_stock_threshold,
+            requested=requested_quantity,
+            sufficient=sufficient,
+            requirementStatus=requirement_status,
         )
 
     @staticmethod

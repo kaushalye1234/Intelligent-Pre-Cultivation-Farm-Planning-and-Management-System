@@ -71,6 +71,27 @@ export type CropType = {
   isActive: boolean
 }
 
+export type CropVariety = {
+  id: string
+  cropTypeId: string
+  name: string
+  isActive: boolean
+}
+
+export type CropReferenceProfile = {
+  id: string
+  cropTypeId: string
+  varietyName?: string | null
+  region?: string | null
+  sourceName: string
+  sourceUrl?: string | null
+  sourceVersion: string
+  verifiedAt: string
+  isActive: boolean
+  stageCount: number
+  ruleCount: number
+}
+
 export type CropPlan = {
   id: string
   farmId: string
@@ -162,6 +183,35 @@ export type FieldAnalysisResult = {
   openIssues: FieldAnalysisOpenIssue[]
   priority: string
 }
+
+export type PrePlantingAssessmentInput = {
+  soilCondition: string
+  waterAvailability: string
+  irrigationAvailability: string
+  drainageCondition: string
+  generalFieldCondition: string
+  plantingReadiness: string
+  risksAndConcerns: string
+  officerNotes: string
+}
+
+export type PrePlantingAssessmentImage = {
+  id: string
+  url: string
+  contentType: string
+  sizeBytes: number
+}
+
+export type PrePlantingAssessment = PrePlantingAssessmentInput & {
+  inspectionId: string
+  cropPlanRequestId: string
+  fieldId: string
+  status: number
+  scheduledAt: string
+  completedAt?: string
+  images: PrePlantingAssessmentImage[]
+}
+
 export type ResourceCategory = {
   id: string
   name: string
@@ -191,6 +241,18 @@ export type InventoryStock = {
   reservedQuantity: number
   availableQuantity: number
   lowStockThreshold: number
+  resourceName?: string
+  unit?: string
+}
+
+// 1 Add, 2 Remove, 3 Reserve, 4 Release
+export type StockTransaction = {
+  id: string
+  inventoryStockId: string
+  type: number
+  quantity: number
+  note: string
+  createdAt: string
 }
 
 export type Reservation = {
@@ -201,6 +263,9 @@ export type Reservation = {
   status: number
   releasedAt?: string
   purpose: string
+  resourceName?: string
+  unit?: string
+  createdAt?: string
 }
 
 export type WeatherDay = {

@@ -1,9 +1,16 @@
-﻿import { EmptyState } from './States'
+import { EmptyState } from './States'
 
 export type Column<T> = {
   header: string
   render: (row: T) => React.ReactNode
   className?: string
+  /** Backend SortBy field. When set (and the table has onSort) the header becomes a sort button. */
+  sortKey?: string
+}
+
+export type SortState = {
+  sortBy: string
+  sortDirection: 'asc' | 'desc'
 }
 
 export function DataTable<T>({
@@ -12,12 +19,16 @@ export function DataTable<T>({
   emptyMessage,
   emptyTitle,
   getRowKey,
+  sort,
+  onSort,
 }: {
   columns: Column<T>[]
   rows: T[]
   emptyMessage: string
   emptyTitle?: string
   getRowKey?: (row: T, index: number) => string
+  sort?: SortState
+  onSort?: (sortKey: string) => void
 }) {
   if (rows.length === 0) {
     return <EmptyState title={emptyTitle} message={emptyMessage} />
@@ -28,9 +39,24 @@ export function DataTable<T>({
       <table className="data-table">
         <thead>
           <tr>
-            {columns.map((column) => (
-              <th key={column.header} className={column.className}>{column.header}</th>
-            ))}
+            {columns.map((column) => {
+              const sortable = Boolean(onSort && column.sortKey)
+              const active = sortable && sort?.sortBy === column.sortKey
+              return (
+                <th
+                  key={column.header}
+                  className={column.className}
+                  aria-sort={active ? (sort?.sortDirection === 'desc' ? 'descending' : 'ascending') : undefined}
+                >
+                  {sortable ? (
+                    <button type="button" className="sort-button" onClick={() => onSort?.(column.sortKey as string)}>
+                      {column.header}
+                      <span aria-hidden="true">{active ? (sort?.sortDirection === 'desc' ? ' ▼' : ' ▲') : ''}</span>
+                    </button>
+                  ) : column.header}
+                </th>
+              )
+            })}
           </tr>
         </thead>
         <tbody>

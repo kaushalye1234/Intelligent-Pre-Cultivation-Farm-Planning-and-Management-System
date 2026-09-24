@@ -38,6 +38,8 @@ public sealed class InternalAgentToolsController(
                     .Include(item => item.Farm)
                     .Include(item => item.Field)
                     .Include(item => item.CropType)
+                    .Include(item => item.CropVariety)
+                    .Include(item => item.PreviousCropType)
                     .SingleOrDefaultAsync(item => item.Id == cropPlanRequestId && !item.IsDeleted, cancellationToken)
                     ?? throw Safe(HttpStatusCode.NotFound, "Crop plan request was not found.");
 
@@ -54,7 +56,13 @@ public sealed class InternalAgentToolsController(
                     request.Status.ToString(),
                     MapFarm(request.Farm!),
                     request.Field is null ? null : MapField(request.Field),
-                    new AgentCropTypeDetailsResponse(request.CropType!.Id, request.CropType.Name, request.CropType.Description, request.CropType.IsActive));
+                    new AgentCropTypeDetailsResponse(request.CropType!.Id, request.CropType.Name, request.CropType.Description, request.CropType.IsActive),
+                    request.CropVarietyId,
+                    request.CropVariety?.Name,
+                    request.CultivationSeason.ToString(),
+                    request.PreviousCropTypeId,
+                    request.PreviousCropType?.Name,
+                    JsonSerializer.Deserialize<List<string>>(request.PreviousKnownProblemsJson, JsonOptions) ?? []);
             },
             cancellationToken);
 
@@ -124,6 +132,7 @@ public sealed class InternalAgentToolsController(
         [FromQuery] Guid? cropReferenceProfileId,
         [FromQuery] string? varietyName,
         [FromQuery] string? region,
+        [FromQuery] bool genericOnly,
         [FromQuery] Guid? workflowId,
         [FromQuery] Guid? agentStepId,
         CancellationToken cancellationToken) =>
@@ -154,7 +163,9 @@ public sealed class InternalAgentToolsController(
                 if (cropReferenceProfileId.HasValue) profiles = profiles.Where(item => item.Id == cropReferenceProfileId.Value);
                 if (cropTypeId.HasValue) profiles = profiles.Where(item => item.CropTypeId == cropTypeId.Value);
                 if (!string.IsNullOrWhiteSpace(varietyName)) profiles = profiles.Where(item => item.VarietyName == varietyName);
+                if (genericOnly) profiles = profiles.Where(item => item.VarietyName == null);
                 if (!string.IsNullOrWhiteSpace(region)) profiles = profiles.Where(item => item.Region == region);
+                profiles = profiles.Where(item => item.VerifiedAt <= DateTime.UtcNow && (item.Stages.Any() || item.Rules.Any()));
 
                 var profile = await profiles.OrderByDescending(item => item.VerifiedAt).FirstOrDefaultAsync(cancellationToken);
 
@@ -203,6 +214,8 @@ public sealed class InternalAgentToolsController(
     [HttpGet("recent-inspections")]
     public async Task<ActionResult<AgentToolResponse<List<AgentInspectionSummaryResponse>>>> GetRecentInspections(
         [FromQuery] Guid fieldId,
+        [FromQuery] Guid cropPlanRequestId,
+        [FromQuery] Guid prePlantingInspectionId,
         [FromQuery] Guid? workflowId,
         [FromQuery] Guid? agentStepId,
         CancellationToken cancellationToken) =>
@@ -210,15 +223,19 @@ public sealed class InternalAgentToolsController(
             "GetRecentInspections",
             workflowId,
             agentStepId,
-            new { fieldId, workflowId, agentStepId },
+            new { fieldId, cropPlanRequestId, prePlantingInspectionId, workflowId, agentStepId },
             async () =>
             {
                 if (fieldId == Guid.Empty) throw Safe(HttpStatusCode.BadRequest, "Field is required.");
-                await EnsureFieldScopeAsync(workflowId, fieldId, cancellationToken);
+                await EnsurePrePlantingInspectionScopeAsync(workflowId, cropPlanRequestId, prePlantingInspectionId, fieldId, cancellationToken);
                 var inspections = await dbContext.FieldInspections.AsNoTracking()
-                    .Where(item => item.FieldId == fieldId && !item.IsDeleted)
-                    .OrderByDescending(item => item.CompletedAt ?? item.ScheduledAt)
-                    .Take(8)
+                    .Where(item =>
+                        item.Id == prePlantingInspectionId &&
+                        item.CropPlanRequestId == cropPlanRequestId &&
+                        item.FieldId == fieldId &&
+                        item.Purpose == InspectionPurpose.PrePlanting &&
+                        item.Status == InspectionStatus.Completed &&
+                        !item.IsDeleted)
                     .ToListAsync(cancellationToken);
                 var inspectionIds = inspections.Select(item => item.Id).ToArray();
                 var observations = await dbContext.InspectionObservations.AsNoTracking()
@@ -242,6 +259,8 @@ public sealed class InternalAgentToolsController(
     [HttpGet("open-crop-issues")]
     public async Task<ActionResult<AgentToolResponse<List<AgentCropIssueSummaryResponse>>>> GetOpenCropIssues(
         [FromQuery] Guid fieldId,
+        [FromQuery] Guid cropPlanRequestId,
+        [FromQuery] Guid prePlantingInspectionId,
         [FromQuery] Guid? workflowId,
         [FromQuery] Guid? agentStepId,
         CancellationToken cancellationToken) =>
@@ -249,16 +268,14 @@ public sealed class InternalAgentToolsController(
             "GetOpenCropIssues",
             workflowId,
             agentStepId,
-            new { fieldId, workflowId, agentStepId },
+            new { fieldId, cropPlanRequestId, prePlantingInspectionId, workflowId, agentStepId },
             async () =>
             {
                 if (fieldId == Guid.Empty) throw Safe(HttpStatusCode.BadRequest, "Field is required.");
-                await EnsureFieldScopeAsync(workflowId, fieldId, cancellationToken);
+                await EnsurePrePlantingInspectionScopeAsync(workflowId, cropPlanRequestId, prePlantingInspectionId, fieldId, cancellationToken);
                 var issues = await dbContext.CropIssues.AsNoTracking()
-                    .Include(item => item.FieldInspection)
                     .Where(item =>
-                        item.FieldInspection != null &&
-                        item.FieldInspection.FieldId == fieldId &&
+                        item.FieldInspectionId == prePlantingInspectionId &&
                         !item.IsDeleted &&
                         (item.Status == CropIssueStatus.Open || item.Status == CropIssueStatus.Escalated))
                     .OrderByDescending(item => item.CreatedAt)
@@ -286,6 +303,8 @@ public sealed class InternalAgentToolsController(
     [HttpGet("inspection-image-metadata")]
     public async Task<ActionResult<AgentToolResponse<List<AgentInspectionImageMetadataResponse>>>> GetInspectionImageMetadata(
         [FromQuery] Guid fieldId,
+        [FromQuery] Guid cropPlanRequestId,
+        [FromQuery] Guid prePlantingInspectionId,
         [FromQuery] Guid? workflowId,
         [FromQuery] Guid? agentStepId,
         CancellationToken cancellationToken) =>
@@ -293,14 +312,13 @@ public sealed class InternalAgentToolsController(
             "GetInspectionImageMetadata",
             workflowId,
             agentStepId,
-            new { fieldId, workflowId, agentStepId },
+            new { fieldId, cropPlanRequestId, prePlantingInspectionId, workflowId, agentStepId },
             async () =>
             {
                 if (fieldId == Guid.Empty) throw Safe(HttpStatusCode.BadRequest, "Field is required.");
-                await EnsureFieldScopeAsync(workflowId, fieldId, cancellationToken);
+                await EnsurePrePlantingInspectionScopeAsync(workflowId, cropPlanRequestId, prePlantingInspectionId, fieldId, cancellationToken);
                 return await dbContext.InspectionImages.AsNoTracking()
-                    .Include(item => item.FieldInspection)
-                    .Where(item => item.FieldInspection != null && item.FieldInspection.FieldId == fieldId && !item.IsDeleted)
+                    .Where(item => item.FieldInspectionId == prePlantingInspectionId && !item.IsDeleted)
                     .OrderByDescending(item => item.CreatedAt)
                     .Select(item => new AgentInspectionImageMetadataResponse(item.Id, item.FieldInspectionId, item.Url, item.PublicId, item.ContentType, item.SizeBytes, item.CreatedAt))
                     .ToListAsync(cancellationToken);
@@ -412,6 +430,42 @@ public sealed class InternalAgentToolsController(
             .Include(item => item.CropPlanRequest)
             .AnyAsync(item => item.Id == workflowId.Value && item.CropPlanRequest != null && item.CropPlanRequest.FieldId == fieldId, cancellationToken);
         if (!allowed) throw Safe(HttpStatusCode.Forbidden, "Field tool request is outside the workflow context.");
+    }
+
+    private async Task EnsurePrePlantingInspectionScopeAsync(
+        Guid? workflowId,
+        Guid cropPlanRequestId,
+        Guid prePlantingInspectionId,
+        Guid fieldId,
+        CancellationToken cancellationToken)
+    {
+        if (!workflowId.HasValue)
+        {
+            throw Safe(HttpStatusCode.Forbidden, "Workflow context is required for pre-planting evidence.");
+        }
+
+        var workflowMatches = await dbContext.AgentWorkflows.AsNoTracking()
+            .AnyAsync(item =>
+                item.Id == workflowId.Value &&
+                item.CropPlanRequestId == cropPlanRequestId &&
+                item.CropPlanRequest != null &&
+                item.CropPlanRequest.FieldId == fieldId &&
+                !item.IsDeleted,
+                cancellationToken);
+        var inspectionMatches = await dbContext.FieldInspections.AsNoTracking()
+            .AnyAsync(item =>
+                item.Id == prePlantingInspectionId &&
+                item.CropPlanRequestId == cropPlanRequestId &&
+                item.FieldId == fieldId &&
+                item.Purpose == InspectionPurpose.PrePlanting &&
+                item.Status == InspectionStatus.Completed &&
+                !item.IsDeleted,
+                cancellationToken);
+
+        if (!workflowMatches || !inspectionMatches)
+        {
+            throw Safe(HttpStatusCode.Forbidden, "Pre-planting inspection evidence is outside the workflow context.");
+        }
     }
 
     private async Task EnsureCropCycleScopeAsync(Guid? workflowId, Guid cropCycleId, CancellationToken cancellationToken)

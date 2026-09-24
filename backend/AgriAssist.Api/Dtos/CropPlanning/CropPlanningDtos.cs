@@ -11,11 +11,32 @@ public sealed record FieldResponse(Guid Id, Guid FarmId, string Name, decimal Ar
 
 public sealed record CropTypeRequest(string Name, string? Description, bool IsActive);
 public sealed record CropTypeResponse(Guid Id, string Name, string? Description, bool IsActive);
+public sealed record CropVarietyRequest(Guid CropTypeId, string Name, bool IsActive);
+public sealed record CropVarietyResponse(Guid Id, Guid CropTypeId, string Name, bool IsActive);
+
+public sealed record CropReferenceStageRequest(string StageName, int Sequence, int? TypicalMinDays, int? TypicalMaxDays, string? Notes);
+public sealed record CropReferenceRuleRequest(string RuleType, string RuleKey, string StructuredValueJson);
+public sealed record CropReferenceProfileRequest(
+    Guid CropTypeId, Guid? CropVarietyId, string? Region, string SourceName, string? SourceUrl,
+    string SourceVersion, DateTime VerifiedAt, IReadOnlyList<CropReferenceStageRequest> Stages,
+    IReadOnlyList<CropReferenceRuleRequest> Rules);
+public sealed record CropReferenceProfileResponse(
+    Guid Id, Guid CropTypeId, string? VarietyName, string? Region, string SourceName, string? SourceUrl,
+    string SourceVersion, DateTime VerifiedAt, bool IsActive, int StageCount, int RuleCount);
 
 public sealed record CropCycleRequest(Guid FieldId, Guid CropTypeId, DateOnly PlannedStartDate, DateOnly PlannedEndDate, CropCycleStatus Status);
 public sealed record CropCycleResponse(Guid Id, Guid FieldId, Guid CropTypeId, DateOnly PlannedStartDate, DateOnly PlannedEndDate, CropCycleStatus Status);
 
-public sealed record CropPlanRequestCreate(Guid FarmId, Guid? FieldId, Guid CropTypeId, DateOnly PreferredStartDate, DateOnly PreferredEndDate, decimal Budget, string Objective);
+public sealed record CropPlanRequestCreate(
+    Guid FarmId, Guid? FieldId, Guid CropTypeId, DateOnly PreferredStartDate, DateOnly PreferredEndDate,
+    decimal Budget, string Objective, Guid? CropVarietyId = null,
+    CultivationSeason CultivationSeason = CultivationSeason.NotSure,
+    Guid? PreviousCropTypeId = null, IReadOnlyList<string>? PreviousKnownProblems = null);
 public sealed record CropPlanRequestUpdate(DateOnly PreferredStartDate, DateOnly PreferredEndDate, decimal Budget, string Objective, CropPlanRequestStatus Status);
-public sealed record CropPlanRequestResponse(Guid Id, Guid FarmId, Guid? FieldId, Guid CropTypeId, Guid RequestedByUserId, DateOnly PreferredStartDate, DateOnly PreferredEndDate, decimal Budget, string Objective, CropPlanRequestStatus Status, DateTime CreatedAt);
+public sealed record CropPlanRequestResponse(
+    Guid Id, Guid FarmId, Guid? FieldId, Guid CropTypeId, Guid RequestedByUserId,
+    DateOnly PreferredStartDate, DateOnly PreferredEndDate, decimal Budget, string Objective,
+    CropPlanRequestStatus Status, DateTime CreatedAt, Guid? CropVarietyId = null,
+    CultivationSeason CultivationSeason = CultivationSeason.NotSure,
+    Guid? PreviousCropTypeId = null, IReadOnlyList<string>? PreviousKnownProblems = null);
 public sealed record CropPlanHistoryResponse(Guid Id, Guid CropPlanRequestId, CropPlanRequestStatus FromStatus, CropPlanRequestStatus ToStatus, string Note, Guid ChangedByUserId, DateTime CreatedAt);

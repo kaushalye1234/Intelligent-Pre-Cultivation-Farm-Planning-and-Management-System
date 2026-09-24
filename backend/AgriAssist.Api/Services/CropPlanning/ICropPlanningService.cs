@@ -17,9 +17,15 @@ public interface ICropPlanningService
     Task<FieldResponse> CreateFieldAsync(FieldRequest request, CancellationToken cancellationToken);
     Task<FieldResponse> UpdateFieldAsync(Guid id, FieldRequest request, CancellationToken cancellationToken);
 
-    Task<PagedResult<CropTypeResponse>> SearchCropTypesAsync(PagedQuery query, CancellationToken cancellationToken);
+    Task<PagedResult<CropTypeResponse>> SearchCropTypesAsync(PagedQuery query, CancellationToken cancellationToken, bool includeInactive = false);
     Task<CropTypeResponse> CreateCropTypeAsync(CropTypeRequest request, CancellationToken cancellationToken);
     Task<CropTypeResponse> UpdateCropTypeAsync(Guid id, CropTypeRequest request, CancellationToken cancellationToken);
+    Task<PagedResult<CropVarietyResponse>> SearchCropVarietiesAsync(PagedQuery query, Guid? cropTypeId, CancellationToken cancellationToken, bool includeInactive = false);
+    Task<CropVarietyResponse> CreateCropVarietyAsync(CropVarietyRequest request, CancellationToken cancellationToken);
+    Task<CropVarietyResponse> UpdateCropVarietyAsync(Guid id, CropVarietyRequest request, CancellationToken cancellationToken);
+    Task<PagedResult<CropReferenceProfileResponse>> SearchReferenceProfilesAsync(PagedQuery query, Guid? cropTypeId, CancellationToken cancellationToken);
+    Task<CropReferenceProfileResponse> CreateReferenceProfileAsync(CropReferenceProfileRequest request, CancellationToken cancellationToken);
+    Task<CropReferenceProfileResponse> SetReferenceProfileActiveAsync(Guid id, bool isActive, CancellationToken cancellationToken);
 
     Task<PagedResult<CropCycleResponse>> SearchCropCyclesAsync(PagedQuery query, Guid? fieldId, CancellationToken cancellationToken);
     Task<CropCycleResponse> CreateCropCycleAsync(CropCycleRequest request, CancellationToken cancellationToken);
@@ -30,6 +36,8 @@ public interface ICropPlanningService
     Task<CropPlanRequestResponse> GeneratePreliminaryRequestAsync(CropPlanRequestCreate request, CancellationToken cancellationToken);
     Task<IReadOnlyList<CropPlanHistoryResponse>> GetCropPlanHistoryAsync(Guid requestId, CancellationToken cancellationToken);
     Task<CropPlanningWorkflowStartResponse> StartAiWorkflowAsync(Guid requestId, CancellationToken cancellationToken);
+    Task<PrePlantingAssessmentResponse?> GetPrePlantingAssessmentAsync(Guid requestId, CancellationToken cancellationToken);
+    Task<PrePlantingAssessmentResponse> SavePrePlantingAssessmentAsync(Guid requestId, PrePlantingAssessmentRequest request, CancellationToken cancellationToken);
     Task<FieldAnalysisRunResponse> RunFieldAnalysisAsync(Guid requestId, CancellationToken cancellationToken);
     Task<CropPlanningWorkflowStatusResponse> GetWorkflowStatusAsync(Guid requestId, CancellationToken cancellationToken);
     Task<CropPlanningResultResponse> GetPlanningResultAsync(Guid requestId, CancellationToken cancellationToken);

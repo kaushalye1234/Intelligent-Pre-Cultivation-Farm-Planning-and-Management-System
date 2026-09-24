@@ -90,6 +90,16 @@ namespace AgriAssist.Api.Migrations
                     b.Property<Guid>("CropTypeId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("CropVarietyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CultivationSeason")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasDefaultValue("NotSure");
+
                     b.Property<Guid>("FarmId")
                         .HasColumnType("uuid");
 
@@ -110,6 +120,15 @@ namespace AgriAssist.Api.Migrations
                     b.Property<DateOnly>("PreferredStartDate")
                         .HasColumnType("date");
 
+                    b.Property<Guid?>("PreviousCropTypeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("PreviousKnownProblemsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("[]");
+
                     b.Property<Guid>("RequestedByUserId")
                         .HasColumnType("uuid");
 
@@ -128,9 +147,13 @@ namespace AgriAssist.Api.Migrations
 
                     b.HasIndex("CropTypeId");
 
+                    b.HasIndex("CropVarietyId");
+
                     b.HasIndex("FarmId");
 
                     b.HasIndex("FieldId");
+
+                    b.HasIndex("PreviousCropTypeId");
 
                     b.HasIndex("RequestedByUserId");
 
@@ -411,6 +434,48 @@ namespace AgriAssist.Api.Migrations
                     b.ToTable("CropTypes");
                 });
 
+            modelBuilder.Entity("AgriAssist.Api.Models.CropPlanning.CropVariety", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CropTypeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IsActive");
+
+                    b.HasIndex("CropTypeId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("CropVarieties");
+                });
+
             modelBuilder.Entity("AgriAssist.Api.Models.CropPlanning.Farm", b =>
                 {
                     b.Property<Guid>("Id")
@@ -584,6 +649,9 @@ namespace AgriAssist.Api.Migrations
                     b.Property<Guid?>("CreatedByUserId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("CropPlanRequestId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("FieldId")
                         .HasColumnType("uuid");
 
@@ -592,6 +660,13 @@ namespace AgriAssist.Api.Migrations
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasDefaultValue("Routine");
 
                     b.Property<DateTime>("ScheduledAt")
                         .HasColumnType("timestamp with time zone");
@@ -621,6 +696,9 @@ namespace AgriAssist.Api.Migrations
                     b.HasIndex("ScheduledAt");
 
                     b.HasIndex("Status");
+
+                    b.HasIndex("CropPlanRequestId", "Purpose")
+                        .IsUnique();
 
                     b.ToTable("FieldInspections");
                 });
@@ -1347,6 +1425,7 @@ namespace AgriAssist.Api.Migrations
                         .HasColumnType("character varying(40)");
 
                     b.Property<int>("TokenVersion")
+                        .IsConcurrencyToken()
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
                         .HasDefaultValue(1);
@@ -1592,6 +1671,11 @@ namespace AgriAssist.Api.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("AgriAssist.Api.Models.CropPlanning.CropVariety", "CropVariety")
+                        .WithMany()
+                        .HasForeignKey("CropVarietyId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("AgriAssist.Api.Models.CropPlanning.Farm", "Farm")
                         .WithMany()
                         .HasForeignKey("FarmId")
@@ -1603,6 +1687,11 @@ namespace AgriAssist.Api.Migrations
                         .HasForeignKey("FieldId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("AgriAssist.Api.Models.CropPlanning.CropType", "PreviousCropType")
+                        .WithMany()
+                        .HasForeignKey("PreviousCropTypeId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("AgriAssist.Api.Models.Shared.AppUser", "RequestedByUser")
                         .WithMany()
                         .HasForeignKey("RequestedByUserId")
@@ -1611,9 +1700,13 @@ namespace AgriAssist.Api.Migrations
 
                     b.Navigation("CropType");
 
+                    b.Navigation("CropVariety");
+
                     b.Navigation("Farm");
 
                     b.Navigation("Field");
+
+                    b.Navigation("PreviousCropType");
 
                     b.Navigation("RequestedByUser");
                 });
@@ -1670,6 +1763,17 @@ namespace AgriAssist.Api.Migrations
                     b.Navigation("CropReferenceProfile");
                 });
 
+            modelBuilder.Entity("AgriAssist.Api.Models.CropPlanning.CropVariety", b =>
+                {
+                    b.HasOne("AgriAssist.Api.Models.CropPlanning.CropType", "CropType")
+                        .WithMany()
+                        .HasForeignKey("CropTypeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CropType");
+                });
+
             modelBuilder.Entity("AgriAssist.Api.Models.CropPlanning.Farm", b =>
                 {
                     b.HasOne("AgriAssist.Api.Models.Shared.AppUser", "OwnerUser")
@@ -1705,6 +1809,11 @@ namespace AgriAssist.Api.Migrations
 
             modelBuilder.Entity("AgriAssist.Api.Models.Inspections.FieldInspection", b =>
                 {
+                    b.HasOne("AgriAssist.Api.Models.CropPlanning.CropPlanRequest", "CropPlanRequest")
+                        .WithMany()
+                        .HasForeignKey("CropPlanRequestId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("AgriAssist.Api.Models.CropPlanning.Field", "Field")
                         .WithMany()
                         .HasForeignKey("FieldId")
@@ -1716,6 +1825,8 @@ namespace AgriAssist.Api.Migrations
                         .HasForeignKey("InspectorUserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("CropPlanRequest");
 
                     b.Navigation("Field");
 

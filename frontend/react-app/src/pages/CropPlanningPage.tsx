@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useContext, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { AlertTriangle, PlayCircle, Plus, RefreshCw, Search, Sprout } from 'lucide-react'
 import { api, getErrorMessage } from '../api/client'
@@ -9,6 +9,8 @@ import { StatusPill } from '../components/StatusPill'
 import { Button, MetricCard, Modal, Notice, PageHeader, Tabs, Toolbar } from '../components/Ui'
 import { formatArea, formatDate, formatMoney } from '../format'
 import { cropPlanStatus } from '../labels'
+import { AuthContext } from '../auth/AuthContext'
+import { AdminCropManagement } from './AdminCropManagement'
 import type { CropPlan, CropPlanningResult, CropPlanningWorkflowStatus, CropType, Farm, Field, PagedResult } from '../types'
 
 type CropTab = 'overview' | 'farms' | 'fields' | 'cropTypes' | 'requests'
@@ -42,6 +44,7 @@ function isSafeFailure(result?: CropPlanningResult, status?: CropPlanningWorkflo
 }
 
 export function CropPlanningPage() {
+  const isAdmin = useContext(AuthContext)?.user?.role === 5
   const [farms, setFarms] = useState<Farm[]>([])
   const [fields, setFields] = useState<Field[]>([])
   const [cropTypes, setCropTypes] = useState<CropType[]>([])
@@ -62,8 +65,10 @@ export function CropPlanningPage() {
   const [planForm, setPlanForm] = useState({ farmId: '', fieldId: '', cropTypeId: '', preferredStartDate: '', preferredEndDate: '', budget: '', objective: '' })
 
   const farmOptions = farms.map((farm) => ({ value: farm.id, label: farm.name }))
-  const fieldOptions = fields.map((field) => ({ value: field.id, label: field.name }))
-  const cropTypeOptions = cropTypes.map((cropType) => ({ value: cropType.id, label: cropType.name }))
+  const fieldOptions = fields.filter((field) => field.isActive && field.farmId === planForm.farmId)
+    .map((field) => ({ value: field.id, label: field.name }))
+  const cropTypeOptions = cropTypes.filter((cropType) => cropType.isActive)
+    .map((cropType) => ({ value: cropType.id, label: cropType.name }))
   const farmNameById = useMemo(() => new Map(farms.map((farm) => [farm.id, farm.name])), [farms])
   const cropNameById = useMemo(() => new Map(cropTypes.map((crop) => [crop.id, crop.name])), [cropTypes])
   const fieldNameById = useMemo(() => new Map(fields.map((field) => [field.id, field.name])), [fields])
@@ -186,7 +191,7 @@ export function CropPlanningPage() {
     await runAction(async () => {
       await api.post('/crop-planning/requests/preliminary', {
         farmId: planForm.farmId,
-        fieldId: planForm.fieldId || null,
+        fieldId: planForm.fieldId,
         cropTypeId: planForm.cropTypeId,
         preferredStartDate: planForm.preferredStartDate,
         preferredEndDate: planForm.preferredEndDate,
@@ -270,7 +275,9 @@ export function CropPlanningPage() {
             </section>
           ) : null}
 
-          {activeTab === 'cropTypes' ? (
+          {activeTab === 'cropTypes' && isAdmin ? <AdminCropManagement /> : null}
+
+          {activeTab === 'cropTypes' && !isAdmin ? (
             <section className="work-section">
               <div className="section-title"><h2>Crop Types</h2></div>
               <DataTable rows={cropTypes} emptyTitle="No crop types found" emptyMessage="Crop type records are managed through the existing API seed/admin flow." getRowKey={(row) => row.id} columns={[
@@ -349,8 +356,8 @@ export function CropPlanningPage() {
 
       <Modal open={activeModal === 'plan'} title="Create Planning Request" description="Submit a crop planning request before starting the AI coordinator." onClose={closeModal} footer={<><Button variant="secondary" onClick={closeModal} disabled={isSubmitting}>Cancel</Button><Button type="submit" form="plan-form" disabled={isSubmitting}>{isSubmitting ? 'Creating...' : 'Create Request'}</Button></>}>
         <form id="plan-form" className="form-grid" onSubmit={(event) => void createPreliminary(event)}>
-          <SelectInput label="Farm" value={planForm.farmId} required options={farmOptions} onChange={(value) => setPlanForm({ ...planForm, farmId: value })} />
-          <SelectInput label="Field" value={planForm.fieldId} options={fieldOptions} onChange={(value) => setPlanForm({ ...planForm, fieldId: value })} />
+          <SelectInput label="Farm" value={planForm.farmId} required options={farmOptions} onChange={(value) => setPlanForm({ ...planForm, farmId: value, fieldId: '' })} />
+          <SelectInput label="Field" value={planForm.fieldId} required options={fieldOptions} onChange={(value) => setPlanForm({ ...planForm, fieldId: value })} />
           <SelectInput label="Crop type" value={planForm.cropTypeId} required options={cropTypeOptions} onChange={(value) => setPlanForm({ ...planForm, cropTypeId: value })} />
           <TextInput label="Start date" type="date" value={planForm.preferredStartDate} required onChange={(value) => setPlanForm({ ...planForm, preferredStartDate: value })} />
           <TextInput label="End date" type="date" value={planForm.preferredEndDate} required onChange={(value) => setPlanForm({ ...planForm, preferredEndDate: value })} />

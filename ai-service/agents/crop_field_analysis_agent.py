@@ -48,10 +48,28 @@ class CropFieldAnalysisAgent:
                 else None
             )
             inspections = self._normalize_inspections(
-                await self._tools.get_recent_inspections(request.field_id, request.workflow_id, request.agent_step_id)
+                await self._tools.get_recent_inspections(
+                    request.field_id,
+                    request.crop_plan_request_id,
+                    request.pre_planting_inspection_id,
+                    request.workflow_id,
+                    request.agent_step_id,
+                )
             )
-            issues = await self._tools.get_open_crop_issues(request.field_id, request.workflow_id, request.agent_step_id)
-            images = await self._tools.get_inspection_image_metadata(request.field_id, request.workflow_id, request.agent_step_id)
+            issues = await self._tools.get_open_crop_issues(
+                request.field_id,
+                request.crop_plan_request_id,
+                request.pre_planting_inspection_id,
+                request.workflow_id,
+                request.agent_step_id,
+            )
+            images = await self._tools.get_inspection_image_metadata(
+                request.field_id,
+                request.crop_plan_request_id,
+                request.pre_planting_inspection_id,
+                request.workflow_id,
+                request.agent_step_id,
+            )
             reference = await self._tools.get_crop_reference_profile(
                 request.workflow_id,
                 request.crop_reference_profile_id,

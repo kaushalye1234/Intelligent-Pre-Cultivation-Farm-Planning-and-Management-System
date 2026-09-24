@@ -19,6 +19,13 @@ class CoordinatorInput(CamelModel):
     objective: str
     budget: float
     preferred_start_date: date = Field(alias="preferredStartDate")
+    preferred_end_date: date | None = Field(default=None, alias="preferredEndDate")
+    crop_variety_id: UUID | None = Field(default=None, alias="cropVarietyId")
+    crop_variety_name: str | None = Field(default=None, alias="cropVarietyName")
+    cultivation_season: str = Field(default="NotSure", alias="cultivationSeason")
+    previous_crop_type_id: UUID | None = Field(default=None, alias="previousCropTypeId")
+    previous_crop_type_name: str | None = Field(default=None, alias="previousCropTypeName")
+    previous_known_problems: list[str] = Field(default_factory=list, alias="previousKnownProblems")
 
     @field_validator("objective")
     @classmethod
@@ -65,6 +72,12 @@ class CropPlanContext(CamelModel):
     farm: dict[str, Any]
     field: dict[str, Any] | None = None
     crop_type: dict[str, Any] = Field(alias="cropType")
+    crop_variety_id: UUID | None = Field(default=None, alias="cropVarietyId")
+    crop_variety_name: str | None = Field(default=None, alias="cropVarietyName")
+    cultivation_season: str = Field(default="NotSure", alias="cultivationSeason")
+    previous_crop_type_id: UUID | None = Field(default=None, alias="previousCropTypeId")
+    previous_crop_type_name: str | None = Field(default=None, alias="previousCropTypeName")
+    previous_known_problems: list[str] = Field(default_factory=list, alias="previousKnownProblems")
 
 
 class ToolCallRecord(CamelModel):

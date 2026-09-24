@@ -102,6 +102,66 @@ public sealed class WeatherResourceWorkflowTests
     }
 
     [Fact]
+    public async Task Run_marks_requirements_unknown_because_crop_planning_provides_no_quantities()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedAsync(db, fieldAnalysisDone: true);
+        WeatherResourceInput? sentInput = null;
+        var service = NewService(db, new FakeAiClient(input => { sentInput = input; return Echo(input, "Low"); }));
+
+        var result = await service.RunAsync(data.RequestId, CancellationToken.None);
+
+        Assert.Equal("Analyzed", result.Status);
+        Assert.NotNull(sentInput);
+        Assert.Empty(sentInput!.ResourceRequirements!);
+        var stored = await service.GetResultAsync(data.RequestId, CancellationToken.None);
+        var check = Assert.Single(stored.ResourceChecks);
+        Assert.Null(check.Requested);
+        Assert.Null(check.Sufficient);
+        Assert.Equal(ResourceRequirementStatus.Unknown, check.RequirementStatus);
+    }
+
+    [Fact]
+    public void Validate_accepts_requirement_figures_that_follow_from_the_input()
+    {
+        var (input, stock) = InputWithStock(requestedQuantity: 8m);
+        var sufficient = OutputWith(input, new ResourceCheckResponse(stock.InventoryStockId, stock.ResourceId, stock.ResourceName, stock.Unit, 10m, false, 8m, true, ResourceRequirementStatus.Sufficient));
+        var insufficientInput = input with { ResourceRequirements = [new ResourceRequirement(stock.ResourceId, 12m)] };
+        var insufficient = OutputWith(insufficientInput, new ResourceCheckResponse(stock.InventoryStockId, stock.ResourceId, stock.ResourceName, stock.Unit, 10m, false, 12m, false, ResourceRequirementStatus.Insufficient));
+
+        Assert.Empty(WeatherResourceWorkflowService.Validate(sufficient, input));
+        Assert.Empty(WeatherResourceWorkflowService.Validate(insufficient, insufficientInput));
+    }
+
+    [Fact]
+    public void Validate_rejects_invented_or_inconsistent_requirements()
+    {
+        var (input, stock) = InputWithStock(requestedQuantity: null);
+        var invented = OutputWith(input, new ResourceCheckResponse(stock.InventoryStockId, stock.ResourceId, stock.ResourceName, stock.Unit, 10m, false, 5m, true, ResourceRequirementStatus.Sufficient));
+        Assert.Contains(WeatherResourceWorkflowService.Validate(invented, input), error => error.Contains("invented a requirement"));
+
+        var withRequirement = input with { ResourceRequirements = [new ResourceRequirement(stock.ResourceId, 12m)] };
+        var wrongQuantity = OutputWith(withRequirement, new ResourceCheckResponse(stock.InventoryStockId, stock.ResourceId, stock.ResourceName, stock.Unit, 10m, false, 5m, true, ResourceRequirementStatus.Sufficient));
+        var wrongSufficiency = OutputWith(withRequirement, new ResourceCheckResponse(stock.InventoryStockId, stock.ResourceId, stock.ResourceName, stock.Unit, 10m, false, 12m, true, ResourceRequirementStatus.Sufficient));
+        var droppedRequirement = OutputWith(withRequirement, new ResourceCheckResponse(stock.InventoryStockId, stock.ResourceId, stock.ResourceName, stock.Unit, 10m, false));
+        Assert.Contains(WeatherResourceWorkflowService.Validate(wrongQuantity, withRequirement), error => error.Contains("requirement figures"));
+        Assert.Contains(WeatherResourceWorkflowService.Validate(wrongSufficiency, withRequirement), error => error.Contains("requirement figures"));
+        Assert.Contains(WeatherResourceWorkflowService.Validate(droppedRequirement, withRequirement), error => error.Contains("requirement figures"));
+    }
+
+    private static (WeatherResourceInput Input, StockSnapshot Stock) InputWithStock(decimal? requestedQuantity)
+    {
+        var stock = new StockSnapshot(Guid.NewGuid(), Guid.NewGuid(), "Paddy Seed", "kg", 10m, 0m, 10m, 2m);
+        var requirements = requestedQuantity is null ? [] : new[] { new ResourceRequirement(stock.ResourceId, requestedQuantity.Value) };
+        var forecast = new WeatherForecastResponse("Kurunegala", true, "ok", [new WeatherDayResponse(new DateOnly(2026, 9, 15), 23m, 31m, 2m, 5m, "clear")]);
+        var input = new WeatherResourceInput(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "Kurunegala", new DateOnly(2026, 10, 1), new DateOnly(2027, 1, 1), "Low", "", forecast, [stock], requirements);
+        return (input, stock);
+    }
+
+    private static WeatherResourceOutput OutputWith(WeatherResourceInput input, ResourceCheckResponse check) =>
+        new(input.WorkflowId, "Analyzed", false, [], "Low", "Summary.", [check], []);
+
+    [Fact]
     public void Weather_parser_groups_three_hour_forecasts_into_days()
     {
         const string json = """

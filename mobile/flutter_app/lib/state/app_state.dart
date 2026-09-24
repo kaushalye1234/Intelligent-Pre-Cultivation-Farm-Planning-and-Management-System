@@ -1,19 +1,21 @@
-import 'dart:io';
-
 import 'package:flutter/foundation.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:image_picker/image_picker.dart';
 
 import '../models/api_models.dart';
 import '../services/api_client.dart';
 
 class AppState extends ChangeNotifier {
-  AppState({ApiClient? apiClient, ImagePicker? imagePicker})
-    : _apiClient = apiClient ?? ApiClient(),
-      _imagePicker = imagePicker ?? ImagePicker();
+  AppState({ApiClient? apiClient}) : _apiClient = apiClient ?? ApiClient();
 
   final ApiClient _apiClient;
-  final ImagePicker _imagePicker;
+  static const staffPortalMessage =
+      'This account is for staff. Please use the React Staff Portal.';
+  static const farmerRole = 1;
+  static const resourceOfficerRole = 3;
+
+  /// Mobile serves Farmers, plus Resource Officers for inventory and reservations.
+  /// Every other staff role must use the React Staff Portal.
+  static bool isMobileRole(int role) =>
+      role == farmerRole || role == resourceOfficerRole;
 
   UserProfile? user;
   AuthenticationSession? passwordChangeSession;
@@ -22,31 +24,24 @@ class AppState extends ChangeNotifier {
   List<FarmOption> farms = [];
   List<FieldOption> fields = [];
   List<CropTypeOption> cropTypes = [];
-  List<InventoryStock> stocks = [];
-  List<InspectionRecord> inspections = [];
-  List<CropIssueRecord> cropIssues = [];
-  List<FollowUpRecommendationRecord> followUps = [];
+  List<CropVarietyOption> cropVarieties = [];
+  List<CropPlanRecord> cropPlans = [];
+  Map<String, CropPlanningWorkflowStatus> planWorkflows = {};
   List<FarmTaskRecord> tasks = [];
   List<IrrigationScheduleRecord> irrigationSchedules = [];
   List<ApprovalHistoryRecord> approvalHistory = [];
-  List<InspectionHistoryEventRecord> activeInspectionHistory = [];
-  String? activeInspectionId;
   String? lastCropPlanRequestId;
   CropPlanningWorkflowStart? lastWorkflowStart;
   CropPlanningWorkflowStatus? lastWorkflowStatus;
   CropPlanningResult? lastPlanningResult;
   String? error;
   bool isBusy = false;
-  String? lastPhotoName;
-  XFile? selectedInspectionPhoto;
-  Position? lastPosition;
 
+  ApiClient get apiClient => _apiClient;
   bool get isAuthenticated => user != null;
+  bool get isResourceOfficer => user?.role == resourceOfficerRole;
   bool get requiresTemporaryPasswordChange =>
       passwordChangeSession?.requiresPasswordChange ?? false;
-  bool get isFieldOfficer =>
-      user?.role == 2 || user?.role == 4 || user?.role == 5;
-
   Future<void> restoreSession() async {
     isBusy = true;
     notifyListeners();
@@ -54,6 +49,10 @@ class AppState extends ChangeNotifier {
       final token = await _apiClient.loadToken();
       if (token != null) {
         user = await _apiClient.profile();
+        if (!isMobileRole(user!.role)) {
+          await _rejectStaffSession();
+          return;
+        }
         await _loadAuthenticatedLanding();
       }
     } catch (_) {
@@ -68,6 +67,10 @@ class AppState extends ChangeNotifier {
   Future<void> login(String email, String password) async {
     await _guard(() async {
       final session = await _apiClient.login(email, password);
+      if (!isMobileRole(session.user.role)) {
+        await _rejectStaffSession();
+        return;
+      }
       if (session.requiresPasswordChange) {
         passwordChangeSession = session;
         user = null;
@@ -112,6 +115,10 @@ class AppState extends ChangeNotifier {
         passwordChangeToken: session!.passwordChangeToken!,
         newPassword: newPassword,
       );
+      if (!isMobileRole(authenticatedSession.user.role)) {
+        await _rejectStaffSession();
+        return;
+      }
       passwordChangeSession = null;
       user = authenticatedSession.user;
       await _loadAuthenticatedLanding();
@@ -129,6 +136,8 @@ class AppState extends ChangeNotifier {
     user = null;
     passwordChangeSession = null;
     farmerOnboarding = null;
+    cropPlans = [];
+    planWorkflows = {};
     notifyListeners();
   }
 
@@ -173,21 +182,40 @@ class AppState extends ChangeNotifier {
     farms = await _apiClient.farms();
     fields = await _apiClient.fields();
     cropTypes = await _apiClient.cropTypes();
-    stocks = await _apiClient.stocks();
-    inspections = await _apiClient.inspections();
-    cropIssues = await _apiClient.cropIssues();
-    followUps = await _apiClient.followUps();
+    cropVarieties = await _apiClient.cropVarieties();
+    cropPlans = await _apiClient.cropPlans();
+    final workflowEntries = await Future.wait(
+      cropPlans.map((plan) async {
+        try {
+          final status = await _apiClient.cropPlanningWorkflowStatus(plan.id);
+          return MapEntry(plan.id, status);
+        } on ApiException catch (error) {
+          if (error.statusCode == 404) return null;
+          rethrow;
+        }
+      }),
+    );
+    planWorkflows = {
+      for (final entry in workflowEntries)
+        if (entry != null) entry.key: entry.value,
+    };
     tasks = await _apiClient.tasks();
     irrigationSchedules = await _apiClient.irrigationSchedules();
     approvalHistory = await _apiClient.approvalHistory();
+    notifyListeners();
   }
 
+  Future<ApprovedWorkflowDetail> approvedWorkflowDetail(String workflowId) =>
+      _apiClient.approvedWorkflowDetail(workflowId);
+
   Future<void> _loadAuthenticatedLanding() async {
-    if (user?.role != 1) {
-      farmerOnboarding = null;
-      await refresh();
+    if (user == null || !isMobileRole(user!.role)) {
+      await _rejectStaffSession();
       return;
     }
+
+    // Resource Officers have no farm to onboard; their screens load their own data.
+    if (isResourceOfficer) return;
 
     farmerOnboarding = await _apiClient.farmerOnboardingStatus();
     if (farmerOnboarding?.stage == 'field') {
@@ -200,99 +228,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> startInspection({
-    required String fieldId,
-    required String summary,
-  }) async {
-    await _guard(() async {
-      final locationText = lastPosition == null
-          ? ''
-          : '\nGPS: ${lastPosition!.latitude}, ${lastPosition!.longitude}';
-      activeInspectionId = await _apiClient.createInspection(
-        fieldId: fieldId,
-        summary: '$summary$locationText',
-      );
-      await refreshInspectionHistory();
-      await refresh();
-    });
-  }
-
-  Future<void> addObservation({
-    required String observationType,
-    required String notes,
-  }) async {
-    final inspectionId = activeInspectionId;
-    if (inspectionId == null) {
-      error = 'Start or select an inspection before adding observations.';
-      notifyListeners();
-      return;
-    }
-    await _guard(() async {
-      await _apiClient.createObservation(
-        inspectionId: inspectionId,
-        observationType: observationType,
-        notes: notes,
-      );
-      await refreshInspectionHistory();
-    });
-  }
-
-  Future<void> reportCropIssue({
-    required String title,
-    required String description,
-    required int severity,
-  }) async {
-    final inspectionId = activeInspectionId;
-    if (inspectionId == null) {
-      error = 'Start or select an inspection before reporting crop issues.';
-      notifyListeners();
-      return;
-    }
-    await _guard(() async {
-      await _apiClient.createCropIssue(
-        inspectionId: inspectionId,
-        title: title,
-        description: description,
-        severity: severity,
-      );
-      await refresh();
-      await refreshInspectionHistory();
-    });
-  }
-
-  Future<void> submitActiveInspection() async {
-    final inspectionId = activeInspectionId;
-    if (inspectionId == null) {
-      error = 'No active inspection is selected.';
-      notifyListeners();
-      return;
-    }
-    await _guard(() async {
-      if (selectedInspectionPhoto != null) {
-        await _apiClient.uploadInspectionImage(
-          inspectionId: inspectionId,
-          imageFile: File(selectedInspectionPhoto!.path),
-        );
-      }
-      await _apiClient.submitInspection(inspectionId);
-      await refresh();
-      await refreshInspectionHistory();
-    });
-  }
-
-  Future<void> selectInspection(String inspectionId) async {
-    activeInspectionId = inspectionId;
-    await refreshInspectionHistory();
-    notifyListeners();
-  }
-
-  Future<void> refreshInspectionHistory() async {
-    final inspectionId = activeInspectionId;
-    if (inspectionId == null) return;
-    activeInspectionHistory = await _apiClient.inspectionHistory(inspectionId);
-    notifyListeners();
-  }
-
   Future<void> createAndStartAiCropPlan({
     required String farmId,
     required String? fieldId,
@@ -301,12 +236,20 @@ class AppState extends ChangeNotifier {
     required String endDate,
     required num budget,
     required String objective,
+    String? cropVarietyId,
+    int cultivationSeason = 0,
+    String? previousCropTypeId,
+    List<String> previousKnownProblems = const [],
   }) async {
     await _guard(() async {
       final requestId = await _apiClient.createPreliminaryCropPlan(
         farmId: farmId,
         fieldId: fieldId,
         cropTypeId: cropTypeId,
+        cropVarietyId: cropVarietyId,
+        cultivationSeason: cultivationSeason,
+        previousCropTypeId: previousCropTypeId,
+        previousKnownProblems: previousKnownProblems,
         preferredStartDate: startDate,
         preferredEndDate: endDate,
         budget: budget,
@@ -327,12 +270,20 @@ class AppState extends ChangeNotifier {
     required String endDate,
     required num budget,
     required String objective,
+    String? cropVarietyId,
+    int cultivationSeason = 0,
+    String? previousCropTypeId,
+    List<String> previousKnownProblems = const [],
   }) async {
     await _guard(() async {
       lastCropPlanRequestId = await _apiClient.createPreliminaryCropPlan(
         farmId: farmId,
         fieldId: fieldId,
         cropTypeId: cropTypeId,
+        cropVarietyId: cropVarietyId,
+        cultivationSeason: cultivationSeason,
+        previousCropTypeId: previousCropTypeId,
+        previousKnownProblems: previousKnownProblems,
         preferredStartDate: startDate,
         preferredEndDate: endDate,
         budget: budget,
@@ -350,63 +301,12 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> reserveResource({
-    required String stockId,
-    required num quantity,
-    required String purpose,
-  }) async {
-    await _guard(() async {
-      await _apiClient.reserveResource(
-        inventoryStockId: stockId,
-        quantity: quantity,
-        purpose: purpose,
-      );
-      await refresh();
-    });
-  }
-
-  Future<void> captureInspectionPhoto() async {
-    final photo = await _imagePicker.pickImage(
-      source: ImageSource.camera,
-      imageQuality: 82,
-    );
-    selectedInspectionPhoto = photo;
-    lastPhotoName = photo?.name;
-    notifyListeners();
-  }
-
-  Future<void> pickInspectionPhoto() async {
-    final photo = await _imagePicker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 82,
-    );
-    selectedInspectionPhoto = photo;
-    lastPhotoName = photo?.name;
-    notifyListeners();
-  }
-
-  Future<void> captureLocation() async {
-    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      error = 'Location services are disabled.';
-      notifyListeners();
-      return;
-    }
-
-    var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-
-    if (permission == LocationPermission.denied ||
-        permission == LocationPermission.deniedForever) {
-      error = 'Location permission was denied.';
-      notifyListeners();
-      return;
-    }
-
-    lastPosition = await Geolocator.getCurrentPosition();
-    notifyListeners();
+  Future<void> _rejectStaffSession() async {
+    await _apiClient.clearToken();
+    user = null;
+    passwordChangeSession = null;
+    farmerOnboarding = null;
+    error = staffPortalMessage;
   }
 
   Future<void> _guard(Future<void> Function() action) async {

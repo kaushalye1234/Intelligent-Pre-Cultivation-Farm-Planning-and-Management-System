@@ -120,6 +120,7 @@ class FarmTaskRecord {
     required this.description,
     required this.dueAt,
     required this.status,
+    this.generatedByWorkflowId,
   });
 
   final String id;
@@ -127,6 +128,7 @@ class FarmTaskRecord {
   final String description;
   final String dueAt;
   final int status;
+  final String? generatedByWorkflowId;
 
   factory FarmTaskRecord.fromJson(Map<String, dynamic> json) => FarmTaskRecord(
     id: json['id'] as String,
@@ -134,6 +136,7 @@ class FarmTaskRecord {
     description: json['description'] as String? ?? '',
     dueAt: json['dueAt'] as String? ?? '',
     status: json['status'] as int? ?? 0,
+    generatedByWorkflowId: json['generatedByWorkflowId'] as String?,
   );
 
   String get statusLabel => switch (status) {
@@ -156,6 +159,7 @@ class IrrigationScheduleRecord {
     required this.durationMinutes,
     required this.notes,
     required this.status,
+    this.generatedByWorkflowId,
   });
 
   final String id;
@@ -164,6 +168,7 @@ class IrrigationScheduleRecord {
   final int durationMinutes;
   final String notes;
   final int status;
+  final String? generatedByWorkflowId;
 
   factory IrrigationScheduleRecord.fromJson(Map<String, dynamic> json) =>
       IrrigationScheduleRecord(
@@ -173,6 +178,7 @@ class IrrigationScheduleRecord {
         durationMinutes: json['durationMinutes'] as int? ?? 0,
         notes: json['notes'] as String? ?? '',
         status: json['status'] as int? ?? 0,
+        generatedByWorkflowId: json['generatedByWorkflowId'] as String?,
       );
 
   String get statusLabel => switch (status) {
@@ -240,171 +246,211 @@ class FarmOption {
 }
 
 class FieldOption {
-  const FieldOption({required this.id, required this.name});
+  const FieldOption({
+    required this.id,
+    required this.farmId,
+    required this.name,
+    required this.isActive,
+  });
 
   final String id;
+  final String farmId;
   final String name;
+  final bool isActive;
 
   factory FieldOption.fromJson(Map<String, dynamic> json) {
-    return FieldOption(id: json['id'] as String, name: json['name'] as String);
+    return FieldOption(
+      id: json['id'] as String,
+      farmId: json['farmId'] as String,
+      name: json['name'] as String,
+      isActive: json['isActive'] as bool? ?? true,
+    );
   }
 }
 
 class CropTypeOption {
-  const CropTypeOption({required this.id, required this.name});
+  const CropTypeOption({
+    required this.id,
+    required this.name,
+    required this.isActive,
+  });
 
   final String id;
   final String name;
+  final bool isActive;
 
   factory CropTypeOption.fromJson(Map<String, dynamic> json) {
     return CropTypeOption(
       id: json['id'] as String,
       name: json['name'] as String,
+      isActive: json['isActive'] as bool? ?? true,
     );
   }
 }
 
-class InspectionRecord {
-  const InspectionRecord({
+class CropVarietyOption {
+  const CropVarietyOption({
     required this.id,
-    required this.fieldId,
-    required this.scheduledAt,
+    required this.cropTypeId,
+    required this.name,
+    required this.isActive,
+  });
+
+  final String id;
+  final String cropTypeId;
+  final String name;
+  final bool isActive;
+
+  factory CropVarietyOption.fromJson(Map<String, dynamic> json) =>
+      CropVarietyOption(
+        id: json['id'] as String,
+        cropTypeId: json['cropTypeId'] as String,
+        name: json['name'] as String,
+        isActive: json['isActive'] as bool? ?? true,
+      );
+}
+
+class CropPlanRecord {
+  const CropPlanRecord({
+    required this.id,
+    required this.farmId,
+    required this.cropTypeId,
+    required this.objective,
     required this.status,
-    required this.summary,
-    this.completedAt,
+    required this.preferredStartDate,
+    required this.preferredEndDate,
+    required this.budget,
+    required this.createdAt,
+    this.fieldId,
+    this.cropVarietyId,
+    this.cultivationSeason = 0,
   });
 
   final String id;
-  final String fieldId;
-  final String scheduledAt;
-  final String? completedAt;
+  final String farmId;
+  final String? fieldId;
+  final String cropTypeId;
+  final String? cropVarietyId;
+  final String objective;
   final int status;
-  final String summary;
+  final int cultivationSeason;
+  final String preferredStartDate;
+  final String preferredEndDate;
+  final num budget;
+  final String createdAt;
 
-  factory InspectionRecord.fromJson(Map<String, dynamic> json) {
-    return InspectionRecord(
-      id: json['id'] as String,
-      fieldId: json['fieldId'] as String,
-      scheduledAt: json['scheduledAt'] as String? ?? '',
-      completedAt: json['completedAt'] as String?,
-      status: json['status'] as int? ?? 0,
-      summary: json['summary'] as String? ?? '',
-    );
-  }
+  factory CropPlanRecord.fromJson(Map<String, dynamic> json) => CropPlanRecord(
+    id: json['id'] as String,
+    farmId: json['farmId'] as String,
+    fieldId: json['fieldId'] as String?,
+    cropTypeId: json['cropTypeId'] as String,
+    cropVarietyId: json['cropVarietyId'] as String?,
+    objective: json['objective'] as String? ?? '',
+    status: json['status'] as int? ?? 0,
+    cultivationSeason: json['cultivationSeason'] as int? ?? 0,
+    preferredStartDate: json['preferredStartDate'] as String? ?? '',
+    preferredEndDate: json['preferredEndDate'] as String? ?? '',
+    budget: json['budget'] as num? ?? 0,
+    createdAt: json['createdAt'] as String? ?? '',
+  );
 
-  String get statusLabel {
-    return switch (status) {
-      1 => 'Scheduled',
-      2 => 'In progress',
-      3 => 'Completed',
-      4 => 'Escalated',
-      5 => 'Cancelled',
-      _ => 'Unknown',
-    };
-  }
+  String get statusLabel => switch (status) {
+    1 => 'Draft',
+    2 => 'Submitted',
+    3 => 'Preliminary plan',
+    4 => 'Approved',
+    5 => 'Rejected',
+    6 => 'Cancelled',
+    _ => 'Unknown',
+  };
 }
 
-class CropIssueRecord {
-  const CropIssueRecord({
-    required this.id,
-    required this.fieldInspectionId,
-    required this.title,
-    required this.severity,
+class CropPlanningStepStatus {
+  const CropPlanningStepStatus({required this.stepName, required this.status});
+
+  final String stepName;
+  final int status;
+
+  factory CropPlanningStepStatus.fromJson(Map<String, dynamic> json) =>
+      CropPlanningStepStatus(
+        stepName: json['stepName'] as String? ?? '',
+        status: json['status'] as int? ?? 0,
+      );
+}
+
+class ApprovedWorkflowDetail {
+  const ApprovedWorkflowDetail({
+    required this.workflowId,
     required this.status,
+    required this.approvedAt,
+    required this.fieldSummary,
+    required this.weatherSummary,
+    required this.warnings,
+    required this.recommendations,
   });
 
-  final String id;
-  final String fieldInspectionId;
-  final String title;
-  final int severity;
+  final String workflowId;
   final int status;
+  final String? approvedAt;
+  final String? fieldSummary;
+  final String? weatherSummary;
+  final List<String> warnings;
+  final List<String> recommendations;
 
-  factory CropIssueRecord.fromJson(Map<String, dynamic> json) {
-    return CropIssueRecord(
-      id: json['id'] as String,
-      fieldInspectionId: json['fieldInspectionId'] as String,
-      title: json['title'] as String? ?? '',
-      severity: json['severity'] as int? ?? 0,
-      status: json['status'] as int? ?? 0,
-    );
-  }
+  factory ApprovedWorkflowDetail.fromJson(Map<String, dynamic> json) {
+    final workflow = json['workflow'] as Map<String, dynamic>? ?? const {};
+    final decisions = (json['decisions'] as List<dynamic>? ?? const [])
+        .cast<Map<String, dynamic>>();
+    final steps = (json['steps'] as List<dynamic>? ?? const [])
+        .cast<Map<String, dynamic>>();
+    String? summaryFor(String agentName, String key) {
+      for (final step in steps.reversed) {
+        if (step['agentName'] == agentName && step['status'] == 3) {
+          final output = step['output'];
+          if (output is Map<String, dynamic>) {
+            final value = output[key];
+            if (value is String && value.isNotEmpty) return value;
+            if (value is Map<String, dynamic>) {
+              final summary = value['summary'];
+              if (summary is String && summary.isNotEmpty) return summary;
+            }
+          }
+        }
+      }
+      return null;
+    }
 
-  String get severityLabel {
-    return switch (severity) {
-      1 => 'Low',
-      2 => 'Medium',
-      3 => 'High',
-      4 => 'Critical',
-      _ => 'Unknown',
-    };
-  }
-}
-
-class FollowUpRecommendationRecord {
-  const FollowUpRecommendationRecord({
-    required this.id,
-    required this.cropIssueId,
-    required this.recommendation,
-    required this.isCompleted,
-    this.dueAt,
-  });
-
-  final String id;
-  final String cropIssueId;
-  final String recommendation;
-  final bool isCompleted;
-  final String? dueAt;
-
-  factory FollowUpRecommendationRecord.fromJson(Map<String, dynamic> json) {
-    return FollowUpRecommendationRecord(
-      id: json['id'] as String,
-      cropIssueId: json['cropIssueId'] as String,
-      recommendation: json['recommendation'] as String? ?? '',
-      isCompleted: json['isCompleted'] as bool? ?? false,
-      dueAt: json['dueAt'] as String?,
-    );
-  }
-}
-
-class InspectionHistoryEventRecord {
-  const InspectionHistoryEventRecord({
-    required this.occurredAt,
-    required this.eventType,
-    required this.summary,
-  });
-
-  final String occurredAt;
-  final String eventType;
-  final String summary;
-
-  factory InspectionHistoryEventRecord.fromJson(Map<String, dynamic> json) {
-    return InspectionHistoryEventRecord(
-      occurredAt: json['occurredAt'] as String? ?? '',
-      eventType: json['eventType'] as String? ?? '',
-      summary: json['summary'] as String? ?? '',
-    );
-  }
-}
-
-class InventoryStock {
-  const InventoryStock({
-    required this.id,
-    required this.resourceId,
-    required this.availableQuantity,
-    required this.lowStockThreshold,
-  });
-
-  final String id;
-  final String resourceId;
-  final num availableQuantity;
-  final num lowStockThreshold;
-
-  factory InventoryStock.fromJson(Map<String, dynamic> json) {
-    return InventoryStock(
-      id: json['id'] as String,
-      resourceId: json['resourceId'] as String,
-      availableQuantity: json['availableQuantity'] as num? ?? 0,
-      lowStockThreshold: json['lowStockThreshold'] as num? ?? 0,
+    String? approvedAt;
+    for (final decision in decisions.reversed) {
+      if (decision['decision'] == 1) {
+        approvedAt = decision['createdAt'] as String?;
+        break;
+      }
+    }
+    final warnings = <String>[];
+    final recommendations = <String>[];
+    for (final step in steps) {
+      if (step['status'] != 3) continue;
+      final output = step['output'];
+      if (output is! Map<String, dynamic>) continue;
+      warnings.addAll(
+        (output['warnings'] as List<dynamic>? ?? const []).whereType<String>(),
+      );
+      if (step['agentName'] == 'WeatherResourceAgent') {
+        recommendations.addAll(
+          (output['recommendations'] as List<dynamic>? ?? const [])
+              .whereType<String>(),
+        );
+      }
+    }
+    return ApprovedWorkflowDetail(
+      workflowId: workflow['id'] as String? ?? '',
+      status: workflow['status'] as int? ?? 0,
+      approvedAt: approvedAt,
+      fieldSummary: summaryFor('CropFieldAnalysisAgent', 'fieldCondition'),
+      weatherSummary: summaryFor('WeatherResourceAgent', 'weatherSummary'),
+      warnings: warnings.toSet().toList(),
+      recommendations: recommendations.toSet().toList(),
     );
   }
 }
@@ -473,6 +519,7 @@ class CropPlanningWorkflowStatus {
     required this.status,
     required this.currentStep,
     required this.warnings,
+    this.steps = const [],
   });
 
   final String workflowId;
@@ -480,6 +527,7 @@ class CropPlanningWorkflowStatus {
   final int status;
   final String currentStep;
   final List<String> warnings;
+  final List<CropPlanningStepStatus> steps;
 
   factory CropPlanningWorkflowStatus.fromJson(Map<String, dynamic> json) {
     final warnings = json['warnings'] as List<dynamic>? ?? const [];
@@ -489,6 +537,10 @@ class CropPlanningWorkflowStatus {
       status: json['status'] as int? ?? 0,
       currentStep: json['currentStep'] as String? ?? '',
       warnings: warnings.map((item) => item.toString()).toList(),
+      steps: (json['steps'] as List<dynamic>? ?? const [])
+          .cast<Map<String, dynamic>>()
+          .map(CropPlanningStepStatus.fromJson)
+          .toList(),
     );
   }
 
@@ -500,6 +552,11 @@ class CropPlanningWorkflowStatus {
       4 => 'Completed',
       5 => 'Failed',
       6 => 'Cancelled',
+      7 => 'Candidate ready',
+      8 => 'Awaiting officer approval',
+      9 => 'Rejected',
+      10 => 'Revision requested',
+      11 => 'Waiting for required data',
       _ => 'Unknown',
     };
   }
@@ -528,6 +585,166 @@ class CropPlanningWorkflowStart {
       status: json['status'] as String? ?? 'Unknown',
       requiresHumanReview: json['requiresHumanReview'] as bool? ?? false,
       warnings: warnings.map((item) => item.toString()).toList(),
+    );
+  }
+}
+
+class PagedList<T> {
+  const PagedList({
+    required this.items,
+    required this.page,
+    required this.totalPages,
+    required this.totalCount,
+  });
+
+  final List<T> items;
+  final int page;
+  final int totalPages;
+  final int totalCount;
+
+  bool get hasMore => page < totalPages;
+
+  factory PagedList.fromJson(
+    Map<String, dynamic> json,
+    T Function(Map<String, dynamic>) parse,
+  ) {
+    final items = (json['items'] as List<dynamic>? ?? const [])
+        .cast<Map<String, dynamic>>()
+        .map(parse)
+        .toList();
+    return PagedList(
+      items: items,
+      page: json['page'] as int? ?? 1,
+      totalPages: json['totalPages'] as int? ?? 1,
+      totalCount: json['totalCount'] as int? ?? items.length,
+    );
+  }
+}
+
+class StockRecord {
+  const StockRecord({
+    required this.id,
+    required this.resourceId,
+    required this.resourceName,
+    required this.unit,
+    required this.quantityOnHand,
+    required this.reservedQuantity,
+    required this.availableQuantity,
+    required this.lowStockThreshold,
+  });
+
+  final String id;
+  final String resourceId;
+  final String resourceName;
+  final String unit;
+  final num quantityOnHand;
+  final num reservedQuantity;
+  final num availableQuantity;
+  final num lowStockThreshold;
+
+  bool get isOutOfStock => availableQuantity <= 0;
+  bool get isLowStock => !isOutOfStock && availableQuantity <= lowStockThreshold;
+
+  factory StockRecord.fromJson(Map<String, dynamic> json) {
+    return StockRecord(
+      id: json['id'] as String,
+      resourceId: json['resourceId'] as String,
+      resourceName: json['resourceName'] as String? ?? 'Unnamed resource',
+      unit: json['unit'] as String? ?? '',
+      quantityOnHand: json['quantityOnHand'] as num,
+      reservedQuantity: json['reservedQuantity'] as num,
+      availableQuantity: json['availableQuantity'] as num,
+      lowStockThreshold: json['lowStockThreshold'] as num,
+    );
+  }
+}
+
+/// Backend ResourceReservationStatus: 1 Active, 2 Released, 3 Cancelled.
+class ReservationRecord {
+  const ReservationRecord({
+    required this.id,
+    required this.inventoryStockId,
+    required this.requestedByUserId,
+    required this.quantity,
+    required this.status,
+    required this.purpose,
+    required this.resourceName,
+    required this.unit,
+    required this.createdAt,
+    this.releasedAt,
+  });
+
+  static const statusActive = 1;
+  static const statusReleased = 2;
+  static const statusCancelled = 3;
+
+  final String id;
+  final String inventoryStockId;
+  final String requestedByUserId;
+  final num quantity;
+  final int status;
+  final String purpose;
+  final String resourceName;
+  final String unit;
+  final String createdAt;
+  final String? releasedAt;
+
+  bool get isActive => status == statusActive;
+
+  String get statusLabel => switch (status) {
+    statusActive => 'Reserved',
+    statusReleased => 'Released',
+    statusCancelled => 'Cancelled',
+    _ => 'Unknown',
+  };
+
+  factory ReservationRecord.fromJson(Map<String, dynamic> json) {
+    return ReservationRecord(
+      id: json['id'] as String,
+      inventoryStockId: json['inventoryStockId'] as String,
+      requestedByUserId: json['requestedByUserId'] as String,
+      quantity: json['quantity'] as num,
+      status: json['status'] as int,
+      purpose: json['purpose'] as String? ?? '',
+      resourceName: json['resourceName'] as String? ?? 'Unnamed resource',
+      unit: json['unit'] as String? ?? '',
+      createdAt: json['createdAt'] as String? ?? '',
+      releasedAt: json['releasedAt'] as String?,
+    );
+  }
+}
+
+/// Backend StockTransactionType: 1 Add, 2 Remove, 3 Reserve, 4 Release.
+class StockTransactionRecord {
+  const StockTransactionRecord({
+    required this.id,
+    required this.type,
+    required this.quantity,
+    required this.note,
+    required this.createdAt,
+  });
+
+  final String id;
+  final int type;
+  final num quantity;
+  final String note;
+  final String createdAt;
+
+  String get typeLabel => switch (type) {
+    1 => 'Stock added',
+    2 => 'Stock removed',
+    3 => 'Reserved',
+    4 => 'Released',
+    _ => 'Stock change',
+  };
+
+  factory StockTransactionRecord.fromJson(Map<String, dynamic> json) {
+    return StockTransactionRecord(
+      id: json['id'] as String,
+      type: json['type'] as int,
+      quantity: json['quantity'] as num,
+      note: json['note'] as String? ?? '',
+      createdAt: json['createdAt'] as String? ?? '',
     );
   }
 }

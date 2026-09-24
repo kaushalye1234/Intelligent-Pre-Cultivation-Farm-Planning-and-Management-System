@@ -11,6 +11,7 @@ import { Button, Modal, Notice, PageHeader } from '../components/Ui'
 import { formatDateTime } from '../format'
 import { isDecisionRole } from '../routing'
 import type { WorkflowReview } from '../types'
+import { PrePlantingAssessmentPanel } from './PrePlantingAssessmentPanel'
 
 type DecisionKind = 'approve' | 'reject' | 'request-revision'
 
@@ -115,7 +116,9 @@ export function WorkflowReviewPage() {
   if (!review) return <ErrorState message={error || 'Workflow review is unavailable.'} />
 
   const pendingApproval = review.workflow.status === 8
-  const canGenerate = canDecide && ![3, 4, 6, 8, 9].includes(review.workflow.status)
+  const canGenerate = canDecide
+    && (review.workflow.currentStep === 'SchedulingValidationAgent' || review.workflow.status === 10)
+    && ![3, 4, 6, 8, 9].includes(review.workflow.status)
 
   return (
     <section className="page-stack">
@@ -143,6 +146,12 @@ export function WorkflowReviewPage() {
           </> : null}
         </div>
       </section>
+
+      <PrePlantingAssessmentPanel
+        review={review}
+        role={user?.role}
+        onWorkflowChanged={loadReview}
+      />
 
       <section className="work-section">
         <h2>Agent evidence</h2>
