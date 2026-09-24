@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import {
+  Boxes,
+  ClipboardList,
   CloudSun,
   History,
   Package,
@@ -8,7 +10,9 @@ import {
   Plus,
   Search,
   SlidersHorizontal,
+  Tags,
   Trash2,
+  Truck,
   Undo2,
   Warehouse,
   XCircle,
@@ -434,13 +438,13 @@ export function ResourcesPage() {
   const showSearchToolbar = isPagedTab(activeTab)
 
   const tabs = [
-    { id: 'inventory', label: 'Inventory', count: results.inventory?.totalCount },
-    { id: 'resources', label: 'Resources', count: results.resources?.totalCount },
-    { id: 'categories', label: 'Categories', count: results.categories?.totalCount },
-    { id: 'suppliers', label: 'Suppliers', count: results.suppliers?.totalCount },
-    { id: 'reservations', label: 'Reservations', count: results.reservations?.totalCount },
-    { id: 'history', label: 'Stock History' },
-    { id: 'weather', label: 'Weather' },
+    { id: 'inventory', label: 'Inventory', count: results.inventory?.totalCount, icon: <Warehouse {...iconProps} /> },
+    { id: 'resources', label: 'Resources', count: results.resources?.totalCount, icon: <Boxes {...iconProps} /> },
+    { id: 'categories', label: 'Categories', count: results.categories?.totalCount, icon: <Tags {...iconProps} /> },
+    { id: 'suppliers', label: 'Suppliers', count: results.suppliers?.totalCount, icon: <Truck {...iconProps} /> },
+    { id: 'reservations', label: 'Reservations', count: results.reservations?.totalCount, icon: <ClipboardList {...iconProps} /> },
+    { id: 'history', label: 'Stock History', icon: <History {...iconProps} /> },
+    { id: 'weather', label: 'Weather', icon: <CloudSun {...iconProps} /> },
   ]
 
   const pagination = current && view ? (

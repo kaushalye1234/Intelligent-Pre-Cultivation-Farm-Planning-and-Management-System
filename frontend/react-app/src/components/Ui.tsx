@@ -71,6 +71,7 @@ export type TabItem = {
   id: string
   label: string
   count?: number
+  icon?: ReactNode
 }
 
 export function Tabs({
@@ -95,6 +96,7 @@ export function Tabs({
           className={activeTab === tab.id ? 'active' : ''}
           onClick={() => onChange(tab.id)}
         >
+          {tab.icon ? <span className="tab-icon" aria-hidden="true">{tab.icon}</span> : null}
           <span>{tab.label}</span>
           {typeof tab.count === 'number' ? <strong>{tab.count}</strong> : null}
         </button>
