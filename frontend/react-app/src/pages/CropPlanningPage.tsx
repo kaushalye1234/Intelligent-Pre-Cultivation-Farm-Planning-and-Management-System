@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useContext, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { AlertTriangle, PlayCircle, Plus, RefreshCw, Search, Sprout } from 'lucide-react'
 import { api, getErrorMessage } from '../api/client'
@@ -9,6 +9,8 @@ import { StatusPill } from '../components/StatusPill'
 import { Button, MetricCard, Modal, Notice, PageHeader, Tabs, Toolbar } from '../components/Ui'
 import { formatArea, formatDate, formatMoney } from '../format'
 import { cropPlanStatus } from '../labels'
+import { AuthContext } from '../auth/AuthContext'
+import { AdminCropManagement } from './AdminCropManagement'
 import type { CropPlan, CropPlanningResult, CropPlanningWorkflowStatus, CropType, Farm, Field, PagedResult } from '../types'
 
 type CropTab = 'overview' | 'farms' | 'fields' | 'cropTypes' | 'requests'
@@ -42,6 +44,7 @@ function isSafeFailure(result?: CropPlanningResult, status?: CropPlanningWorkflo
 }
 
 export function CropPlanningPage() {
+  const isAdmin = useContext(AuthContext)?.user?.role === 5
   const [farms, setFarms] = useState<Farm[]>([])
   const [fields, setFields] = useState<Field[]>([])
   const [cropTypes, setCropTypes] = useState<CropType[]>([])
@@ -270,7 +273,9 @@ export function CropPlanningPage() {
             </section>
           ) : null}
 
-          {activeTab === 'cropTypes' ? (
+          {activeTab === 'cropTypes' && isAdmin ? <AdminCropManagement /> : null}
+
+          {activeTab === 'cropTypes' && !isAdmin ? (
             <section className="work-section">
               <div className="section-title"><h2>Crop Types</h2></div>
               <DataTable rows={cropTypes} emptyTitle="No crop types found" emptyMessage="Crop type records are managed through the existing API seed/admin flow." getRowKey={(row) => row.id} columns={[
