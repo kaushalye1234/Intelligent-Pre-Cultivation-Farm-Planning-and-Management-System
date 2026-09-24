@@ -86,6 +86,11 @@ public sealed class CropReferenceProfileRequestValidator : IRequestValidator<Cro
         {
             if (string.IsNullOrWhiteSpace(rule.RuleType) || rule.RuleType.Length > 120) errors.Add("Rule type is required and must be 120 characters or fewer.");
             if (string.IsNullOrWhiteSpace(rule.RuleKey) || rule.RuleKey.Length > 160) errors.Add("Rule key is required and must be 160 characters or fewer.");
+            if (string.IsNullOrWhiteSpace(rule.StructuredValueJson))
+            {
+                errors.Add("Rule value must be valid JSON.");
+                continue;
+            }
             try { using var _ = System.Text.Json.JsonDocument.Parse(rule.StructuredValueJson); }
             catch (System.Text.Json.JsonException) { errors.Add("Rule value must be valid JSON."); }
         }
