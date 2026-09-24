@@ -167,6 +167,11 @@ public sealed class CropPlanningAiWorkflowTests
         Assert.Equal(CropPlanRequestStatus.PreliminaryGenerated, (await db.CropPlanRequests.SingleAsync()).Status);
         Assert.Contains(workflow.Steps, step => step.Sequence == 1 && step.AgentName == "CropPlanningCoordinatorAgent" && step.Status == AgentStepStatus.Completed);
         Assert.Contains(workflow.Steps, step => step.Sequence == 2 && step.AgentName == "CropFieldAnalysisAgent" && step.Status == AgentStepStatus.Pending);
+        Assert.Contains(workflow.Steps, step => step.Sequence == 3 && step.AgentName == "WeatherResourceAgent" && step.Status == AgentStepStatus.Pending);
+        Assert.Contains(workflow.Steps, step => step.Sequence == 4 && step.AgentName == "SchedulingValidationAgent" && step.Status == AgentStepStatus.Pending);
+        Assert.Empty(await db.FarmTasks.ToListAsync());
+        Assert.Empty(await db.IrrigationSchedules.ToListAsync());
+        Assert.Empty(await db.ResourceReservations.ToListAsync());
     }
 
     [Fact]
