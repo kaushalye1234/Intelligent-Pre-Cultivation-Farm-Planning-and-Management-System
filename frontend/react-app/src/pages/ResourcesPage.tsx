@@ -12,6 +12,7 @@ import { Button, ConfirmDialog, MetricCard, Modal, Notice, PageHeader, Tabs, Too
 import { formatDate, formatDateTime, formatNumber } from '../format'
 import { reservationStatus, stockTransactionType } from '../labels'
 import type { InventoryStock, PagedResult, Reservation, ResourceCategory, ResourceItem, StockTransaction, Supplier, WeatherForecast } from '../types'
+import './ResourcesPage.css'
 
 type ResourceTab = 'inventory' | 'resources' | 'categories' | 'suppliers' | 'reservations' | 'history' | 'weather'
 type PagedTab = 'inventory' | 'resources' | 'categories' | 'suppliers' | 'reservations'
@@ -431,7 +432,7 @@ export function ResourcesPage() {
   const emptyFilterHint = hasFilters ? 'No records match the current search or filters.' : undefined
 
   return (
-    <section className="page-stack">
+    <section className="page-stack resource-hub">
       <PageHeader
         eyebrow="Resource Operations"
         title="Resources"
