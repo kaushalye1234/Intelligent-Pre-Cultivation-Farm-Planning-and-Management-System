@@ -13,6 +13,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Farm> Farms => Set<Farm>();
     public DbSet<Field> Fields => Set<Field>();
     public DbSet<CropType> CropTypes => Set<CropType>();
+    public DbSet<CropVariety> CropVarieties => Set<CropVariety>();
     public DbSet<CropCycle> CropCycles => Set<CropCycle>();
     public DbSet<CropPlanRequest> CropPlanRequests => Set<CropPlanRequest>();
     public DbSet<CropPlanRequestHistory> CropPlanRequestHistories => Set<CropPlanRequestHistory>();
@@ -81,6 +82,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.Property(cropType => cropType.Description).HasMaxLength(500);
             entity.HasIndex(cropType => cropType.Name).IsUnique();
             entity.HasIndex(cropType => cropType.IsActive);
+        });
+
+        modelBuilder.Entity<CropVariety>(entity =>
+        {
+            entity.Property(variety => variety.Name).IsRequired().HasMaxLength(120);
+            entity.HasOne(variety => variety.CropType).WithMany().HasForeignKey(variety => variety.CropTypeId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(variety => new { variety.CropTypeId, variety.Name }).IsUnique();
+            entity.HasIndex(variety => variety.IsActive);
         });
 
         modelBuilder.Entity<CropCycle>(entity =>

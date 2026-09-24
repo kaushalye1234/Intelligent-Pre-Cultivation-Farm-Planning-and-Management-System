@@ -1,5 +1,6 @@
 ﻿using AgriAssist.Api.Data;
 using AgriAssist.Api.Dtos.CropPlanning;
+using AgriAssist.Api.Dtos.Shared;
 using AgriAssist.Api.ExternalServices.AgenticAI;
 using AgriAssist.Api.Models.CropPlanning;
 using AgriAssist.Api.Models.Inspections;
@@ -13,6 +14,32 @@ namespace AgriAssist.Api.Tests;
 
 public sealed class CropPlanningAiWorkflowTests
 {
+    [Fact]
+    public async Task Farmer_catalog_hides_inactive_crops_and_varieties_and_admin_can_manage_sources()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.Submitted);
+        var admin = NewService(db, data.Farmer.Id, new PlannedAiClient(), ApplicationRole.Admin);
+        var farmer = NewService(db, data.Farmer.Id, new PlannedAiClient());
+        var cropId = data.Request.CropTypeId;
+
+        var active = await admin.CreateCropVarietyAsync(new CropVarietyRequest(cropId, "Bg 352", true), CancellationToken.None);
+        await admin.CreateCropVarietyAsync(new CropVarietyRequest(cropId, "Old variety", false), CancellationToken.None);
+        var visible = await farmer.SearchCropVarietiesAsync(new PagedQuery(), cropId, CancellationToken.None);
+        Assert.Equal(active.Id, Assert.Single(visible.Items).Id);
+        Assert.Equal(2, (await admin.SearchCropVarietiesAsync(new PagedQuery(), cropId, CancellationToken.None, true)).TotalCount);
+        var forbidden = await Assert.ThrowsAsync<ApiException>(() => farmer.CreateCropVarietyAsync(
+            new CropVarietyRequest(cropId, "Unauthorized", true), CancellationToken.None));
+        Assert.Equal("ADMIN_REQUIRED", forbidden.Code);
+
+        var profile = await admin.CreateReferenceProfileAsync(new CropReferenceProfileRequest(
+            cropId, active.Id, "Sri Lanka", "Verified source", null, "1", DateTime.UtcNow.AddDays(-1),
+            [new CropReferenceStageRequest("Establishment", 1, 1, 30, "Source verified")], []), CancellationToken.None);
+        Assert.Equal("Bg 352", profile.VarietyName);
+        Assert.Equal(1, profile.StageCount);
+        Assert.Equal(1, (await admin.SearchReferenceProfilesAsync(new PagedQuery(), cropId, CancellationToken.None)).TotalCount);
+    }
+
     [Fact]
     public async Task Start_workflow_persists_coordinator_output_and_marks_member2_step_ready()
     {
