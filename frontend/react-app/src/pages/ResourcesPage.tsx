@@ -3,10 +3,14 @@ import type { FormEvent } from 'react'
 import {
   AlertTriangle,
   Boxes,
+  CalendarDays,
   CheckCircle2,
   ClipboardList,
+  CloudRain,
   CloudSun,
+  Droplets,
   History,
+  MapPin,
   Package,
   PackageCheck,
   PackageX,
@@ -15,10 +19,12 @@ import {
   Search,
   SlidersHorizontal,
   Tags,
+  Thermometer,
   Trash2,
   Truck,
   Undo2,
   Warehouse,
+  Wind,
   XCircle,
 } from 'lucide-react'
 import { api, getErrorMessage } from '../api/client'
@@ -90,6 +96,11 @@ function stockLabel(stock: InventoryStock) {
 function availablePercent(stock: InventoryStock) {
   if (stock.quantityOnHand <= 0) return 0
   return Math.max(0, Math.min(100, (stock.availableQuantity / stock.quantityOnHand) * 100))
+}
+
+function weekday(value: string) {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat('en-GB', { weekday: 'long' }).format(date)
 }
 
 const iconProps = { size: 15, 'aria-hidden': true } as const
@@ -761,20 +772,50 @@ export function ResourcesPage() {
             </div>
           </div>
           <form className="search-box" onSubmit={(event) => void loadForecast(event)}>
-            <CloudSun size={16} aria-hidden="true" />
-            <input value={weatherLocation} onChange={(event) => setWeatherLocation(event.target.value)} placeholder="Farm location, e.g. Kurunegala" aria-label="Weather location" required />
+            <span className="search-field">
+              <CloudSun size={16} aria-hidden="true" />
+              <input value={weatherLocation} onChange={(event) => setWeatherLocation(event.target.value)} placeholder="Farm location, e.g. Kurunegala" aria-label="Weather location" required />
+            </span>
             <Button variant="secondary" type="submit" disabled={isWeatherLoading}>{isWeatherLoading ? 'Loading...' : 'Get Forecast'}</Button>
           </form>
-          {weatherError ? <ErrorState message={weatherError} /> : null}
-          {forecast && !forecast.isAvailable ? <Notice tone="warning">{forecast.message}</Notice> : null}
-          {forecast?.isAvailable ? (
-            <DataTable rows={forecast.days} emptyTitle="No forecast" emptyMessage="No forecast days were returned." getRowKey={(row) => row.date} columns={[
-              { header: 'Date', render: (row) => formatDate(row.date) },
-              { header: 'Conditions', render: (row) => row.description },
-              { header: 'Temperature (C)', render: (row) => `${formatNumber(row.minTemperatureC)} - ${formatNumber(row.maxTemperatureC)}` },
-              { header: 'Rain (mm)', render: (row) => formatNumber(row.rainMm) },
-              { header: 'Wind (m/s)', render: (row) => formatNumber(row.maxWindSpeedMs) },
-            ]} />
+          {isWeatherLoading ? <LoadingState label="Fetching forecast" /> : null}
+          {!isWeatherLoading && weatherError ? <ErrorState message={weatherError} /> : null}
+          {!isWeatherLoading && forecast && !forecast.isAvailable ? <Notice tone="warning"><AlertTriangle size={16} aria-hidden="true" />{forecast.message}</Notice> : null}
+          {!isWeatherLoading && !forecast && !weatherError ? <EmptyState title="No forecast loaded" message="Enter a farm location to see the next five days of weather." /> : null}
+          {!isWeatherLoading && forecast?.isAvailable ? (
+            <>
+              <div className="weather-location-badge">
+                <MapPin size={15} aria-hidden="true" />
+                <span>{forecast.location}</span>
+                {forecast.message ? <small>{forecast.message}</small> : null}
+              </div>
+              {forecast.days.length === 0 ? <EmptyState title="No forecast" message="No forecast days were returned." /> : (
+                <ul className="weather-grid" aria-label="Forecast days">
+                  {forecast.days.map((day) => (
+                    <li key={day.date} className="weather-day-card">
+                      <div className="weather-day-card-head">
+                        <span className="weather-day-card-date"><CalendarDays size={14} aria-hidden="true" />{weekday(day.date)}</span>
+                        <small>{formatDate(day.date)}</small>
+                      </div>
+                      <span className="weather-day-card-desc">{day.description}</span>
+                      <div className="weather-day-card-temp">
+                        <Thermometer size={18} aria-hidden="true" />
+                        <strong>{formatNumber(day.maxTemperatureC)}&deg;</strong>
+                        <span>/ {formatNumber(day.minTemperatureC)}&deg;C</span>
+                      </div>
+                      <dl className="weather-day-card-stats">
+                        <div className="weather-day-card-stat"><dt><Droplets size={14} aria-hidden="true" />Rain</dt><dd>{formatNumber(day.rainMm)} mm</dd></div>
+                        <div className="weather-day-card-stat"><dt><Wind size={14} aria-hidden="true" />Wind</dt><dd>{formatNumber(day.maxWindSpeedMs)} m/s</dd></div>
+                      </dl>
+                      <span className={`weather-rain-flag ${day.rainMm > 0 ? 'is-wet' : 'is-dry'}`}>
+                        {day.rainMm > 0 ? <CloudRain size={13} aria-hidden="true" /> : <CheckCircle2 size={13} aria-hidden="true" />}
+                        {day.rainMm > 0 ? 'Rain expected' : 'Dry day'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
           ) : null}
         </section>
       ) : null}
