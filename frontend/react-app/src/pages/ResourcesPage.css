@@ -185,6 +185,114 @@
   font-weight: 700;
 }
 
+/* ---------- Buttons ---------- */
+.resource-hub .ui-button,
+.resource-hub .theme-toggle {
+  min-height: 40px;
+  border-radius: 10px;
+  font-weight: 700;
+  transition:
+    background-color 200ms ease,
+    border-color 200ms ease,
+    color 200ms ease,
+    box-shadow 200ms ease,
+    transform 200ms ease;
+}
+
+.resource-hub .ui-button-primary {
+  color: var(--rh-on-primary);
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.resource-hub .ui-button-secondary {
+  color: var(--color-text);
+  background: var(--color-surface);
+  border-color: var(--color-border-strong);
+}
+
+.resource-hub .ui-button-ghost {
+  color: var(--color-text);
+  background: transparent;
+  border-color: transparent;
+}
+
+.resource-hub .ui-button-danger {
+  color: #ffffff;
+  background: #b42318;
+  border-color: #b42318;
+}
+
+/* Hover: green outline, soft glow and a 1px lift. */
+.resource-hub .ui-button:hover:not(:disabled),
+.resource-hub .theme-toggle:hover {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--rh-glow), 0 8px 18px -10px var(--rh-glow-strong);
+  transform: translateY(-1px);
+}
+
+.resource-hub .ui-button-primary:hover:not(:disabled) {
+  color: var(--rh-on-primary);
+  background: var(--color-primary-hover);
+}
+
+.resource-hub .ui-button-secondary:hover:not(:disabled),
+.resource-hub .ui-button-ghost:hover:not(:disabled) {
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+.resource-hub .ui-button:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 0 0 2px var(--rh-glow);
+}
+
+/* Destructive actions keep a restrained red instead of the green highlight. */
+.resource-hub .ui-button-danger:hover:not(:disabled) {
+  background: #912018;
+  border-color: #912018;
+  box-shadow: 0 0 0 3px var(--rh-danger-glow);
+}
+
+.resource-hub .ui-button.row-action-danger {
+  color: var(--color-danger);
+}
+
+.resource-hub .ui-button.row-action-danger:hover:not(:disabled) {
+  color: var(--rh-bad-text);
+  background: var(--rh-bad-bg);
+  border-color: var(--rh-bad-border);
+  box-shadow: 0 0 0 3px var(--rh-danger-glow);
+}
+
+.resource-hub .ui-button:disabled {
+  opacity: 0.45;
+  box-shadow: none;
+}
+
+.resource-hub .ui-button:focus-visible,
+.resource-hub .theme-toggle:focus-visible,
+.resource-hub .tabs button:focus-visible,
+.resource-hub .sort-button:focus-visible,
+.resource-hub .icon-button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 5px var(--rh-glow);
+}
+
+.resource-hub .row-actions {
+  gap: var(--space-1);
+  flex-wrap: nowrap;
+}
+
+.resource-hub .row-actions .ui-button {
+  min-height: 34px;
+  padding: 0 10px;
+  font-size: 13px;
+  gap: 6px;
+}
+
 /* ---------- Theme toggle ---------- */
 .theme-toggle {
   display: inline-flex;

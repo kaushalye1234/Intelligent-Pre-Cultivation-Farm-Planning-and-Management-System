@@ -1,6 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import { CloudSun, History, Package, Plus, Search, Warehouse } from 'lucide-react'
+import {
+  CloudSun,
+  History,
+  Package,
+  Pencil,
+  Plus,
+  Search,
+  SlidersHorizontal,
+  Trash2,
+  Undo2,
+  Warehouse,
+  XCircle,
+} from 'lucide-react'
 import { api, getErrorMessage } from '../api/client'
 import { SelectInput, TextAreaInput, TextInput } from '../components/FormControls'
 import { DataTable } from '../components/DataTable'
@@ -65,6 +77,8 @@ function stockLabel(stock: InventoryStock) {
   if (stock.availableQuantity <= stock.lowStockThreshold) return 'Low Stock'
   return 'Available'
 }
+
+const iconProps = { size: 15, 'aria-hidden': true } as const
 
 const emptyCategoryForm = { name: '', description: '' }
 const emptySupplierForm = { name: '', contactEmail: '', phone: '' }
@@ -506,9 +520,9 @@ export function ResourcesPage() {
               { header: 'Condition', render: (row) => <StatusPill label={stockLabel(row)} tone={stockTone(row)} /> },
               { header: 'Actions', className: 'actions-cell', render: (row) => (
                 <div className="row-actions">
-                  <Button variant="ghost" onClick={() => openStock(row.resourceId)}>Adjust Stock</Button>
-                  <Button variant="ghost" onClick={() => openReserve(row.id)} disabled={row.availableQuantity <= 0}>Reserve</Button>
-                  <Button variant="ghost" onClick={() => openHistory(row.id)}>History</Button>
+                  <Button variant="ghost" icon={<SlidersHorizontal {...iconProps} />} onClick={() => openStock(row.resourceId)}>Adjust Stock</Button>
+                  <Button variant="ghost" icon={<Package {...iconProps} />} onClick={() => openReserve(row.id)} disabled={row.availableQuantity <= 0}>Reserve</Button>
+                  <Button variant="ghost" icon={<History {...iconProps} />} onClick={() => openHistory(row.id)}>History</Button>
                 </div>
               ) },
             ]}
@@ -535,9 +549,9 @@ export function ResourcesPage() {
               { header: 'Status', sortKey: 'isActive', render: (row) => <StatusPill label={row.isActive ? 'Active' : 'Inactive'} tone={row.isActive ? 'good' : 'bad'} /> },
               { header: 'Actions', className: 'actions-cell', render: (row) => (
                 <div className="row-actions">
-                  <Button variant="ghost" onClick={() => openStock(row.id)}>Set Stock</Button>
-                  <Button variant="ghost" onClick={() => openResource(row)}>Edit</Button>
-                  <Button variant="ghost" onClick={() => confirmDelete('Resource', row.name, `/resources/${row.id}`, 'Its stock record is removed too. Resources with active reservations cannot be deleted.')}>Delete</Button>
+                  <Button variant="ghost" icon={<SlidersHorizontal {...iconProps} />} onClick={() => openStock(row.id)}>Set Stock</Button>
+                  <Button variant="ghost" icon={<Pencil {...iconProps} />} onClick={() => openResource(row)}>Edit</Button>
+                  <Button variant="ghost" className="row-action-danger" icon={<Trash2 {...iconProps} />} onClick={() => confirmDelete('Resource', row.name, `/resources/${row.id}`, 'Its stock record is removed too. Resources with active reservations cannot be deleted.')}>Delete</Button>
                 </div>
               ) },
             ]}
@@ -561,8 +575,8 @@ export function ResourcesPage() {
               { header: 'Description', render: (row) => row.description || 'Not provided' },
               { header: 'Actions', className: 'actions-cell', render: (row) => (
                 <div className="row-actions">
-                  <Button variant="ghost" onClick={() => openCategory(row)}>Edit</Button>
-                  <Button variant="ghost" onClick={() => confirmDelete('Category', row.name, `/resources/categories/${row.id}`, 'Categories used by resources cannot be deleted.')}>Delete</Button>
+                  <Button variant="ghost" icon={<Pencil {...iconProps} />} onClick={() => openCategory(row)}>Edit</Button>
+                  <Button variant="ghost" className="row-action-danger" icon={<Trash2 {...iconProps} />} onClick={() => confirmDelete('Category', row.name, `/resources/categories/${row.id}`, 'Categories used by resources cannot be deleted.')}>Delete</Button>
                 </div>
               ) },
             ]}
@@ -587,8 +601,8 @@ export function ResourcesPage() {
               { header: 'Phone', sortKey: 'phone', render: (row) => row.phone || 'Not provided' },
               { header: 'Actions', className: 'actions-cell', render: (row) => (
                 <div className="row-actions">
-                  <Button variant="ghost" onClick={() => openSupplier(row)}>Edit</Button>
-                  <Button variant="ghost" onClick={() => confirmDelete('Supplier', row.name, `/resources/suppliers/${row.id}`, 'Suppliers used by resources cannot be deleted.')}>Delete</Button>
+                  <Button variant="ghost" icon={<Pencil {...iconProps} />} onClick={() => openSupplier(row)}>Edit</Button>
+                  <Button variant="ghost" className="row-action-danger" icon={<Trash2 {...iconProps} />} onClick={() => confirmDelete('Supplier', row.name, `/resources/suppliers/${row.id}`, 'Suppliers used by resources cannot be deleted.')}>Delete</Button>
                 </div>
               ) },
             ]}
@@ -618,8 +632,8 @@ export function ResourcesPage() {
               { header: 'Status', render: (row) => <StatusPill label={reservationStatus[row.status] ?? String(row.status)} tone={row.status === 1 ? 'info' : row.status === 2 ? 'good' : 'bad'} /> },
               { header: 'Actions', className: 'actions-cell', render: (row) => row.status === 1 ? (
                 <div className="row-actions">
-                  <Button variant="ghost" onClick={() => setConfirmAction({ title: 'Release reservation?', message: 'This will return the reserved quantity through the existing backend release action.', label: 'Release', action: async () => updateReservation(row.id, 'release'), success: 'Reservation released successfully.' })}>Release</Button>
-                  <Button variant="ghost" onClick={() => setConfirmAction({ title: 'Cancel reservation?', message: 'This will cancel the reservation and return the quantity to available stock.', label: 'Cancel Reservation', variant: 'danger', action: async () => updateReservation(row.id, 'cancel'), success: 'Reservation cancelled successfully.' })}>Cancel</Button>
+                  <Button variant="ghost" icon={<Undo2 {...iconProps} />} onClick={() => setConfirmAction({ title: 'Release reservation?', message: 'This will return the reserved quantity through the existing backend release action.', label: 'Release', action: async () => updateReservation(row.id, 'release'), success: 'Reservation released successfully.' })}>Release</Button>
+                  <Button variant="ghost" className="row-action-danger" icon={<XCircle {...iconProps} />} onClick={() => setConfirmAction({ title: 'Cancel reservation?', message: 'This will cancel the reservation and return the quantity to available stock.', label: 'Cancel Reservation', variant: 'danger', action: async () => updateReservation(row.id, 'cancel'), success: 'Reservation cancelled successfully.' })}>Cancel</Button>
                 </div>
               ) : <span className="muted-text">Finalized</span> },
             ]}
