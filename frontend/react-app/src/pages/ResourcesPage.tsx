@@ -489,8 +489,10 @@ export function ResourcesPage() {
         {showSearchToolbar ? (
           <Toolbar>
             <form className="search-box" onSubmit={applySearch}>
-              <Search size={16} aria-hidden="true" />
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search resources" aria-label="Search resources" />
+              <span className="search-field">
+                <Search size={16} aria-hidden="true" />
+                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search resources" aria-label="Search resources" />
+              </span>
               {activeTab === 'inventory' ? (
                 <label className="toolbar-check">
                   <input type="checkbox" checked={lowStockOnly} onChange={(event) => changeFilter(() => setLowStockOnly(event.target.checked))} />
@@ -533,6 +535,12 @@ export function ResourcesPage() {
 
       {!isLoading && activeTab === 'inventory' ? (
         <section className="work-section">
+          <div className="section-title">
+            <div>
+              <h2>Inventory</h2>
+              <p className="muted-text">On-hand, reserved and available quantities for every stocked resource.</p>
+            </div>
+          </div>
           <DataTable
             rows={stockRows}
             emptyTitle={hasFilters ? 'No matching stock' : 'No stock records'}
@@ -561,7 +569,13 @@ export function ResourcesPage() {
 
       {!isLoading && activeTab === 'resources' ? (
         <section className="work-section">
-          <div className="section-title section-title-actions"><h2>Resources</h2><Button variant="secondary" icon={<Plus size={16} aria-hidden="true" />} onClick={() => openResource()}>Add Resource</Button></div>
+          <div className="section-title section-title-actions">
+            <div>
+              <h2>Resources</h2>
+              <p className="muted-text">The catalog of seeds, fertilizers, tools and other farm inputs.</p>
+            </div>
+            <Button variant="secondary" icon={<Plus size={16} aria-hidden="true" />} onClick={() => openResource()}>Add Resource</Button>
+          </div>
           <DataTable
             rows={resourceRows}
             emptyTitle={hasFilters ? 'No matching resources' : 'No resources'}
@@ -570,9 +584,9 @@ export function ResourcesPage() {
             sort={sort}
             onSort={sortBy}
             columns={[
-              { header: 'Resource', sortKey: 'name', render: (row) => row.name },
+              { header: 'Resource', sortKey: 'name', render: (row) => <strong className="cell-strong">{row.name}</strong> },
               { header: 'Category', sortKey: 'category', render: (row) => categoryNameById.get(row.resourceCategoryId) ?? row.resourceCategoryId.slice(0, 8) },
-              { header: 'Supplier', render: (row) => row.supplierId ? supplierNameById.get(row.supplierId) ?? row.supplierId.slice(0, 8) : 'Not assigned' },
+              { header: 'Supplier', render: (row) => row.supplierId ? supplierNameById.get(row.supplierId) ?? row.supplierId.slice(0, 8) : <span className="muted-text">Not assigned</span> },
               { header: 'Unit', sortKey: 'unit', render: (row) => row.unit },
               { header: 'Status', sortKey: 'isActive', render: (row) => <StatusPill label={row.isActive ? 'Active' : 'Inactive'} tone={row.isActive ? 'good' : 'bad'} /> },
               { header: 'Actions', className: 'actions-cell', render: (row) => (
@@ -590,7 +604,13 @@ export function ResourcesPage() {
 
       {!isLoading && activeTab === 'categories' ? (
         <section className="work-section">
-          <div className="section-title section-title-actions"><h2>Categories</h2><Button variant="secondary" icon={<Plus size={16} aria-hidden="true" />} onClick={() => openCategory()}>Add Category</Button></div>
+          <div className="section-title section-title-actions">
+            <div>
+              <h2>Categories</h2>
+              <p className="muted-text">Groups used to organize resources and inventory.</p>
+            </div>
+            <Button variant="secondary" icon={<Plus size={16} aria-hidden="true" />} onClick={() => openCategory()}>Add Category</Button>
+          </div>
           <DataTable
             rows={categoryRows}
             emptyTitle={hasFilters ? 'No matching categories' : 'No categories'}
@@ -599,8 +619,8 @@ export function ResourcesPage() {
             sort={sort}
             onSort={sortBy}
             columns={[
-              { header: 'Category', sortKey: 'name', render: (row) => row.name },
-              { header: 'Description', render: (row) => row.description || 'Not provided' },
+              { header: 'Category', sortKey: 'name', render: (row) => <strong className="cell-strong">{row.name}</strong> },
+              { header: 'Description', render: (row) => row.description || <span className="muted-text">Not provided</span> },
               { header: 'Actions', className: 'actions-cell', render: (row) => (
                 <div className="row-actions">
                   <Button variant="ghost" icon={<Pencil {...iconProps} />} onClick={() => openCategory(row)}>Edit</Button>
@@ -615,7 +635,13 @@ export function ResourcesPage() {
 
       {!isLoading && activeTab === 'suppliers' ? (
         <section className="work-section">
-          <div className="section-title section-title-actions"><h2>Suppliers</h2><Button variant="secondary" icon={<Plus size={16} aria-hidden="true" />} onClick={() => openSupplier()}>Add Supplier</Button></div>
+          <div className="section-title section-title-actions">
+            <div>
+              <h2>Suppliers</h2>
+              <p className="muted-text">Where resources are sourced from, with contact details.</p>
+            </div>
+            <Button variant="secondary" icon={<Plus size={16} aria-hidden="true" />} onClick={() => openSupplier()}>Add Supplier</Button>
+          </div>
           <DataTable
             rows={supplierRows}
             emptyTitle={hasFilters ? 'No matching suppliers' : 'No suppliers'}
@@ -624,9 +650,9 @@ export function ResourcesPage() {
             sort={sort}
             onSort={sortBy}
             columns={[
-              { header: 'Supplier', sortKey: 'name', render: (row) => row.name },
-              { header: 'Email', sortKey: 'email', render: (row) => row.contactEmail || 'Not provided' },
-              { header: 'Phone', sortKey: 'phone', render: (row) => row.phone || 'Not provided' },
+              { header: 'Supplier', sortKey: 'name', render: (row) => <strong className="cell-strong">{row.name}</strong> },
+              { header: 'Email', sortKey: 'email', render: (row) => row.contactEmail || <span className="muted-text">Not provided</span> },
+              { header: 'Phone', sortKey: 'phone', render: (row) => row.phone || <span className="muted-text">Not provided</span> },
               { header: 'Actions', className: 'actions-cell', render: (row) => (
                 <div className="row-actions">
                   <Button variant="ghost" icon={<Pencil {...iconProps} />} onClick={() => openSupplier(row)}>Edit</Button>
@@ -654,7 +680,7 @@ export function ResourcesPage() {
             emptyMessage={emptyFilterHint ?? 'Reserve stock to hold it for a planned activity.'}
             getRowKey={(row) => row.id}
             columns={[
-              { header: 'Resource', render: (row) => row.resourceName || resourceNameById.get(stocks.find((stock) => stock.id === row.inventoryStockId)?.resourceId ?? '') || row.inventoryStockId.slice(0, 8) },
+              { header: 'Resource', render: (row) => <strong className="cell-strong">{row.resourceName || resourceNameById.get(stocks.find((stock) => stock.id === row.inventoryStockId)?.resourceId ?? '') || row.inventoryStockId.slice(0, 8)}</strong> },
               { header: 'Purpose', render: (row) => row.purpose },
               { header: 'Quantity', render: (row) => formatNumber(row.quantity) },
               { header: 'Status', render: (row) => <StatusPill label={reservationStatus[row.status] ?? String(row.status)} tone={row.status === 1 ? 'info' : row.status === 2 ? 'good' : 'bad'} /> },
@@ -679,11 +705,13 @@ export function ResourcesPage() {
             </div>
           </div>
           <div className="search-box">
-            <History size={16} aria-hidden="true" />
-            <select aria-label="Stock to view" value={historyStockId} onChange={(event) => setHistoryStockId(event.target.value)}>
-              <option value="">Select a resource</option>
-              {stockOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
+            <span className="search-field">
+              <History size={16} aria-hidden="true" />
+              <select aria-label="Stock to view" value={historyStockId} onChange={(event) => setHistoryStockId(event.target.value)}>
+                <option value="">Select a resource</option>
+                {stockOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </span>
           </div>
           {!historyStockId ? <EmptyState title="Choose a resource" message="Select a resource above to see its stock transactions." /> : null}
           {historyStockId && isHistoryLoading ? <LoadingState label="Loading stock history" /> : null}

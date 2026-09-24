@@ -504,3 +504,199 @@
   background: var(--color-primary);
   border-color: var(--color-primary);
 }
+
+/* ---------- Section panels ---------- */
+.resource-hub .work-section {
+  padding: var(--space-5);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  animation: rh-fade-up 240ms ease both;
+}
+
+.resource-hub .section-title {
+  margin-bottom: var(--space-4);
+}
+
+.resource-hub .section-title h2 {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.resource-hub .section-title p {
+  font-size: 13px;
+}
+
+/* ---------- Search and filters ---------- */
+.resource-hub .search-box {
+  flex-wrap: wrap;
+  max-width: none;
+  gap: var(--space-2);
+  padding: 6px;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+}
+
+.resource-hub .work-section .search-box {
+  max-width: 760px;
+  margin-bottom: var(--space-4);
+}
+
+.resource-hub .search-field {
+  position: relative;
+  min-width: 220px;
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.resource-hub .search-field > svg {
+  position: absolute;
+  left: 12px;
+  color: var(--color-text-muted);
+  pointer-events: none;
+}
+
+.resource-hub .search-box .search-field input,
+.resource-hub .search-box .search-field select {
+  width: 100%;
+  min-width: 0;
+  padding-left: 36px;
+}
+
+.resource-hub .search-box input,
+.resource-hub .search-box select,
+.resource-hub .field-control input,
+.resource-hub .field-control select,
+.resource-hub .field-control textarea {
+  min-height: 40px;
+  color: var(--color-text);
+  background: var(--rh-input-bg);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 10px;
+  font-size: 14px;
+  transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+
+.resource-hub .search-box input::placeholder,
+.resource-hub .field-control input::placeholder,
+.resource-hub .field-control textarea::placeholder {
+  color: var(--color-text-muted);
+  opacity: 0.8;
+}
+
+.resource-hub .search-box input:hover,
+.resource-hub .search-box select:hover,
+.resource-hub .field-control input:hover,
+.resource-hub .field-control select:hover,
+.resource-hub .field-control textarea:hover {
+  border-color: color-mix(in srgb, var(--color-primary) 40%, var(--color-border-strong));
+}
+
+.resource-hub .search-box input:focus,
+.resource-hub .search-box select:focus,
+.resource-hub .field-control input:focus,
+.resource-hub .field-control select:focus,
+.resource-hub .field-control textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--rh-glow);
+}
+
+.resource-hub .toolbar-check {
+  min-height: 40px;
+  padding: 0 var(--space-3);
+  color: var(--color-text);
+  background: var(--rh-input-bg);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.resource-hub .toolbar-check:hover,
+.resource-hub .toolbar-check:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--rh-glow);
+}
+
+.resource-hub .toolbar-check input {
+  accent-color: var(--color-primary);
+}
+
+/* ---------- Tables ---------- */
+.resource-hub .table-wrap {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+}
+
+.resource-hub .data-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 14px;
+}
+
+.resource-hub .data-table th {
+  padding: 11px var(--space-4);
+  color: var(--color-text-muted);
+  background: var(--rh-header-bg);
+  border-bottom: 1px solid var(--color-border);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.resource-hub .data-table th:first-child {
+  border-top-left-radius: 11px;
+}
+
+.resource-hub .data-table th:last-child {
+  border-top-right-radius: 11px;
+}
+
+.resource-hub .data-table td {
+  padding: 13px var(--space-4);
+  color: var(--color-text);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.resource-hub .data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.resource-hub .data-table tbody tr {
+  transition: background-color 160ms ease;
+}
+
+.resource-hub .data-table tbody tr:hover {
+  background: var(--rh-row-hover);
+}
+
+.resource-hub .data-table tbody tr td:first-child {
+  box-shadow: inset 2px 0 0 transparent;
+  transition: box-shadow 160ms ease;
+}
+
+.resource-hub .data-table tbody tr:hover td:first-child {
+  box-shadow: inset 2px 0 0 var(--color-primary);
+}
+
+.resource-hub .sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 4px;
+  letter-spacing: inherit;
+  transition: color 160ms ease;
+}
+
+.resource-hub .sort-button:hover,
+.resource-hub th[aria-sort] .sort-button {
+  color: var(--color-primary);
+}
