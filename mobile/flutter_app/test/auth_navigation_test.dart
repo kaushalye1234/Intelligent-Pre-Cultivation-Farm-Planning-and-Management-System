@@ -23,9 +23,7 @@ Widget _authGateHarness(AppState state) {
 }
 
 void main() {
-  testWidgets('Farmer shell exposes only Dashboard, Plans and My status', (
-    tester,
-  ) async {
+  testWidgets('Farmer shell exposes Home, Plans and Tasks', (tester) async {
     final state = AppState()..user = _farmer;
 
     await tester.pumpWidget(
@@ -35,9 +33,9 @@ void main() {
       ),
     );
 
-    expect(find.text('Dashboard'), findsOneWidget);
+    expect(find.text('Home'), findsOneWidget);
     expect(find.text('Plans'), findsOneWidget);
-    expect(find.text('My status'), findsOneWidget);
+    expect(find.text('Tasks'), findsOneWidget);
     expect(find.text('Inspect'), findsNothing);
     expect(find.text('Resources'), findsNothing);
   });
@@ -70,6 +68,7 @@ void main() {
   ) async {
     await tester.pumpWidget(_authGateHarness(AppState()));
 
+    await tester.ensureVisible(find.text('Create farmer account'));
     await tester.tap(find.text('Create farmer account'));
     await tester.pumpAndSettle();
 
@@ -123,7 +122,7 @@ void main() {
     await tester.pumpWidget(_authGateHarness(state));
 
     expect(find.text('Add your first farm'), findsOneWidget);
-    expect(find.text('Step 1 of 2'), findsOneWidget);
+    expect(find.text('STEP 1 OF 2'), findsOneWidget);
   });
 
   testWidgets('Farmer with a farm but no active field opens field onboarding', (
@@ -148,7 +147,7 @@ void main() {
     await tester.pumpWidget(_authGateHarness(state));
 
     expect(find.text('Add your first active field'), findsOneWidget);
-    expect(find.text('Step 2 of 2'), findsOneWidget);
+    expect(find.text('STEP 2 OF 2'), findsOneWidget);
     await tester.tap(find.byType(DropdownButtonFormField<String>));
     await tester.pumpAndSettle();
     expect(find.text('North Farm'), findsOneWidget);

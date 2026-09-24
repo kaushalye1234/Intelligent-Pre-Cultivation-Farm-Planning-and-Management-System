@@ -126,6 +126,14 @@ void main() {
       ),
     );
 
+    await tester.ensureVisible(find.text('View progress').first);
+    await tester.tap(find.text('View progress').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Plan progress'), findsOneWidget);
+    expect(find.text('Final crop plan'), findsNothing);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
     expect(find.text('Grow pending'), findsOneWidget);
     expect(find.text('Grow rejected'), findsOneWidget);
     await tester.tap(find.text('Approved').first);
@@ -134,12 +142,17 @@ void main() {
     expect(find.text('Grow rejected'), findsNothing);
     expect(find.text('Grow approved'), findsOneWidget);
 
-    await tester.tap(find.text('View final plan →'));
+    await tester.tap(find.text('View final plan'));
     await tester.pumpAndSettle();
     expect(find.text('Soil is ready.'), findsOneWidget);
     expect(find.text('Rain is expected.'), findsOneWidget);
     expect(find.text('Linked task'), findsOneWidget);
     expect(find.text('Other task'), findsNothing);
-    expect(find.text('2026-10-02 · 30 minutes'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.textContaining('30 minutes'),
+      450,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(find.textContaining('30 minutes'), findsOneWidget);
   });
 }
