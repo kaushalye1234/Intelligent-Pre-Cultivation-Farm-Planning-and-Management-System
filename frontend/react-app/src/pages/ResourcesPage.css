@@ -356,6 +356,85 @@
   text-align: left;
 }
 
+/* ---------- Overview metric cards ---------- */
+.resource-hub .resource-metrics {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-3);
+}
+
+.resource-hub .metric-card {
+  position: relative;
+  min-height: 0;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  transition: transform 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
+}
+
+.resource-hub .metric-card::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: var(--metric-accent, var(--color-primary));
+  opacity: 0.85;
+}
+
+.resource-hub .metric-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--metric-accent, var(--color-primary)) 45%, var(--color-border));
+  box-shadow: 0 12px 28px -18px var(--rh-glow-strong);
+}
+
+.resource-hub .metric-card-top {
+  justify-content: flex-start;
+  gap: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.resource-hub .metric-icon {
+  width: 36px;
+  height: 36px;
+  color: var(--metric-accent, var(--color-primary));
+  background: var(--metric-soft, var(--color-primary-soft));
+  border-radius: 10px;
+}
+
+.resource-hub .metric-card strong {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.resource-hub .metric-card p {
+  font-size: 12px;
+}
+
+.resource-hub .metric-good {
+  --metric-accent: var(--color-primary);
+  --metric-soft: var(--rh-good-bg);
+}
+
+.resource-hub .metric-warn {
+  --metric-accent: var(--color-warning);
+  --metric-soft: var(--rh-warn-bg);
+  border-color: var(--color-border);
+}
+
+.resource-hub .metric-bad {
+  --metric-accent: var(--color-danger);
+  --metric-soft: var(--rh-bad-bg);
+  border-color: var(--color-border);
+}
+
 /* ---------- Section tabs ---------- */
 .resource-hub .tabs {
   gap: var(--space-1);

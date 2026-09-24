@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import {
+  AlertTriangle,
   Boxes,
   ClipboardList,
   CloudSun,
   History,
   Package,
+  PackageCheck,
+  PackageX,
   Pencil,
   Plus,
   Search,
@@ -95,6 +98,9 @@ export function ResourcesPage() {
   const [resources, setResources] = useState<ResourceItem[]>([])
   const [stocks, setStocks] = useState<InventoryStock[]>([])
   const [lowStockTotal, setLowStockTotal] = useState(0)
+  const [resourceTotal, setResourceTotal] = useState(0)
+  const [stockTotal, setStockTotal] = useState(0)
+  const [activeReservationTotal, setActiveReservationTotal] = useState<number | null>(null)
   const { theme, toggleTheme } = useThemeMode()
 
   const [activeTab, setActiveTab] = useState<ResourceTab>('inventory')
@@ -163,11 +169,23 @@ export function ResourcesPage() {
         setResources(resourceResult.data.items)
         setStocks(stockResult.data.items)
         setLowStockTotal(lowResult.data.totalCount)
+        setResourceTotal(resourceResult.data.totalCount)
+        setStockTotal(stockResult.data.totalCount)
       } catch (err) {
         if (!cancelled) setError(getErrorMessage(err))
       }
     }
+    // The dashboard card is informational only, so a failure here must not block the rest of the page.
+    async function loadActiveReservations() {
+      try {
+        const response = await api.get<PagedResult<Reservation>>('/resources/reservations', { params: { pageSize: 1, status: 1 } })
+        if (!cancelled) setActiveReservationTotal(response.data.totalCount)
+      } catch {
+        if (!cancelled) setActiveReservationTotal(null)
+      }
+    }
     void loadLookups()
+    void loadActiveReservations()
     return () => { cancelled = true }
   }, [reloadKey])
 
@@ -437,6 +455,9 @@ export function ResourcesPage() {
   const selectedHistoryStock = stocks.find((stock) => stock.id === historyStockId)
   const showSearchToolbar = isPagedTab(activeTab)
 
+  const outOfStockCount = stocks.filter((stock) => stock.availableQuantity <= 0).length
+  const availableStockCount = Math.max(stockTotal - lowStockTotal, 0)
+
   const tabs = [
     { id: 'inventory', label: 'Inventory', count: results.inventory?.totalCount, icon: <Warehouse {...iconProps} /> },
     { id: 'resources', label: 'Resources', count: results.resources?.totalCount, icon: <Boxes {...iconProps} /> },
@@ -495,6 +516,14 @@ export function ResourcesPage() {
         ) : null}
       </PageHeader>
 
+      <section className="metric-grid resource-metrics" aria-label="Resource overview">
+        <MetricCard label="Total Resources" value={formatNumber(resourceTotal)} description="Items in the resource catalog" icon={<Boxes size={20} aria-hidden="true" />} />
+        <MetricCard label="Available Stock" value={formatNumber(availableStockCount)} description="Stock records above their low threshold" icon={<PackageCheck size={20} aria-hidden="true" />} tone="good" />
+        <MetricCard label="Low Stock" value={formatNumber(lowStockTotal)} description="At or below the low-stock threshold" icon={<AlertTriangle size={20} aria-hidden="true" />} tone="warn" />
+        <MetricCard label="Out of Stock" value={formatNumber(outOfStockCount)} description="Nothing left available to reserve" icon={<PackageX size={20} aria-hidden="true" />} tone="bad" />
+        <MetricCard label="Active Reservations" value={activeReservationTotal === null ? '-' : formatNumber(activeReservationTotal)} description="Stock currently held for planned work" icon={<ClipboardList size={20} aria-hidden="true" />} />
+      </section>
+
       <Tabs tabs={tabs} activeTab={activeTab} onChange={(tab) => switchTab(tab as ResourceTab)} ariaLabel="Resource sections" />
       {success ? <Notice tone="success">{success}</Notice> : null}
       {actionError && !activeModal ? <Notice tone="error">{actionError}</Notice> : null}
@@ -504,11 +533,6 @@ export function ResourcesPage() {
 
       {!isLoading && activeTab === 'inventory' ? (
         <section className="work-section">
-          <div className="metric-grid compact-metrics">
-            <MetricCard label="Stock Records" value={results.inventory?.totalCount ?? 0} icon={<Warehouse size={20} aria-hidden="true" />} />
-            <MetricCard label="Low Stock" value={lowStockTotal} tone="warn" />
-            <MetricCard label="Out of Stock (this page)" value={stockRows.filter((stock) => stock.availableQuantity <= 0).length} tone="bad" />
-          </div>
           <DataTable
             rows={stockRows}
             emptyTitle={hasFilters ? 'No matching stock' : 'No stock records'}
