@@ -1180,3 +1180,126 @@
   background: var(--rh-good-bg);
   border-color: var(--rh-good-border);
 }
+
+/* ---------- Animations ---------- */
+@keyframes rh-fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes rh-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes rh-modal-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes rh-shimmer {
+  from { background-position: -40% 0; }
+  to { background-position: 140% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .resource-hub *,
+  .resource-hub *::before,
+  .resource-hub *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 1024px) {
+  .resource-hub .row-actions {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 768px) {
+  .resource-hub .page-header {
+    padding: var(--space-4);
+  }
+
+  .resource-hub .page-header-copy h1 {
+    font-size: 24px;
+  }
+
+  .resource-hub .search-box {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .resource-hub .search-field {
+    min-width: 0;
+  }
+
+  .resource-hub .search-box input,
+  .resource-hub .search-box select {
+    width: 100%;
+    min-width: 0;
+    background: var(--rh-input-bg);
+    border-color: var(--color-border-strong);
+  }
+
+  .resource-hub .tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+
+  .resource-hub .tabs button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .resource-hub .work-section {
+    padding: var(--space-4);
+  }
+
+  .resource-hub .section-title-actions {
+    flex-wrap: wrap;
+  }
+
+  .resource-hub .row-actions {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .resource-hub .modal-footer {
+    flex-wrap: wrap;
+  }
+
+  .resource-hub .modal-footer .ui-button {
+    flex: 1 1 auto;
+  }
+}
+
+@media (max-width: 520px) {
+  .resource-hub .resource-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .resource-hub .metric-card strong {
+    font-size: 24px;
+  }
+
+  .resource-hub .metric-card p {
+    display: none;
+  }
+
+  .resource-hub .page-header-actions {
+    width: 100%;
+  }
+
+  .resource-hub .page-header-actions .ui-button {
+    flex: 1;
+  }
+
+  .resource-hub .weather-grid {
+    grid-template-columns: 1fr;
+  }
+}
