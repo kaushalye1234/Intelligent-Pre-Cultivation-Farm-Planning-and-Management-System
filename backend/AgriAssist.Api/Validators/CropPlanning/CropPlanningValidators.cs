@@ -95,11 +95,26 @@ public sealed class CropReferenceProfileRequestValidator : IRequestValidator<Cro
 
 public sealed class CropPlanRequestCreateValidator : IRequestValidator<CropPlanRequestCreate>
 {
+    private static readonly HashSet<string> KnownProblemCodes = new(StringComparer.Ordinal)
+    {
+        "PreviousFlooding", "PreviousWaterShortage", "PreviousPestIssue",
+        "PreviousDiseaseIssue", "PreviousSoilProblem", "Other", "NoneKnown"
+    };
+
     public IReadOnlyList<string> Validate(CropPlanRequestCreate request)
     {
         var errors = new List<string>();
         if (request.FarmId == Guid.Empty) errors.Add("Farm is required.");
+        if (!request.FieldId.HasValue || request.FieldId == Guid.Empty) errors.Add("Field is required.");
         if (request.CropTypeId == Guid.Empty) errors.Add("Crop type is required.");
+        if (request.CropVarietyId == Guid.Empty) errors.Add("Crop variety is invalid.");
+        if (request.PreviousCropTypeId == Guid.Empty) errors.Add("Previous crop is invalid.");
+        if (!Enum.IsDefined(request.CultivationSeason)) errors.Add("Cultivation season is invalid.");
+        var problems = request.PreviousKnownProblems ?? [];
+        if (problems.Count > 7 || problems.Any(code => !KnownProblemCodes.Contains(code)) || problems.Distinct(StringComparer.Ordinal).Count() != problems.Count)
+            errors.Add("Previous known problems contain invalid or duplicate values.");
+        if (problems.Contains("NoneKnown") && problems.Count > 1) errors.Add("None known cannot be combined with other previous problems.");
+        if (request.PreferredStartDate == default) errors.Add("Preferred start date is required.");
         if (request.PreferredEndDate <= request.PreferredStartDate) errors.Add("Preferred end date must be after preferred start date.");
         if (request.Budget <= 0) errors.Add("Budget must be positive.");
         if (string.IsNullOrWhiteSpace(request.Objective) || request.Objective.Length > 500) errors.Add("Objective is required and must be 500 characters or fewer.");

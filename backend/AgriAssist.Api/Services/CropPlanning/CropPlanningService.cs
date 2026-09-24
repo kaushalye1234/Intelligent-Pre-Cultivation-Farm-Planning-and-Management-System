@@ -443,22 +443,23 @@ public sealed class CropPlanningService(
 
     public async Task<CropPlanRequestResponse> GeneratePreliminaryRequestAsync(CropPlanRequestCreate request, CancellationToken cancellationToken)
     {
-        return await CreateRequestCoreAsync(request, CropPlanRequestStatus.PreliminaryGenerated, "Preliminary crop planning request generated without AI execution.", cancellationToken);
+        return await CreateRequestCoreAsync(request, CropPlanRequestStatus.Submitted, "Crop plan request submitted for coordinator planning.", cancellationToken);
     }
 
     public async Task<CropPlanRequestResponse> UpdateCropPlanRequestAsync(Guid id, CropPlanRequestUpdate request, CancellationToken cancellationToken)
     {
         Validate(updateRequestValidator.Validate(request));
         var entity = await ApplyPlanRequestAccess(dbContext.CropPlanRequests).SingleOrDefaultAsync(item => item.Id == id, cancellationToken) ?? throw NotFound("Crop plan request");
-        var previous = entity.Status;
+        if (entity.Status != request.Status || entity.Status is CropPlanRequestStatus.Approved or CropPlanRequestStatus.Rejected or CropPlanRequestStatus.Cancelled)
+            throw new ApiException(HttpStatusCode.BadRequest, "CROP_PLAN_STATUS_MANAGED", "Crop plan status is managed by the workflow and approval process.");
+        if (await dbContext.AgentWorkflows.AnyAsync(item => item.CropPlanRequestId == id && !item.IsDeleted, cancellationToken))
+            throw new ApiException(HttpStatusCode.Conflict, "CROP_PLAN_WORKFLOW_STARTED", "A crop plan with workflow history cannot be edited.");
         entity.PreferredStartDate = request.PreferredStartDate;
         entity.PreferredEndDate = request.PreferredEndDate;
         entity.Budget = request.Budget;
         entity.Objective = request.Objective.Trim();
-        entity.Status = request.Status;
         entity.UpdatedAt = DateTime.UtcNow;
         entity.UpdatedByUserId = currentUser.UserId;
-        if (previous != request.Status) AddHistory(entity.Id, previous, request.Status, "Status updated.");
         await dbContext.SaveChangesAsync(cancellationToken);
         return MapRequest(entity);
     }
@@ -976,8 +977,14 @@ public sealed class CropPlanningService(
         Validate(createRequestValidator.Validate(request));
         var userId = RequireUser();
         await EnsureFarmAccessAsync(request.FarmId, cancellationToken);
-        if (request.FieldId.HasValue) await EnsureFieldAccessAsync(request.FieldId.Value, cancellationToken);
+        var fieldValid = await ApplyFieldAccess(dbContext.Fields.AsNoTracking()).AnyAsync(item =>
+            item.Id == request.FieldId!.Value && item.FarmId == request.FarmId && item.IsActive, cancellationToken);
+        if (!fieldValid) throw new ApiException(HttpStatusCode.BadRequest, "FIELD_FARM_MISMATCH", "The selected active field must belong to the selected farm.");
         await EnsureCropTypeAsync(request.CropTypeId, cancellationToken);
+        if (request.CropVarietyId.HasValue && !await dbContext.CropVarieties.AsNoTracking().AnyAsync(item =>
+                item.Id == request.CropVarietyId.Value && item.CropTypeId == request.CropTypeId && item.IsActive && !item.IsDeleted, cancellationToken))
+            throw new ApiException(HttpStatusCode.BadRequest, "INVALID_CROP_VARIETY", "Selected variety is not active for this crop.");
+        if (request.PreviousCropTypeId.HasValue) await EnsureCropTypeAsync(request.PreviousCropTypeId.Value, cancellationToken);
 
         var activeStatuses = new[] { CropPlanRequestStatus.Submitted, CropPlanRequestStatus.PreliminaryGenerated, CropPlanRequestStatus.Approved };
         var duplicate = await dbContext.CropPlanRequests.AnyAsync(item =>
@@ -994,6 +1001,10 @@ public sealed class CropPlanningService(
             FarmId = request.FarmId,
             FieldId = request.FieldId,
             CropTypeId = request.CropTypeId,
+            CropVarietyId = request.CropVarietyId,
+            CultivationSeason = request.CultivationSeason,
+            PreviousCropTypeId = request.PreviousCropTypeId,
+            PreviousKnownProblemsJson = JsonSerializer.Serialize(request.PreviousKnownProblems ?? [], JsonOptions),
             RequestedByUserId = userId,
             PreferredStartDate = request.PreferredStartDate,
             PreferredEndDate = request.PreferredEndDate,
@@ -1364,7 +1375,11 @@ public sealed class CropPlanningService(
         new(profile.Id, profile.CropTypeId, profile.VarietyName, profile.Region, profile.SourceName, profile.SourceUrl,
             profile.SourceVersion, profile.VerifiedAt, profile.IsActive, profile.Stages.Count, profile.Rules.Count);
     private static CropCycleResponse MapCycle(CropCycle cycle) => new(cycle.Id, cycle.FieldId, cycle.CropTypeId, cycle.PlannedStartDate, cycle.PlannedEndDate, cycle.Status);
-    private static CropPlanRequestResponse MapRequest(CropPlanRequest request) => new(request.Id, request.FarmId, request.FieldId, request.CropTypeId, request.RequestedByUserId, request.PreferredStartDate, request.PreferredEndDate, request.Budget, request.Objective, request.Status, request.CreatedAt);
+    private static CropPlanRequestResponse MapRequest(CropPlanRequest request) =>
+        new(request.Id, request.FarmId, request.FieldId, request.CropTypeId, request.RequestedByUserId,
+            request.PreferredStartDate, request.PreferredEndDate, request.Budget, request.Objective,
+            request.Status, request.CreatedAt, request.CropVarietyId, request.CultivationSeason,
+            request.PreviousCropTypeId, JsonSerializer.Deserialize<List<string>>(request.PreviousKnownProblemsJson, JsonOptions) ?? []);
 }
 
 

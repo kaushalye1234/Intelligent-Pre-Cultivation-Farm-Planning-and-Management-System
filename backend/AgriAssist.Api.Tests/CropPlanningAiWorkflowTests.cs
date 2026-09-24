@@ -15,6 +15,86 @@ namespace AgriAssist.Api.Tests;
 public sealed class CropPlanningAiWorkflowTests
 {
     [Fact]
+    public async Task Farmer_request_persists_variety_season_previous_crop_and_historical_problems()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.Cancelled);
+        var variety = new CropVariety { CropTypeId = data.Request.CropTypeId, Name = "Bg 352", IsActive = true };
+        var previous = new CropType { Name = "Maize", IsActive = true };
+        db.AddRange(variety, previous);
+        await db.SaveChangesAsync();
+
+        var created = await NewService(db, data.Farmer.Id, new PlannedAiClient()).CreateCropPlanRequestAsync(
+            NewRequest(data) with {
+                CropVarietyId = variety.Id,
+                CultivationSeason = CultivationSeason.Maha,
+                PreviousCropTypeId = previous.Id,
+                PreviousKnownProblems = ["PreviousFlooding", "PreviousPestIssue"]
+            }, CancellationToken.None);
+
+        Assert.Equal(CropPlanRequestStatus.Submitted, created.Status);
+        Assert.Equal(variety.Id, created.CropVarietyId);
+        Assert.Equal(CultivationSeason.Maha, created.CultivationSeason);
+        Assert.Equal(previous.Id, created.PreviousCropTypeId);
+        Assert.Equal(["PreviousFlooding", "PreviousPestIssue"], created.PreviousKnownProblems);
+        Assert.Equal(created.CropVarietyId, (await db.CropPlanRequests.SingleAsync(item => item.Id == created.Id)).CropVarietyId);
+    }
+
+    [Fact]
+    public async Task Farmer_request_rejects_other_farm_mismatched_field_and_other_crop_variety()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.Cancelled);
+        var service = NewService(db, data.Farmer.Id, new PlannedAiClient());
+        var otherFarmerError = await Assert.ThrowsAsync<ApiException>(() =>
+            NewService(db, Guid.NewGuid(), new PlannedAiClient()).CreateCropPlanRequestAsync(NewRequest(data), CancellationToken.None));
+        Assert.Equal("NOT_FOUND", otherFarmerError.Code);
+
+        var otherFarm = new Farm { Name = "Other", Location = "South", TotalArea = 5, OwnerUserId = data.Farmer.Id };
+        var otherField = new Field { Farm = otherFarm, Name = "Other field", Area = 1, SoilType = "Loam", IsActive = true };
+        var otherCrop = new CropType { Name = "Tomato", IsActive = true };
+        var wrongVariety = new CropVariety { CropType = otherCrop, Name = "Tomato A", IsActive = true };
+        db.AddRange(otherFarm, otherField, otherCrop, wrongVariety);
+        await db.SaveChangesAsync();
+
+        var fieldError = await Assert.ThrowsAsync<ApiException>(() => service.CreateCropPlanRequestAsync(
+            NewRequest(data) with { FieldId = otherField.Id }, CancellationToken.None));
+        Assert.Equal("FIELD_FARM_MISMATCH", fieldError.Code);
+        var varietyError = await Assert.ThrowsAsync<ApiException>(() => service.CreateCropPlanRequestAsync(
+            NewRequest(data) with { CropVarietyId = wrongVariety.Id }, CancellationToken.None));
+        Assert.Equal("INVALID_CROP_VARIETY", varietyError.Code);
+    }
+
+    [Fact]
+    public async Task Farmer_request_rejects_invalid_dates_budget_and_status_change()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.Submitted);
+        var service = NewService(db, data.Farmer.Id, new PlannedAiClient());
+        var invalid = await Assert.ThrowsAsync<ApiException>(() => service.CreateCropPlanRequestAsync(
+            NewRequest(data) with { PreferredEndDate = new DateOnly(2026, 10, 1), Budget = 0 }, CancellationToken.None));
+        Assert.Equal("VALIDATION_ERROR", invalid.Code);
+        var status = await Assert.ThrowsAsync<ApiException>(() => service.UpdateCropPlanRequestAsync(data.Request.Id,
+            new CropPlanRequestUpdate(new DateOnly(2026, 10, 1), new DateOnly(2027, 1, 1), 12000,
+                "Farmer objective", CropPlanRequestStatus.Approved), CancellationToken.None));
+        Assert.Equal("CROP_PLAN_STATUS_MANAGED", status.Code);
+    }
+
+    [Fact]
+    public async Task Preliminary_submission_waits_for_successful_coordinator_before_advancing_status()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.Cancelled);
+        var service = NewService(db, data.Farmer.Id, new MissingReferenceAiClient());
+        var request = await service.GeneratePreliminaryRequestAsync(NewRequest(data), CancellationToken.None);
+
+        Assert.Equal(CropPlanRequestStatus.Submitted, request.Status);
+        var result = await service.StartAiWorkflowAsync(request.Id, CancellationToken.None);
+        Assert.Equal("ReferenceDataUnavailable", result.Status);
+        Assert.Equal(CropPlanRequestStatus.Submitted, (await db.CropPlanRequests.SingleAsync(item => item.Id == request.Id)).Status);
+    }
+
+    [Fact]
     public async Task Farmer_catalog_hides_inactive_crops_and_varieties_and_admin_can_manage_sources()
     {
         await using var db = NewDbContext();
@@ -238,6 +318,10 @@ public sealed class CropPlanningAiWorkflowTests
         await db.SaveChangesAsync();
         return new SeededPlan(farmer, request, field);
     }
+
+    private static CropPlanRequestCreate NewRequest(SeededPlan data) =>
+        new(data.Request.FarmId, data.Field.Id, data.Request.CropTypeId,
+            new DateOnly(2026, 10, 1), new DateOnly(2027, 1, 1), 12000, "Farmer objective");
 
     private static PrePlantingAssessmentRequest ValidAssessment() =>
         new(

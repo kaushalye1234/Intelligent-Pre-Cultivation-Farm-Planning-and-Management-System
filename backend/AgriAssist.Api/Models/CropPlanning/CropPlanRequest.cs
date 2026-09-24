@@ -10,6 +10,12 @@ public sealed class CropPlanRequest : AuditableEntity
     public Field? Field { get; set; }
     public Guid CropTypeId { get; set; }
     public CropType? CropType { get; set; }
+    public Guid? CropVarietyId { get; set; }
+    public CropVariety? CropVariety { get; set; }
+    public CultivationSeason CultivationSeason { get; set; } = CultivationSeason.NotSure;
+    public Guid? PreviousCropTypeId { get; set; }
+    public CropType? PreviousCropType { get; set; }
+    public string PreviousKnownProblemsJson { get; set; } = "[]";
     public Guid RequestedByUserId { get; set; }
     public AppUser? RequestedByUser { get; set; }
     public DateOnly PreferredStartDate { get; set; }
@@ -18,6 +24,14 @@ public sealed class CropPlanRequest : AuditableEntity
     public string Objective { get; set; } = string.Empty;
     public CropPlanRequestStatus Status { get; set; } = CropPlanRequestStatus.Draft;
     public List<CropPlanRequestHistory> History { get; set; } = [];
+}
+
+public enum CultivationSeason
+{
+    NotSure = 0,
+    Maha = 1,
+    Yala = 2,
+    OffSeason = 3
 }
 
 public enum CropPlanRequestStatus
