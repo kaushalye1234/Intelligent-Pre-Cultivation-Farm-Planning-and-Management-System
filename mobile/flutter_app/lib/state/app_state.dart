@@ -18,6 +18,8 @@ class AppState extends ChangeNotifier {
   List<FieldOption> fields = [];
   List<CropTypeOption> cropTypes = [];
   List<CropVarietyOption> cropVarieties = [];
+  List<CropPlanRecord> cropPlans = [];
+  Map<String, CropPlanningWorkflowStatus> planWorkflows = {};
   List<FarmTaskRecord> tasks = [];
   List<IrrigationScheduleRecord> irrigationSchedules = [];
   List<ApprovalHistoryRecord> approvalHistory = [];
@@ -125,6 +127,8 @@ class AppState extends ChangeNotifier {
     user = null;
     passwordChangeSession = null;
     farmerOnboarding = null;
+    cropPlans = [];
+    planWorkflows = {};
     notifyListeners();
   }
 
@@ -170,11 +174,30 @@ class AppState extends ChangeNotifier {
     fields = await _apiClient.fields();
     cropTypes = await _apiClient.cropTypes();
     cropVarieties = await _apiClient.cropVarieties();
+    cropPlans = await _apiClient.cropPlans();
+    final workflowEntries = await Future.wait(
+      cropPlans.map((plan) async {
+        try {
+          final status = await _apiClient.cropPlanningWorkflowStatus(plan.id);
+          return MapEntry(plan.id, status);
+        } on ApiException catch (error) {
+          if (error.statusCode == 404) return null;
+          rethrow;
+        }
+      }),
+    );
+    planWorkflows = {
+      for (final entry in workflowEntries)
+        if (entry != null) entry.key: entry.value,
+    };
     tasks = await _apiClient.tasks();
     irrigationSchedules = await _apiClient.irrigationSchedules();
     approvalHistory = await _apiClient.approvalHistory();
     notifyListeners();
   }
+
+  Future<ApprovedWorkflowDetail> approvedWorkflowDetail(String workflowId) =>
+      _apiClient.approvedWorkflowDetail(workflowId);
 
   Future<void> _loadAuthenticatedLanding() async {
     if (user?.role != 1) {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../state/app_state.dart';
+import 'crop_plan_list.dart';
 
 class CropPlanScreen extends StatefulWidget {
   const CropPlanScreen({super.key});
@@ -107,7 +108,7 @@ class _CropPlanScreenState extends State<CropPlanScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           Text(
-            'Create crop plan',
+            'New Crop Plan',
             style: Theme.of(context).textTheme.headlineSmall,
           ),
           const SizedBox(height: 4),
@@ -366,6 +367,8 @@ class _CropPlanScreenState extends State<CropPlanScreen> {
           ),
           const SizedBox(height: 12),
           _WorkflowSummaryCard(state: state),
+          const SizedBox(height: 24),
+          const CropPlanList(),
         ],
       ),
     );

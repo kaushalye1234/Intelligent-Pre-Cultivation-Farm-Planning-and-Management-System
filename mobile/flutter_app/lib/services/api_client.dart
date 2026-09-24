@@ -155,14 +155,26 @@ class ApiClient {
     return items.map(CropVarietyOption.fromJson).toList();
   }
 
+  Future<List<CropPlanRecord>> cropPlans() async {
+    final items = await _allItems('/crop-planning/requests');
+    return items.map(CropPlanRecord.fromJson).toList();
+  }
+
+  Future<ApprovedWorkflowDetail> approvedWorkflowDetail(
+    String workflowId,
+  ) async {
+    final response = await _get('/task-approval/workflows/$workflowId');
+    return ApprovedWorkflowDetail.fromJson(response);
+  }
+
   Future<List<FarmTaskRecord>> tasks() async {
-    final response = await _get('/task-approval/tasks?pageSize=50');
-    return _items(response).map(FarmTaskRecord.fromJson).toList();
+    final items = await _allItems('/task-approval/tasks');
+    return items.map(FarmTaskRecord.fromJson).toList();
   }
 
   Future<List<IrrigationScheduleRecord>> irrigationSchedules() async {
-    final response = await _get('/task-approval/schedules?pageSize=50');
-    return _items(response).map(IrrigationScheduleRecord.fromJson).toList();
+    final items = await _allItems('/task-approval/schedules');
+    return items.map(IrrigationScheduleRecord.fromJson).toList();
   }
 
   Future<List<ApprovalHistoryRecord>> approvalHistory() async {

@@ -26,7 +26,7 @@ void main() {
     useTallTestViewport(tester);
     await tester.pumpWidget(cropPlanHarness());
 
-    expect(find.text('Create crop plan'), findsOneWidget);
+    expect(find.text('New Crop Plan'), findsOneWidget);
     expect(find.text('Start AI crop planning'), findsOneWidget);
     expect(find.text('No AI workflow started'), findsOneWidget);
   });
