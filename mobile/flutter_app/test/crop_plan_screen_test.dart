@@ -20,29 +20,31 @@ void useTallTestViewport(WidgetTester tester) {
 }
 
 void main() {
-  testWidgets('shows AI crop planning form and empty workflow state', (
+  testWidgets('shows the first guided crop planning step', (tester) async {
+    useTallTestViewport(tester);
+    await tester.pumpWidget(cropPlanHarness());
+
+    expect(find.text('New Crop Plan'), findsOneWidget);
+    expect(find.text('Farm & Crop'), findsOneWidget);
+    expect(find.text('Continue'), findsOneWidget);
+    expect(find.text('Start AI crop planning'), findsNothing);
+    expect(find.text('Human review is part of the journey'), findsOneWidget);
+  });
+
+  testWidgets('does not advance without the required farm, field and crop', (
     tester,
   ) async {
     useTallTestViewport(tester);
     await tester.pumpWidget(cropPlanHarness());
 
-    expect(find.text('New Crop Plan'), findsOneWidget);
-    expect(find.text('Start AI crop planning'), findsOneWidget);
-    expect(find.text('No AI workflow started'), findsOneWidget);
-  });
-
-  testWidgets('validates required crop planning fields', (tester) async {
-    useTallTestViewport(tester);
-    await tester.pumpWidget(cropPlanHarness());
-
-    await tester.ensureVisible(find.text('Start AI crop planning'));
-    await tester.tap(find.text('Start AI crop planning'));
+    await tester.ensureVisible(find.text('Continue'));
+    await tester.tap(find.text('Continue'));
     await tester.pump();
 
     expect(find.text('Farm is required'), findsOneWidget);
     expect(find.text('Field is required'), findsOneWidget);
     expect(find.text('Crop is required'), findsOneWidget);
-    expect(find.text('Required'), findsAtLeastNWidgets(3));
+    expect(find.text('Farm & Crop'), findsOneWidget);
   });
 
   testWidgets('farm selection loads location and limits the field list', (

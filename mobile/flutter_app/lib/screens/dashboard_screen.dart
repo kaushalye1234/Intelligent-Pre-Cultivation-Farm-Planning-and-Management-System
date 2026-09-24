@@ -216,7 +216,9 @@ class DashboardScreen extends StatelessWidget {
                       ),
                       JourneyStatusPill(
                         workflow?.statusLabel ?? currentPlan.statusLabel,
-                        tone: _planTone(currentPlan),
+                        tone: workflow == null
+                            ? _planTone(currentPlan)
+                            : _workflowTone(workflow.status),
                       ),
                     ],
                   ),
@@ -294,6 +296,13 @@ class DashboardScreen extends StatelessWidget {
       ),
     );
   }
+
+  JourneyTone _workflowTone(int status) => switch (status) {
+    4 => JourneyTone.success,
+    5 || 9 => JourneyTone.danger,
+    7 || 8 || 10 || 11 => JourneyTone.warning,
+    _ => JourneyTone.neutral,
+  };
 
   JourneyTone _planTone(CropPlanRecord plan) => switch (plan.status) {
     4 => JourneyTone.success,

@@ -3,8 +3,89 @@ import 'package:provider/provider.dart';
 
 import '../models/api_models.dart';
 import '../state/app_state.dart';
+import '../ui/agri_theme.dart';
+import '../ui/journey_date.dart';
+import '../ui/journey_widgets.dart';
+import 'approved_crop_plan_screen.dart';
+import 'crop_plan_screen.dart';
+import 'planning_progress_screen.dart';
+
+export 'approved_crop_plan_screen.dart' show ApprovedCropPlanScreen;
 
 enum _PlanFilter { all, inProgress, approved, rejected }
+
+class PlansHomeScreen extends StatelessWidget {
+  const PlansHomeScreen({super.key});
+
+  void _createPlan(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => Scaffold(
+          appBar: AppBar(title: const Text('New crop plan')),
+          body: const CropPlanScreen(),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.watch<AppState>();
+    return RefreshIndicator(
+      onRefresh: () async {
+        await state.refresh();
+        await state.refreshLastCropPlanningWorkflow();
+      },
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+        children: [
+          const JourneyPageIntro(
+            eyebrow: 'YOUR GROWING JOURNEY',
+            title: 'Crop plans',
+            subtitle:
+                'See what is growing, what is in review, and what comes next.',
+          ),
+          const SizedBox(height: 20),
+          JourneyCard(
+            color: AgriColors.sage,
+            child: Row(
+              children: [
+                const CircleAvatar(
+                  backgroundColor: AgriColors.surface,
+                  child: Icon(Icons.add_rounded, color: AgriColors.forest),
+                ),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Planning a new crop?',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        'Start with a few clear steps.',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Create Crop Plan',
+                  onPressed: () => _createPlan(context),
+                  icon: const Icon(Icons.arrow_forward_rounded),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 25),
+          const CropPlanList(),
+        ],
+      ),
+    );
+  }
+}
 
 class CropPlanList extends StatefulWidget {
   const CropPlanList({super.key});
@@ -32,14 +113,17 @@ class _CropPlanListState extends State<CropPlanList> {
             )
             .toList()
           ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('My Crop Plans', style: Theme.of(context).textTheme.headlineSmall),
-        const SizedBox(height: 8),
+        const JourneySectionHeading(
+          title: 'My Crop Plans',
+          subtitle: 'Follow each request from planning to decision.',
+        ),
+        const SizedBox(height: 13),
         Wrap(
           spacing: 8,
+          runSpacing: 8,
           children: [
             for (final option in _PlanFilter.values)
               ChoiceChip(
@@ -54,12 +138,17 @@ class _CropPlanListState extends State<CropPlanList> {
               ),
           ],
         ),
+        const SizedBox(height: 14),
         if (plans.isEmpty)
-          const Card(
-            child: ListTile(title: Text('No crop plans in this view')),
+          const JourneyEmptyState(
+            icon: Icons.spa_outlined,
+            title: 'No crop plans in this view',
+            message: 'Plans will appear here when they match this status.',
           ),
-        for (final plan in plans)
+        for (final plan in plans) ...[
           _PlanCard(plan: plan, workflow: state.planWorkflows[plan.id]),
+          const SizedBox(height: 11),
+        ],
       ],
     );
   }
@@ -86,241 +175,143 @@ class _PlanCard extends StatelessWidget {
     final farm = state.farms
         .where((item) => item.id == plan.farmId)
         .firstOrNull;
-    final canOpen = plan.status == 4 && workflow?.status == 4;
+    final canOpenFinal = plan.status == 4 && workflow?.status == 4;
+    final completed =
+        workflow?.steps.where((step) => step.status == 3).length ?? 0;
+    final total = workflow?.steps.length ?? 0;
     final title = [
       crop?.name ?? 'Crop',
       if (variety != null) variety.name,
-    ].join(' · ');
+    ].join(' - ');
+    final status = workflow?.statusLabel ?? plan.statusLabel;
+    final tone = workflow != null
+        ? switch (workflow!.status) {
+            4 => JourneyTone.success,
+            5 || 9 => JourneyTone.danger,
+            7 || 8 || 10 || 11 => JourneyTone.warning,
+            _ => JourneyTone.neutral,
+          }
+        : switch (plan.status) {
+            4 => JourneyTone.success,
+            5 => JourneyTone.danger,
+            6 => JourneyTone.neutral,
+            _ => JourneyTone.warning,
+          };
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(title),
-              subtitle: Text(
-                '${farm?.name ?? 'Farm'} · ${field?.name ?? 'Field'} · ${plan.preferredStartDate}',
+    void openDetail() {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => canOpenFinal
+              ? ApprovedCropPlanScreen(
+                  plan: plan,
+                  workflowId: workflow!.workflowId,
+                )
+              : PlanningProgressScreen(planId: plan.id),
+        ),
+      );
+    }
+
+    return JourneyCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const CircleAvatar(
+                backgroundColor: AgriColors.sage,
+                child: Icon(Icons.spa_outlined, color: AgriColors.forest),
               ),
-              trailing: Chip(label: Text(plan.statusLabel)),
-              onTap: canOpen
-                  ? () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => ApprovedCropPlanScreen(
-                          plan: plan,
-                          workflowId: workflow!.workflowId,
-                        ),
-                      ),
-                    )
-                  : null,
-            ),
-            if (plan.objective.isNotEmpty) Text(plan.objective),
-            if (workflow != null) ...[
-              const SizedBox(height: 8),
-              Text('Workflow: ${workflow!.statusLabel}'),
-              if (workflow!.currentStep.isNotEmpty)
-                Text('Current step: ${workflow!.currentStep}'),
-              if (workflow!.steps.isNotEmpty)
-                Wrap(
-                  spacing: 6,
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    for (final step in workflow!.steps)
-                      Chip(
-                        label: Text(
-                          '${step.stepName}: ${_stepStatus(step.status)}',
-                        ),
-                      ),
+                    Text(title, style: Theme.of(context).textTheme.titleLarge),
+                    const SizedBox(height: 3),
+                    Text(
+                      [
+                        farm?.name ?? 'Farm',
+                        field?.name ?? 'Field',
+                      ].join(' / '),
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
                   ],
                 ),
-            ] else
-              const Text('Workflow has not started'),
-            if (canOpen)
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => ApprovedCropPlanScreen(
-                        plan: plan,
-                        workflowId: workflow!.workflowId,
-                      ),
-                    ),
-                  ),
-                  child: const Text('View final plan →'),
-                ),
               ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _stepStatus(int status) => switch (status) {
-    1 => 'Pending',
-    2 => 'Running',
-    3 => 'Completed',
-    4 => 'Failed',
-    5 => 'Skipped',
-    _ => 'Unknown',
-  };
-}
-
-class ApprovedCropPlanScreen extends StatelessWidget {
-  const ApprovedCropPlanScreen({
-    super.key,
-    required this.plan,
-    required this.workflowId,
-  });
-
-  final CropPlanRecord plan;
-  final String workflowId;
-
-  @override
-  Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
-    return Scaffold(
-      appBar: AppBar(title: const Text('Final crop plan')),
-      body: FutureBuilder<ApprovedWorkflowDetail>(
-        future: state.approvedWorkflowDetail(workflowId),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return const Center(
-              child: Text(
-                'Could not load this approved plan. Pull to refresh Plans and try again.',
-              ),
-            );
-          }
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final detail = snapshot.data!;
-          if (detail.status != 4 ||
-              detail.approvedAt == null ||
-              detail.workflowId != workflowId) {
-            return const Center(
-              child: Text('Approved plan details are not available yet.'),
-            );
-          }
-          final crop = state.cropTypes
-              .where((item) => item.id == plan.cropTypeId)
-              .firstOrNull;
-          final variety = state.cropVarieties
-              .where((item) => item.id == plan.cropVarietyId)
-              .firstOrNull;
-          final field = state.fields
-              .where((item) => item.id == plan.fieldId)
-              .firstOrNull;
-          final farm = state.farms
-              .where((item) => item.id == plan.farmId)
-              .firstOrNull;
-          final tasks = state.tasks
-              .where((item) => item.generatedByWorkflowId == workflowId)
-              .toList();
-          final schedules = state.irrigationSchedules
-              .where((item) => item.generatedByWorkflowId == workflowId)
-              .toList();
-
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Text(
-                [
-                  crop?.name ?? 'Crop',
-                  if (variety != null) variety.name,
-                ].join(' · '),
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-              const SizedBox(height: 8),
-              Text('Farm: ${farm?.name ?? 'Unknown'}'),
-              Text('Field: ${field?.name ?? 'Unknown'}'),
-              Text(
-                'Season: ${switch (plan.cultivationSeason) {
-                  1 => 'Maha',
-                  2 => 'Yala',
-                  3 => 'Other / Off-season',
-                  _ => 'Not sure',
-                }}',
-              ),
-              Text('Planting: ${plan.preferredStartDate}'),
-              Text('Expected end: ${plan.preferredEndDate}'),
-              Text('Budget: LKR ${plan.budget}'),
-              Text('Approved: ${detail.approvedAt!.split('T').first}'),
-              const SizedBox(height: 12),
-              Text('Objective', style: Theme.of(context).textTheme.titleMedium),
-              Text(plan.objective),
-              if (detail.fieldSummary != null) ...[
-                const SizedBox(height: 12),
-                Text(
-                  'Field analysis',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                Text(detail.fieldSummary!),
-              ],
-              if (detail.weatherSummary != null) ...[
-                const SizedBox(height: 12),
-                Text(
-                  'Weather and resources',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                Text(detail.weatherSummary!),
-              ],
-              if (detail.warnings.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Text(
-                  'Warnings',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                for (final warning in detail.warnings) Text('• $warning'),
-              ],
-              if (detail.recommendations.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Text(
-                  'Recommendations',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                for (final recommendation in detail.recommendations)
-                  Text('• $recommendation'),
-              ],
-              const SizedBox(height: 16),
-              Text(
-                'Approved tasks',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              if (tasks.isEmpty)
-                const Text('No workflow-linked tasks are available.'),
-              for (final task in tasks)
-                Card(
-                  child: ListTile(
-                    title: Text(task.title),
-                    subtitle: Text(
-                      '${task.description}\nDue: ${task.dueAt.split('T').first}',
-                    ),
-                    isThreeLine: true,
-                  ),
-                ),
-              const SizedBox(height: 12),
-              Text(
-                'Irrigation schedule',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              if (schedules.isEmpty)
-                const Text(
-                  'No workflow-linked irrigation schedule is available.',
-                ),
-              for (final schedule in schedules)
-                Card(
-                  child: ListTile(
-                    title: Text(
-                      '${schedule.scheduledAt.split('T').first} · ${schedule.durationMinutes} minutes',
-                    ),
-                    subtitle: Text(schedule.notes),
-                  ),
-                ),
             ],
-          );
-        },
+          ),
+          const SizedBox(height: 13),
+          JourneyStatusPill(status, tone: tone),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              const Icon(
+                Icons.event_outlined,
+                size: 18,
+                color: AgriColors.muted,
+              ),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  'Planting ${journeyDate(plan.preferredStartDate)}',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ),
+            ],
+          ),
+          if (plan.objective.isNotEmpty) ...[
+            const SizedBox(height: 9),
+            Text(
+              plan.objective,
+              style: Theme.of(context).textTheme.bodyLarge,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+          if (workflow?.currentStep.isNotEmpty == true) ...[
+            const SizedBox(height: 10),
+            Text(
+              'Current stage: ${workflow!.currentStep}',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ],
+          if (total > 0) ...[
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                value: completed / total,
+                minHeight: 5,
+                backgroundColor: AgriColors.border,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '$completed of $total stages completed',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ],
+          if (workflow?.warnings.isNotEmpty == true) ...[
+            const SizedBox(height: 10),
+            Text(
+              '${workflow!.warnings.length} workflow warning(s)',
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: AgriColors.amber),
+            ),
+          ],
+          const SizedBox(height: 12),
+          const Divider(),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: openDetail,
+              icon: const Icon(Icons.arrow_forward_rounded),
+              label: Text(canOpenFinal ? 'View final plan' : 'View progress'),
+            ),
+          ),
+        ],
       ),
     );
   }

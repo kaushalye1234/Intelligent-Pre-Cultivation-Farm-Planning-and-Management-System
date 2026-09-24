@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../state/app_state.dart';
 import '../ui/agri_theme.dart';
 import '../ui/journey_widgets.dart';
+import 'crop_plan_list.dart';
 import 'crop_plan_screen.dart';
 import 'dashboard_screen.dart';
 import 'status_screen.dart';
@@ -38,7 +39,7 @@ class _HomeShellState extends State<HomeShell> {
         onOpenPlans: () => setState(() => _index = 1),
         onOpenTasks: () => setState(() => _index = 2),
       ),
-      const CropPlanScreen(),
+      const PlansHomeScreen(),
       const StatusScreen(),
     ];
     return Scaffold(

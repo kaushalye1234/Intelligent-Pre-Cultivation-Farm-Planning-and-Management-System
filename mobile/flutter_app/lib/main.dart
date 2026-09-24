@@ -8,6 +8,7 @@ import 'screens/home_shell.dart';
 import 'screens/login_screen.dart';
 import 'state/app_state.dart';
 import 'ui/agri_theme.dart';
+import 'ui/journey_widgets.dart';
 
 void main() {
   runApp(const AgriAssistMobileApp());
@@ -71,38 +72,32 @@ class _StaffPortalRequired extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
-
-    return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 440),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.admin_panel_settings_outlined, size: 52),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Staff portal required',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'This account is for staff. Please use the React Staff Portal.',
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 24),
-                  OutlinedButton.icon(
-                    onPressed: state.logout,
-                    icon: const Icon(Icons.logout),
-                    label: const Text('Return to sign in'),
-                  ),
-                ],
-              ),
+    return JourneyAuthLayout(
+      eyebrow: 'ACCOUNT TYPE',
+      title: 'Staff portal required',
+      subtitle: 'This account is for staff. Please use the React Staff Portal.',
+      child: JourneyCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Icon(
+              Icons.admin_panel_settings_outlined,
+              color: AgriColors.forest,
+              size: 38,
             ),
-          ),
+            const SizedBox(height: 12),
+            Text(
+              'Your staff workspace is available in the web portal.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 18),
+            OutlinedButton.icon(
+              onPressed: state.logout,
+              icon: const Icon(Icons.logout_rounded),
+              label: const Text('Return to sign in'),
+            ),
+          ],
         ),
       ),
     );
@@ -115,55 +110,30 @@ class _OnboardingStatusUnavailable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Farmer setup'),
-        actions: [
-          IconButton(
-            tooltip: 'Sign out',
-            onPressed: state.isBusy ? null : state.logout,
-            icon: const Icon(Icons.logout),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 440),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.cloud_off_outlined, size: 48),
-                  const SizedBox(height: 16),
-                  Text(
-                    'We could not load your setup status.',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  if (state.error != null) ...[
-                    const SizedBox(height: 8),
-                    Text(state.error!, textAlign: TextAlign.center),
-                  ],
-                  const SizedBox(height: 24),
-                  FilledButton.icon(
-                    onPressed: state.isBusy
-                        ? null
-                        : state.retryAuthenticatedLanding,
-                    icon: state.isBusy
-                        ? const SizedBox.square(
-                            dimension: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.refresh),
-                    label: const Text('Try again'),
-                  ),
-                ],
-              ),
-            ),
-          ),
+    return JourneyAuthLayout(
+      eyebrow: 'FARM SETUP',
+      title: 'Setup status unavailable',
+      subtitle: 'We could not load your setup status.',
+      actions: [
+        IconButton(
+          tooltip: 'Sign out',
+          onPressed: state.isBusy ? null : state.logout,
+          icon: const Icon(Icons.logout_rounded),
+        ),
+      ],
+      child: JourneyEmptyState(
+        icon: Icons.cloud_off_outlined,
+        title: 'Your setup is still here',
+        message: state.error ?? 'Try again to continue setting up your farm.',
+        action: FilledButton.icon(
+          onPressed: state.isBusy ? null : state.retryAuthenticatedLanding,
+          icon: state.isBusy
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.refresh_rounded),
+          label: const Text('Try again'),
         ),
       ),
     );
