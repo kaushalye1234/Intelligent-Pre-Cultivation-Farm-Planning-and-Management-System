@@ -3,7 +3,7 @@
   gap: 18px;
   padding: clamp(20px, 3vw, 30px);
   background:
-    linear-gradient(135deg, rgba(220, 235, 216, 0.45), transparent 42%),
+    linear-gradient(135deg, var(--color-primary-soft), transparent 42%),
     var(--color-surface);
   border: 1px solid var(--color-border);
   border-top: 4px solid var(--color-primary);
@@ -54,7 +54,7 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
   padding: 14px;
-  background: rgba(247, 249, 243, 0.8);
+  background: var(--color-surface-muted);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
 }
@@ -89,7 +89,7 @@
   min-width: 0;
   margin: 0;
   padding: 18px;
-  background: rgba(255, 255, 255, 0.62);
+  background: var(--color-surface-raised);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
 }
@@ -156,7 +156,7 @@
   display: grid;
   gap: 8px;
   padding: 16px;
-  background: rgba(244, 230, 189, 0.32);
+  background: var(--tone-warn-bg);
   border: 1px dashed var(--color-border-strong);
   border-radius: var(--radius-md);
   font-weight: 800;
@@ -175,7 +175,7 @@
 .preplant-readonly > div,
 .preplant-result dl > div {
   padding: 14px;
-  background: rgba(240, 234, 223, 0.58);
+  background: var(--color-surface-muted);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
 }
@@ -211,8 +211,8 @@
 
 .preplant-result {
   padding: 18px;
-  background: #f6f5ed;
-  border: 1px solid #d5ddc8;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--tone-good-border);
   border-radius: var(--radius-md);
 }
 
