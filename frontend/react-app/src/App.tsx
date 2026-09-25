@@ -1,4 +1,4 @@
-﻿import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthContext'
 import { Layout } from './components/Layout'
 import { ProtectedRoute } from './components/ProtectedRoute'
@@ -23,7 +23,9 @@ import { TaskApprovalPage } from './pages/TaskApprovalPage'
 import { WorkflowReviewPage } from './pages/WorkflowReviewPage'
 import { UsersPage } from './pages/UsersPage'
 import { Roles, staffRoles } from './routing'
+import './styles/theme.css'
 import './styles.css'
+import './styles/public.css'
 
 export function AppRoutes() {
   return (
