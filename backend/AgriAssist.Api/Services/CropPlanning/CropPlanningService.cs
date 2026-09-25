@@ -901,6 +901,51 @@ public sealed class CropPlanningService(
             .FirstOrDefault(item => item.AgentName == FieldAnalysisAgentName && item.StepName == FieldAnalysisStepName)
             ?? throw NotFound("Field analysis step");
 
+        var assessments = await dbContext.FieldInspections.AsNoTracking()
+            .Where(item =>
+                item.CropPlanRequestId == requestId &&
+                item.Purpose == InspectionPurpose.PrePlanting &&
+                !item.IsDeleted)
+            .ToListAsync(cancellationToken);
+        if (assessments.Count == 0)
+        {
+            throw new ApiException(HttpStatusCode.Conflict, "PREPLANT_ASSESSMENT_REQUIRED", "A linked pre-planting assessment must be saved before field analysis can run.");
+        }
+        if (assessments.Count != 1)
+        {
+            throw new ApiException(HttpStatusCode.Conflict, "PREPLANT_ASSESSMENT_LINKAGE_INVALID", "Exactly one linked pre-planting assessment is required for field analysis.");
+        }
+
+        var assessment = assessments[0];
+        var actor = RequireUser();
+        if (assessment.CropPlanRequestId != planRequest.Id || assessment.FieldId != planRequest.FieldId.Value)
+        {
+            throw new ApiException(HttpStatusCode.Conflict, "PREPLANT_ASSESSMENT_LINKAGE_INVALID", "The pre-planting assessment does not match the exact crop plan and field.");
+        }
+        if (assessment.InspectorUserId != actor)
+        {
+            throw new ApiException(HttpStatusCode.Forbidden, "PREPLANT_ASSESSMENT_OWNER_REQUIRED", "Only the Field Officer who owns the pre-planting assessment can run its field analysis.");
+        }
+        if (assessment.Status != InspectionStatus.Completed || !assessment.CompletedAt.HasValue)
+        {
+            throw new ApiException(HttpStatusCode.Conflict, "PREPLANT_ASSESSMENT_NOT_SUBMITTED", "The linked pre-planting assessment must be submitted before field analysis can run.");
+        }
+
+        var observations = await dbContext.InspectionObservations.AsNoTracking()
+            .Where(item => item.FieldInspectionId == assessment.Id && !item.IsDeleted)
+            .OrderBy(item => item.CreatedAt)
+            .ToListAsync(cancellationToken);
+        var assessmentErrors = new List<string>();
+        var persistedAssessment = ReadAssessmentRequest(observations, assessmentErrors);
+        assessmentErrors.AddRange(PrePlantingAssessmentRules.ValidateSubmission(persistedAssessment));
+        if (assessmentErrors.Count > 0)
+        {
+            throw new ApiException(
+                HttpStatusCode.Conflict,
+                "PREPLANT_ASSESSMENT_INVALID",
+                "The submitted pre-planting assessment is no longer valid: " + string.Join(" ", assessmentErrors.Distinct(StringComparer.Ordinal)));
+        }
+
         if (step.Status == AgentStepStatus.Completed)
         {
             var completedOutput = ReadFieldAnalysisOutput(step.OutputJson, workflow.Id, ["Field analysis was already completed."]);
@@ -911,20 +956,13 @@ public sealed class CropPlanningService(
         {
             throw new ApiException(HttpStatusCode.Conflict, "FIELD_ANALYSIS_ALREADY_RUNNING", "Field analysis is already running for this workflow.");
         }
-
-        var assessment = await dbContext.FieldInspections.AsNoTracking()
-            .SingleOrDefaultAsync(item =>
-                item.CropPlanRequestId == requestId &&
-                item.Purpose == InspectionPurpose.PrePlanting &&
-                !item.IsDeleted,
-                cancellationToken);
-        if (assessment is null)
+        if (step.Status is not (AgentStepStatus.Pending or AgentStepStatus.Failed))
         {
-            throw new ApiException(HttpStatusCode.Conflict, "PREPLANT_ASSESSMENT_REQUIRED", "A linked pre-planting assessment must be saved before field analysis can run.");
+            throw new ApiException(HttpStatusCode.Conflict, "FIELD_ANALYSIS_STATE_INVALID", "Field analysis cannot run from its current state.");
         }
-        if (assessment.FieldId != planRequest.FieldId.Value || assessment.Status != InspectionStatus.Completed)
+        if (workflow.CurrentStep != FieldAnalysisAgentName || workflow.CompletedAt.HasValue)
         {
-            throw new ApiException(HttpStatusCode.Conflict, "PREPLANT_ASSESSMENT_NOT_SUBMITTED", "The linked pre-planting assessment must be submitted before field analysis can run.");
+            throw new ApiException(HttpStatusCode.Conflict, "FIELD_ANALYSIS_STAGE_NOT_ACTIVE", "The workflow is not waiting for CropFieldAnalysisAgent.");
         }
 
         var cropCycleId = await dbContext.CropCycles.AsNoTracking()
@@ -949,76 +987,104 @@ public sealed class CropPlanningService(
             cropReferenceProfileId,
             step.Id);
 
-        var userId = RequireUser();
+        var isRetry = step.Status == AgentStepStatus.Failed;
         step.InputJson = JsonSerializer.Serialize(input, JsonOptions);
         step.Status = AgentStepStatus.Running;
         step.StartedAt = DateTime.UtcNow;
+        step.CompletedAt = null;
+        if (isRetry) step.RetryCount++;
         step.ErrorCode = null;
         step.ErrorMessageSafe = null;
         workflow.Status = AgentWorkflowStatus.Running;
         workflow.CurrentStep = FieldAnalysisAgentName;
-        await dbContext.SaveChangesAsync(cancellationToken);
+        workflow.CompletedAt = null;
+        workflow.Version = checked(workflow.Version + 1);
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new ApiException(HttpStatusCode.Conflict, "FIELD_ANALYSIS_CONCURRENCY_CONFLICT", "Another request changed this workflow before field analysis could start.");
+        }
+
+        var acquiredVersion = workflow.Version;
+        FieldAnalysisOutput output;
+        string? providerErrorCode = null;
+        string? providerErrorMessage = null;
 
         try
         {
-            var output = await agenticAIClient.RunFieldAnalysisAsync(input, cancellationToken);
-            var validationErrors = await ValidateFieldAnalysisOutputAsync(workflow.Id, assessment.Id, output, cancellationToken);
-            var isValid = validationErrors.Count == 0;
-            var safeOutput = isValid ? output : CreateFieldAnalysisSafeFailureOutput(workflow.Id, validationErrors);
-
-            step.OutputJson = JsonSerializer.Serialize(safeOutput, JsonOptions);
-            step.Status = isValid && !safeOutput.Status.Equals("SafeFailure", StringComparison.OrdinalIgnoreCase) ? AgentStepStatus.Completed : AgentStepStatus.Failed;
-            step.CompletedAt = DateTime.UtcNow;
-            step.ErrorCode = isValid ? (safeOutput.Status.Equals("SafeFailure", StringComparison.OrdinalIgnoreCase) ? "AI_SAFE_FAILURE" : null) : "AI_RESPONSE_INVALID";
-            step.ErrorMessageSafe = isValid ? (safeOutput.Status.Equals("SafeFailure", StringComparison.OrdinalIgnoreCase) ? safeOutput.Warnings.FirstOrDefault() : null) : "The field-analysis response failed validation.";
-
-            dbContext.AgentValidationResults.Add(new AgentValidationResult
-            {
-                AgentWorkflowId = workflow.Id,
-                ValidatorName = "CropFieldAnalysisOutputValidator",
-                IsValid = isValid,
-                ErrorsJson = JsonSerializer.Serialize(validationErrors, JsonOptions),
-                CreatedByUserId = userId
-            });
-
-            if (step.Status == AgentStepStatus.Completed)
-            {
-                workflow.Status = AgentWorkflowStatus.Pending;
-                workflow.CurrentStep = WeatherResourceAgentName;
-            }
-            else
-            {
-                workflow.Status = AgentWorkflowStatus.Failed;
-                workflow.CurrentStep = "SafeFailure";
-                workflow.CompletedAt = DateTime.UtcNow;
-            }
-
-            await dbContext.SaveChangesAsync(cancellationToken);
-            return new FieldAnalysisRunResponse(workflow.Id, planRequest.Id, step.Id, safeOutput.Status, safeOutput.RequiresHumanReview, safeOutput.Warnings);
+            output = await agenticAIClient.RunFieldAnalysisAsync(input, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception)
         {
             var warnings = new[] { "AI service is unavailable or timed out during field analysis. No field conclusions were generated." };
-            var safeOutput = CreateFieldAnalysisSafeFailureOutput(workflow.Id, warnings);
-            step.Status = AgentStepStatus.Failed;
-            step.OutputJson = JsonSerializer.Serialize(safeOutput, JsonOptions);
-            step.CompletedAt = DateTime.UtcNow;
-            step.ErrorCode = "AI_SERVICE_UNAVAILABLE";
-            step.ErrorMessageSafe = warnings[0];
-            workflow.Status = AgentWorkflowStatus.Failed;
-            workflow.CurrentStep = "SafeFailure";
-            workflow.CompletedAt = DateTime.UtcNow;
-            dbContext.AgentValidationResults.Add(new AgentValidationResult
-            {
-                AgentWorkflowId = workflow.Id,
-                ValidatorName = "CropFieldAnalysisAvailability",
-                IsValid = false,
-                ErrorsJson = JsonSerializer.Serialize(warnings, JsonOptions),
-                CreatedByUserId = userId
-            });
-            await dbContext.SaveChangesAsync(cancellationToken);
-            return new FieldAnalysisRunResponse(workflow.Id, planRequest.Id, step.Id, safeOutput.Status, true, warnings);
+            output = CreateFieldAnalysisSafeFailureOutput(workflow.Id, warnings);
+            providerErrorCode = "AI_SERVICE_UNAVAILABLE";
+            providerErrorMessage = warnings[0];
         }
+
+        await using var transaction = await BeginCapacityTransactionAsync(cancellationToken);
+        var lease = await dbContext.AgentWorkflows.AsNoTracking()
+            .Where(item => item.Id == workflow.Id)
+            .Select(item => new { item.Version, item.CurrentStep, item.CompletedAt })
+            .SingleAsync(cancellationToken);
+        var persistedStepStatus = await dbContext.AgentSteps.AsNoTracking()
+            .Where(item => item.Id == step.Id)
+            .Select(item => item.Status)
+            .SingleAsync(cancellationToken);
+        if (lease.Version != acquiredVersion || lease.CurrentStep != FieldAnalysisAgentName || lease.CompletedAt.HasValue || persistedStepStatus != AgentStepStatus.Running)
+        {
+            throw new ApiException(HttpStatusCode.Conflict, "FIELD_ANALYSIS_LEASE_LOST", "The field-analysis run no longer owns the workflow step.");
+        }
+
+        var validationErrors = providerErrorCode is null
+            ? await ValidateFieldAnalysisOutputAsync(workflow.Id, assessment.Id, output, cancellationToken)
+            : [providerErrorMessage!];
+        var isValid = providerErrorCode is null && validationErrors.Count == 0;
+        var safeOutput = isValid ? output : CreateFieldAnalysisSafeFailureOutput(workflow.Id, validationErrors);
+        var isSuccessful = isValid && safeOutput.Status.Equals("Analyzed", StringComparison.OrdinalIgnoreCase);
+
+        step.OutputJson = JsonSerializer.Serialize(safeOutput, JsonOptions);
+        step.Status = isSuccessful ? AgentStepStatus.Completed : AgentStepStatus.Failed;
+        step.CompletedAt = DateTime.UtcNow;
+        step.ErrorCode = isSuccessful
+            ? null
+            : providerErrorCode ?? (isValid ? "AI_SAFE_FAILURE" : "AI_RESPONSE_INVALID");
+        step.ErrorMessageSafe = isSuccessful
+            ? null
+            : providerErrorMessage ?? (isValid ? safeOutput.Warnings.FirstOrDefault() : "The field-analysis response failed validation.");
+
+        dbContext.AgentValidationResults.Add(new AgentValidationResult
+        {
+            AgentWorkflowId = workflow.Id,
+            ValidatorName = providerErrorCode is null ? "CropFieldAnalysisOutputValidator" : "CropFieldAnalysisAvailability",
+            IsValid = isSuccessful,
+            ErrorsJson = JsonSerializer.Serialize(validationErrors, JsonOptions),
+            CreatedByUserId = actor
+        });
+
+        workflow.Status = AgentWorkflowStatus.Pending;
+        workflow.CurrentStep = isSuccessful ? WeatherResourceAgentName : FieldAnalysisAgentName;
+        workflow.CompletedAt = null;
+        workflow.Version = checked(workflow.Version + 1);
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
+            throw new ApiException(HttpStatusCode.Conflict, "FIELD_ANALYSIS_CONCURRENCY_CONFLICT", "Another request changed this workflow while field analysis was completing.");
+        }
+
+        return new FieldAnalysisRunResponse(workflow.Id, planRequest.Id, step.Id, safeOutput.Status, safeOutput.RequiresHumanReview, safeOutput.Warnings);
     }
     public async Task<CropPlanningWorkflowStatusResponse> GetWorkflowStatusAsync(Guid requestId, CancellationToken cancellationToken)
     {

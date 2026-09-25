@@ -179,22 +179,22 @@ public sealed class CropPlanningAiWorkflowTests
     {
         await using var db = NewDbContext();
         var data = await SeedPlanAsync(db, CropPlanRequestStatus.Submitted);
-        var inspection = new FieldInspection
+        await NewService(db, data.Farmer.Id, new PlannedAiClient())
+            .StartAiWorkflowAsync(data.Request.Id, CancellationToken.None);
+        var assessmentService = NewService(db, data.Farmer.Id, new PlannedAiClient(), ApplicationRole.FieldOfficer);
+        var saved = await assessmentService.SavePrePlantingAssessmentAsync(data.Request.Id, ValidAssessment(), CancellationToken.None);
+        await assessmentService.SubmitPrePlantingAssessmentAsync(data.Request.Id, CancellationToken.None);
+        var issue = new CropIssue
         {
-            FieldId = data.Field.Id,
-            CropPlanRequestId = data.Request.Id,
-            Purpose = InspectionPurpose.PrePlanting,
-            InspectorUserId = data.Farmer.Id,
-            ScheduledAt = DateTime.UtcNow.AddDays(-1),
-            CompletedAt = DateTime.UtcNow,
-            Status = InspectionStatus.Completed,
-            Summary = "Drainage risk observed near the low area."
+            FieldInspectionId = saved.InspectionId,
+            Title = "Field access constraint",
+            Description = "Equipment access is restricted near the lower boundary.",
+            Severity = CropIssueSeverity.High,
+            Status = CropIssueStatus.Open
         };
-        var issue = new CropIssue { FieldInspection = inspection, Title = "Leaf yellowing", Description = "Yellowing observed.", Severity = CropIssueSeverity.High, Status = CropIssueStatus.Open };
-        db.AddRange(inspection, issue);
+        db.Add(issue);
         await db.SaveChangesAsync();
-        var service = NewService(db, data.Farmer.Id, new FieldAnalysisAiClient(inspection.Id, issue.Id, data.Request.Id), ApplicationRole.FieldOfficer);
-        await service.StartAiWorkflowAsync(data.Request.Id, CancellationToken.None);
+        var service = NewService(db, data.Farmer.Id, new FieldAnalysisAiClient(saved.InspectionId, issue.Id, data.Request.Id), ApplicationRole.FieldOfficer);
 
         var result = await service.RunFieldAnalysisAsync(data.Request.Id, CancellationToken.None);
         var handoff = await service.GetMember3HandoffAsync(data.Request.Id, CancellationToken.None);
@@ -205,8 +205,119 @@ public sealed class CropPlanningAiWorkflowTests
         Assert.Equal("WeatherResourceAgent", workflow.CurrentStep);
         Assert.Contains(workflow.Steps, step => step.AgentName == "CropFieldAnalysisAgent" && step.Status == AgentStepStatus.Completed);
         Assert.Equal("High", handoff.Priority);
-        Assert.Contains(inspection.Id, handoff.EvidenceInspectionIds);
+        Assert.Contains(saved.InspectionId, handoff.EvidenceInspectionIds);
         Assert.Equal(issue.Id, handoff.OpenIssues.Single().IssueId);
+    }
+
+    [Fact]
+    public async Task Safe_failure_remains_retryable_and_successful_retry_advances_exactly_once()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.Submitted);
+        await NewService(db, data.Farmer.Id, new PlannedAiClient())
+            .StartAiWorkflowAsync(data.Request.Id, CancellationToken.None);
+        var setup = NewService(db, data.Farmer.Id, new PlannedAiClient(), ApplicationRole.FieldOfficer);
+        var assessment = await setup.SavePrePlantingAssessmentAsync(data.Request.Id, ValidAssessment(), CancellationToken.None);
+        await setup.SubmitPrePlantingAssessmentAsync(data.Request.Id, CancellationToken.None);
+        var client = new RetryingFieldAnalysisAiClient(assessment.InspectionId);
+        var service = NewService(db, data.Farmer.Id, client, ApplicationRole.FieldOfficer);
+        var originalVersion = (await db.AgentWorkflows.SingleAsync()).Version;
+
+        var failed = await service.RunFieldAnalysisAsync(data.Request.Id, CancellationToken.None);
+
+        Assert.Equal("SafeFailure", failed.Status);
+        var workflow = await db.AgentWorkflows.Include(item => item.Steps).SingleAsync();
+        var step = workflow.Steps.Single(item => item.AgentName == "CropFieldAnalysisAgent");
+        Assert.Equal(AgentWorkflowStatus.Pending, workflow.Status);
+        Assert.Equal("CropFieldAnalysisAgent", workflow.CurrentStep);
+        Assert.Null(workflow.CompletedAt);
+        Assert.Equal(AgentStepStatus.Failed, step.Status);
+        Assert.Equal("AI_SAFE_FAILURE", step.ErrorCode);
+
+        var succeeded = await service.RunFieldAnalysisAsync(data.Request.Id, CancellationToken.None);
+        var repeated = await service.RunFieldAnalysisAsync(data.Request.Id, CancellationToken.None);
+
+        Assert.Equal("Analyzed", succeeded.Status);
+        Assert.Equal("Analyzed", repeated.Status);
+        Assert.Equal(2, client.FieldAnalysisCalls);
+        Assert.Equal(AgentStepStatus.Completed, step.Status);
+        Assert.Equal(1, step.RetryCount);
+        Assert.Equal("WeatherResourceAgent", workflow.CurrentStep);
+        Assert.Equal(AgentWorkflowStatus.Pending, workflow.Status);
+        Assert.Null(workflow.CompletedAt);
+        Assert.True(workflow.Version >= originalVersion + 4);
+    }
+
+    [Fact]
+    public async Task Field_analysis_revalidates_persisted_observations_and_owner_before_calling_ai()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.Submitted);
+        await NewService(db, data.Farmer.Id, new PlannedAiClient())
+            .StartAiWorkflowAsync(data.Request.Id, CancellationToken.None);
+        var setup = NewService(db, data.Farmer.Id, new PlannedAiClient(), ApplicationRole.FieldOfficer);
+        var assessment = await setup.SavePrePlantingAssessmentAsync(data.Request.Id, ValidAssessment(), CancellationToken.None);
+        await setup.SubmitPrePlantingAssessmentAsync(data.Request.Id, CancellationToken.None);
+        var client = new CountingFieldAnalysisAiClient(assessment.InspectionId);
+        var service = NewService(db, data.Farmer.Id, client, ApplicationRole.FieldOfficer);
+        var moisture = await db.InspectionObservations.SingleAsync(item => item.FieldInspectionId == assessment.InspectionId && item.ObservationType == "SoilMoisture");
+        moisture.Notes = "Malformed";
+        await db.SaveChangesAsync();
+
+        var invalid = await Assert.ThrowsAsync<ApiException>(() => service.RunFieldAnalysisAsync(data.Request.Id, CancellationToken.None));
+
+        Assert.Equal("PREPLANT_ASSESSMENT_INVALID", invalid.Code);
+        Assert.Equal(0, client.FieldAnalysisCalls);
+        moisture.Notes = PrePlantingSoilMoisture.Moist.ToString();
+        var inspection = await db.FieldInspections.SingleAsync(item => item.Id == assessment.InspectionId);
+        inspection.InspectorUserId = Guid.NewGuid();
+        await db.SaveChangesAsync();
+
+        var wrongOwner = await Assert.ThrowsAsync<ApiException>(() => service.RunFieldAnalysisAsync(data.Request.Id, CancellationToken.None));
+
+        Assert.Equal("PREPLANT_ASSESSMENT_OWNER_REQUIRED", wrongOwner.Code);
+        Assert.Equal(0, client.FieldAnalysisCalls);
+        var workflow = await db.AgentWorkflows.Include(item => item.Steps).SingleAsync();
+        Assert.Equal("CropFieldAnalysisAgent", workflow.CurrentStep);
+        Assert.Equal(AgentStepStatus.Pending, workflow.Steps.Single(item => item.AgentName == "CropFieldAnalysisAgent").Status);
+    }
+
+    [Fact]
+    public async Task Concurrent_run_is_rejected_after_one_request_acquires_the_versioned_step()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        Guid requestId;
+        Guid officerId;
+        Guid inspectionId;
+        await using (var setupDb = new AppDbContext(options))
+        {
+            var data = await SeedPlanAsync(setupDb, CropPlanRequestStatus.Submitted);
+            requestId = data.Request.Id;
+            officerId = data.Farmer.Id;
+            await NewService(setupDb, officerId, new PlannedAiClient()).StartAiWorkflowAsync(requestId, CancellationToken.None);
+            var setup = NewService(setupDb, officerId, new PlannedAiClient(), ApplicationRole.FieldOfficer);
+            inspectionId = (await setup.SavePrePlantingAssessmentAsync(requestId, ValidAssessment(), CancellationToken.None)).InspectionId;
+            await setup.SubmitPrePlantingAssessmentAsync(requestId, CancellationToken.None);
+        }
+
+        var client = new BlockingFieldAnalysisAiClient(inspectionId);
+        await using var firstDb = new AppDbContext(options);
+        await using var secondDb = new AppDbContext(options);
+        var firstService = NewService(firstDb, officerId, client, ApplicationRole.FieldOfficer);
+        var secondService = NewService(secondDb, officerId, client, ApplicationRole.FieldOfficer);
+        var firstRun = firstService.RunFieldAnalysisAsync(requestId, CancellationToken.None);
+        await client.Entered;
+
+        var conflict = await Assert.ThrowsAsync<ApiException>(() => secondService.RunFieldAnalysisAsync(requestId, CancellationToken.None));
+        Assert.Equal("FIELD_ANALYSIS_ALREADY_RUNNING", conflict.Code);
+        Assert.Equal(1, client.FieldAnalysisCalls);
+
+        client.Release();
+        var completed = await firstRun;
+        Assert.Equal("Analyzed", completed.Status);
+        Assert.Equal(1, client.FieldAnalysisCalls);
     }
 
     [Fact]
@@ -584,9 +695,66 @@ public sealed class CropPlanningAiWorkflowTests
                 "Analyzed",
                 true,
                 [],
-                new FieldAnalysisFieldConditionResponse("Stored inspection evidence indicates yellowing that needs review.", [inspectionId]),
+                new FieldAnalysisFieldConditionResponse("Stored pre-planting evidence indicates an access constraint that needs review.", [inspectionId]),
                 [new FieldAnalysisOpenIssueResponse(issueId, "High", "Open", inspectionId)],
                 "High"));
+        }
+    }
+
+    private class CountingFieldAnalysisAiClient(Guid inspectionId) : PlannedAiClient
+    {
+        protected Guid InspectionId { get; } = inspectionId;
+        public int FieldAnalysisCalls { get; protected set; }
+
+        public override Task<FieldAnalysisOutput> RunFieldAnalysisAsync(FieldAnalysisInput input, CancellationToken cancellationToken)
+        {
+            FieldAnalysisCalls++;
+            return Task.FromResult(Success(input.WorkflowId, InspectionId));
+        }
+
+        protected static FieldAnalysisOutput Success(Guid workflowId, Guid evidenceInspectionId) =>
+            new(
+                workflowId,
+                "Analyzed",
+                false,
+                [],
+                new FieldAnalysisFieldConditionResponse("The submitted pre-planting assessment is ready for planning.", [evidenceInspectionId]),
+                [],
+                "Low");
+    }
+
+    private sealed class RetryingFieldAnalysisAiClient(Guid inspectionId) : CountingFieldAnalysisAiClient(inspectionId)
+    {
+        public override Task<FieldAnalysisOutput> RunFieldAnalysisAsync(FieldAnalysisInput input, CancellationToken cancellationToken)
+        {
+            FieldAnalysisCalls++;
+            return Task.FromResult(FieldAnalysisCalls == 1
+                ? new FieldAnalysisOutput(
+                    input.WorkflowId,
+                    "SafeFailure",
+                    true,
+                    ["The analysis provider could not produce a validated result."],
+                    new FieldAnalysisFieldConditionResponse(string.Empty, []),
+                    [],
+                    "Unknown")
+                : Success(input.WorkflowId, InspectionId));
+        }
+    }
+
+    private sealed class BlockingFieldAnalysisAiClient(Guid inspectionId) : CountingFieldAnalysisAiClient(inspectionId)
+    {
+        private readonly TaskCompletionSource<bool> entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<bool> release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task Entered => entered.Task;
+        public void Release() => release.TrySetResult(true);
+
+        public override async Task<FieldAnalysisOutput> RunFieldAnalysisAsync(FieldAnalysisInput input, CancellationToken cancellationToken)
+        {
+            FieldAnalysisCalls++;
+            entered.TrySetResult(true);
+            await release.Task.WaitAsync(cancellationToken);
+            return Success(input.WorkflowId, InspectionId);
         }
     }
 

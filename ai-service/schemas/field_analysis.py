@@ -46,7 +46,10 @@ class CropFieldAnalysisOutput(AgentEnvelope):
 
 class InspectionEvidence(CamelModel):
     id: UUID
+    crop_plan_request_id: UUID = Field(alias="cropPlanRequestId")
     field_id: UUID = Field(alias="fieldId")
+    inspector_user_id: UUID = Field(alias="inspectorUserId")
+    inspection_purpose: str = Field(alias="inspectionPurpose")
     status: str
     summary: str
     scheduled_at: datetime | None = Field(default=None, alias="scheduledAt")

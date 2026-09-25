@@ -24,6 +24,28 @@ FORBIDDEN_LLM_TERMS = (
 
 SEVERITY_PRIORITY = {"critical": 4, "high": 3, "medium": 2, "low": 1}
 
+STRUCTURED_VALUES = {
+    "SoilType": {"Sandy", "Clay", "Loamy", "Silty", "Mixed", "Unknown", "Other"},
+    "SoilCondition": {"Good", "Moderate", "Poor", "Compacted", "Eroded", "Unknown", "Other"},
+    "SoilMoisture": {"Dry", "Moist", "Wet", "Waterlogged", "Unknown"},
+    "WaterAvailability": {"Adequate", "Limited", "Unavailable", "Seasonal", "Unknown"},
+    "IrrigationAvailability": {"Available", "Limited", "Unavailable", "NotRequired", "Unknown"},
+    "WaterReliability": {"Reliable", "Intermittent", "Seasonal", "Unreliable", "Unknown"},
+    "DrainageCondition": {"Good", "Moderate", "Poor", "Unknown"},
+    "WaterloggingRisk": {"NoneObserved", "Low", "Moderate", "High", "Unknown"},
+    "GeneralFieldCondition": {
+        "ClearAndPrepared", "RequiresLandPreparation", "UnevenField", "Waterlogged",
+        "TooDry", "ErosionPresent", "AccessLimitation", "Other",
+    },
+    "PlantingReadiness": {
+        "Ready", "ReadyWithMinorPreparation", "RequiresPreparation", "NotReady", "RequiresFurtherAssessment",
+    },
+}
+RISK_VALUES = {
+    "WaterShortageRisk", "FloodingRisk", "PoorDrainage", "SoilSuitabilityConcern",
+    "SoilErosion", "FieldAccessProblem", "LandPreparationRequired", "Other",
+}
+
 
 class CropFieldAnalysisAgent:
     def __init__(
@@ -41,6 +63,9 @@ class CropFieldAnalysisAgent:
         warnings: list[str] = []
 
         try:
+            crop_plan_context = await self._tools.get_crop_plan_context(
+                request.crop_plan_request_id, request.workflow_id, request.agent_step_id
+            )
             field = await self._tools.get_field_details(request.field_id, request.workflow_id, request.agent_step_id)
             crop_cycle = (
                 await self._tools.get_crop_cycle_details(request.crop_cycle_id, request.workflow_id, request.agent_step_id)
@@ -78,16 +103,9 @@ class CropFieldAnalysisAgent:
         except (ToolClientError, ValueError) as exc:
             return self._safe_failure(workflow_id, f"Field analysis tool call failed safely: {exc}")
 
-        if not inspections:
-            return CropFieldAnalysisOutput(
-                workflowId=workflow_id,
-                status="Analyzed",
-                requiresHumanReview=True,
-                warnings=["No stored inspections were available for this field analysis."],
-                fieldCondition=FieldCondition(summary="No stored inspection evidence is available for this field.", evidenceInspectionIds=[]),
-                openIssues=[],
-                priority="Unknown",
-            )
+        evidence_errors = self._validate_required_evidence(request, crop_plan_context, field, inspections, reference)
+        if evidence_errors:
+            return self._safe_failure(workflow_id, *evidence_errors)
 
         if images:
             warnings.append("Inspection image metadata is available for human review; no AI visual analysis was performed.")
@@ -95,6 +113,7 @@ class CropFieldAnalysisAgent:
         if self._llm_provider is not None:
             output, provider_warnings, failed = await self._run_provider(
                 request=request,
+                crop_plan_context=crop_plan_context,
                 field=field,
                 crop_cycle=crop_cycle,
                 inspections=[inspection.model_dump(mode="json") for inspection in inspections],
@@ -120,6 +139,7 @@ class CropFieldAnalysisAgent:
         self,
         *,
         request: FieldAnalysisInput,
+        crop_plan_context: dict[str, Any],
         field: dict[str, Any],
         crop_cycle: dict[str, Any] | None,
         inspections: list[dict[str, Any]],
@@ -127,7 +147,7 @@ class CropFieldAnalysisAgent:
         images: list[dict[str, Any]],
         reference: dict[str, Any],
     ) -> tuple[CropFieldAnalysisOutput, list[str], bool]:
-        prompt = self._build_prompt(request, field, crop_cycle, inspections, issues, images, reference)
+        prompt = self._build_prompt(request, crop_plan_context, field, crop_cycle, inspections, issues, images, reference)
         try:
             response = await asyncio.wait_for(self._llm_provider.generate_json(prompt), timeout=self._provider_timeout_seconds)
         except (asyncio.TimeoutError, LLMProviderError) as exc:
@@ -152,6 +172,7 @@ class CropFieldAnalysisAgent:
     @staticmethod
     def _build_prompt(
         request: FieldAnalysisInput,
+        crop_plan_context: dict[str, Any],
         field: dict[str, Any],
         crop_cycle: dict[str, Any] | None,
         inspections: list[dict[str, Any]],
@@ -161,6 +182,7 @@ class CropFieldAnalysisAgent:
     ) -> str:
         evidence = {
             "request": request.model_dump(mode="json"),
+            "cropPlanContext": crop_plan_context,
             "field": field,
             "cropCycle": crop_cycle,
             "recentInspections": inspections,
@@ -177,6 +199,81 @@ class CropFieldAnalysisAgent:
             "Every openIssues issueId must come from openCropIssues.id.\n"
             f"Evidence JSON:\n{json.dumps(evidence, default=str)}"
         )
+
+    @staticmethod
+    def _validate_required_evidence(
+        request: FieldAnalysisInput,
+        crop_plan_context: dict[str, Any],
+        field: dict[str, Any],
+        inspections: list[InspectionEvidence],
+        reference: dict[str, Any],
+    ) -> list[str]:
+        errors: list[str] = []
+        if str(crop_plan_context.get("id")) != str(request.crop_plan_request_id):
+            errors.append("Crop-plan context does not match the requested crop plan.")
+        context_field = crop_plan_context.get("field") or {}
+        if str(crop_plan_context.get("fieldId")) != str(request.field_id) or str(context_field.get("id")) != str(request.field_id):
+            errors.append("Crop-plan context does not match the requested field.")
+        if str(field.get("id")) != str(request.field_id):
+            errors.append("Field evidence does not match the requested field.")
+        if reference.get("referenceDataStatus") != "Available" or not reference.get("profile"):
+            errors.append("Verified crop reference data is unavailable for field analysis.")
+
+        if len(inspections) != 1:
+            errors.append("Exactly one submitted pre-planting assessment is required for field analysis.")
+            return errors
+
+        inspection = inspections[0]
+        if inspection.id != request.pre_planting_inspection_id:
+            errors.append("Inspection evidence does not match the requested pre-planting assessment.")
+        if inspection.crop_plan_request_id != request.crop_plan_request_id:
+            errors.append("Inspection evidence does not match the requested crop plan.")
+        if inspection.field_id != request.field_id:
+            errors.append("Inspection evidence does not match the requested field.")
+        if inspection.inspection_purpose != "PrePlanting":
+            errors.append("Inspection evidence is not a pre-planting assessment.")
+        if inspection.status != "Completed" or inspection.completed_at is None:
+            errors.append("The pre-planting assessment has not been submitted.")
+
+        observations: dict[str, list[str]] = {}
+        for observation in inspection.observations:
+            observation_type = str(observation.get("observationType", ""))
+            notes = str(observation.get("notes", ""))
+            observations.setdefault(observation_type, []).append(notes)
+
+        for observation_type, allowed_values in STRUCTURED_VALUES.items():
+            values = observations.get(observation_type, [])
+            if len(values) != 1:
+                errors.append(f"{observation_type} must have exactly one structured observation.")
+            elif values[0] not in allowed_values:
+                errors.append(f"{observation_type} contains an invalid structured value.")
+
+        markers = observations.get("IdentifiedRisksAssessment", [])
+        if markers != ["Assessed"]:
+            errors.append("Identified risks must have one valid assessed-risk marker.")
+        risks = observations.get("IdentifiedRisk", [])
+        if len(risks) != len(set(risks)) or any(risk not in RISK_VALUES for risk in risks):
+            errors.append("Identified risks contain duplicate or invalid structured values.")
+
+        water_availability = (observations.get("WaterAvailability") or [None])[0]
+        if water_availability in {"Adequate", "Limited", "Seasonal"} and not CropFieldAnalysisAgent._one_text(observations, "MainWaterSource"):
+            errors.append("MainWaterSource is required for the recorded water availability.")
+        if water_availability in {"Limited", "Unavailable", "Seasonal"} and not CropFieldAnalysisAgent._one_text(observations, "WaterConcerns"):
+            errors.append("WaterConcerns is required for the recorded water availability.")
+        if ((observations.get("SoilType") or [None])[0] == "Other" or (observations.get("SoilCondition") or [None])[0] == "Other") and not CropFieldAnalysisAgent._one_text(observations, "SoilNotes"):
+            errors.append("SoilNotes is required for an Other soil value.")
+        if (observations.get("GeneralFieldCondition") or [None])[0] == "Other" and not CropFieldAnalysisAgent._one_text(observations, "GeneralFieldNotes"):
+            errors.append("GeneralFieldNotes is required for an Other field condition.")
+        if ((observations.get("DrainageCondition") or [None])[0] == "Poor" or (observations.get("WaterloggingRisk") or [None])[0] in {"Moderate", "High"}) and not CropFieldAnalysisAgent._one_text(observations, "DrainageNotes"):
+            errors.append("DrainageNotes is required for the recorded drainage or waterlogging condition.")
+        if "Other" in risks and not CropFieldAnalysisAgent._one_text(observations, "RiskNotes"):
+            errors.append("RiskNotes is required for an Other identified risk.")
+        return errors
+
+    @staticmethod
+    def _one_text(observations: dict[str, list[str]], observation_type: str) -> bool:
+        values = observations.get(observation_type, [])
+        return len(values) == 1 and bool(values[0].strip())
 
     @staticmethod
     def _deterministic_output(
