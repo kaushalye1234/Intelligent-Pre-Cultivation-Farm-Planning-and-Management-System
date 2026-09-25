@@ -12,7 +12,7 @@ STOCK_ID = UUID("44444444-4444-4444-4444-444444444444")
 RESOURCE_ID = UUID("55555555-5555-5555-5555-555555555555")
 
 
-def weather_input(*, available=True, rain=2, temperature=31, wind=5, stock_quantity=20, threshold=8, stocks=True, requirements=None):
+def weather_input(*, available=True, rain=2, temperature=31, wind=5, stock_quantity=20, threshold=8, stocks=True, requirements=None, member2_context=False):
     payload = {
         "workflowId": str(WORKFLOW_ID),
         "agentStepId": str(STEP_ID),
@@ -52,6 +52,20 @@ def weather_input(*, available=True, rain=2, temperature=31, wind=5, stock_quant
     }
     if requirements is not None:
         payload["resourceRequirements"] = requirements
+    if member2_context:
+        payload["member2FieldAnalysisContext"] = {
+            "fieldSuitability": "SuitableWithConditions",
+            "soilAssessment": "Soil type Loamy; condition Moderate; moisture Moist.",
+            "waterAssessment": "Water availability Adequate; source Canal.",
+            "drainageAssessment": "Drainage Poor; waterlogging risk Moderate.",
+            "fieldPreparationRequirements": ["Clear drainage channels before planting."],
+            "plantingReadiness": "RequiresPreparation",
+            "identifiedRisks": ["PoorDrainage"],
+            "recommendedPrePlantingActions": ["Address drainage before planting."],
+            "priority": "Medium",
+            "warnings": [],
+            "requiresHumanReview": True,
+        }
     return WeatherResourceInput.model_validate(payload)
 
 
@@ -64,6 +78,21 @@ async def test_low_risk_preserves_inventory_snapshot_ids_and_values():
     assert result.resource_checks[0].inventory_stock_id == STOCK_ID
     assert result.resource_checks[0].available_quantity == 20
     assert result.resource_checks[0].is_low_stock is False
+
+
+@pytest.mark.asyncio
+async def test_safe_member2_context_is_read_only_and_does_not_change_weather_inventory_reasoning():
+    request = weather_input(member2_context=True)
+
+    result = await WeatherResourceAgent().run(request)
+
+    assert request.member_2_field_analysis_context is not None
+    assert request.member_2_field_analysis_context.water_assessment.startswith("Water availability Adequate")
+    assert request.member_2_field_analysis_context.drainage_assessment.startswith("Drainage Poor")
+    assert request.member_2_field_analysis_context.planting_readiness == "RequiresPreparation"
+    assert request.member_2_field_analysis_context.identified_risks == ["PoorDrainage"]
+    assert result.weather_risk == "Low"
+    assert result.resource_checks[0].available_quantity == 20
 
 
 @pytest.mark.asyncio

@@ -85,10 +85,10 @@ The Field Officer records the request-specific assessment before Member 2 runs:
 GET /api/crop-plans/{cropPlanRequestId}/pre-planting-assessment
 PUT /api/crop-plans/{cropPlanRequestId}/pre-planting-assessment
 POST /api/inspections/{prePlantingInspectionId}/images
-POST /api/inspections/{prePlantingInspectionId}/submit
+POST /api/crop-plans/{cropPlanRequestId}/pre-planting-assessment/submit
 ```
 
-The assessment is stored as the single `FieldInspection` with `purpose = PrePlanting` linked to the exact crop-plan request and field. Only a Field Officer may create, edit, attach evidence to, or submit it. Agricultural Officers and Admins may read it. The field-analysis run is rejected until this linked inspection has been submitted.
+The assessment is stored as the single linked `FieldInspection` with `purpose = PrePlanting`; its structured values are stored in `InspectionObservation`. Draft values are nullable. In particular, missing `identifiedRisks` means risks have not been assessed, while an empty array means the officer explicitly assessed and found none. Submission reloads and validates the persisted observations, then makes the assessment immutable. Only the owning Field Officer may create, edit, attach evidence to, submit, run, or retry it. Agricultural Officers and Admins may read it. The field-analysis run is rejected until this exact linked inspection has been submitted.
 
 Run Member 2 from ASP.NET:
 
@@ -128,7 +128,7 @@ Persisted output shape:
     "Inspection image metadata is available for human review; no AI visual analysis was performed."
   ],
   "fieldCondition": {
-    "summary": "Stored inspection evidence indicates yellowing in the lower field section.",
+    "summary": "Submitted pre-planting evidence records adequate canal water, good drainage, low waterlogging risk, and minor remaining land preparation.",
     "evidenceInspectionIds": ["44444444-4444-4444-4444-444444444444"]
   },
   "openIssues": [
@@ -139,9 +139,25 @@ Persisted output shape:
       "evidenceInspectionId": "44444444-4444-4444-4444-444444444444"
     }
   ],
-  "priority": "High"
+  "priority": "High",
+  "fieldSuitability": "SuitableWithConditions",
+  "soilAssessment": "Soil type Loamy; condition Good; moisture Moist.",
+  "waterAssessment": "Water availability Adequate; main source Canal; irrigation Available; reliability Reliable.",
+  "drainageAssessment": "Drainage condition Good; waterlogging risk Low.",
+  "fieldPreparationRequirements": [
+    "Complete the recorded land preparation before planting."
+  ],
+  "plantingReadiness": "ReadyWithMinorPreparation",
+  "identifiedRisks": ["LandPreparationRequired"],
+  "recommendedPrePlantingActions": [
+    "Resolve the exact linked field-access constraint before field operations begin."
+  ]
 }
 ```
+
+`fieldSuitability` is one of `Suitable`, `SuitableWithConditions`, `NotSuitable`, `RequiresFurtherAssessment`, or `Unknown`. `plantingReadiness` uses the submitted assessment code, with `Unknown` reserved for safe-failure/insufficient-evidence output. Structured arrays are always present in newly persisted output. Existing `fieldCondition`, `openIssues`, and `priority` remain backward compatible.
+
+Current submitted observations establish deterministic priority before exact linked issues are considered. `NotReady`, unavailable water, high waterlogging risk, a waterlogged field, or a supported severe soil/risk condition produce `High`. Preparation/further-assessment readiness, limited/seasonal water, poor drainage, moderate waterlogging, preparation/access/erosion concerns, or supported medium soil conditions produce `Medium`. Fully favorable required observations with no material structured risks produce `Low`. Exact linked issues may raise this result but never reduce or replace the observation-based result.
 
 Member 2 calls the AI service through the shared `IAgenticAIClient` route:
 
@@ -169,6 +185,7 @@ AI-service input:
 `CropFieldAnalysisAgent` is evidence-linked and read-only. Every inspection, issue, and image lookup is scoped by `workflowId`, `cropPlanRequestId`, `prePlantingInspectionId`, and `fieldId`; ASP.NET rejects a mismatched or unsubmitted inspection. It uses only these ASP.NET internal tools:
 
 - `GetFieldDetails`
+- `GetCropPlanContext`
 - `GetCropCycleDetails`
 - `GetRecentInspections`
 - `GetOpenCropIssues`
@@ -177,11 +194,13 @@ AI-service input:
 
 The image tool returns Cloudinary evidence metadata only: image ID, inspection ID, URL, public ID, content type, size, and created date. The agent must not receive image bytes, Cloudinary assets, or base64 payloads, and it must not perform visual analysis. Uploaded images remain human-review evidence.
 
-If internal tools fail, the LLM times out, output is malformed, output references unknown inspection or issue IDs, or unsafe action/treatment language appears, Member 2 returns `SafeFailure` with `requiresHumanReview: true`.
+If internal tools fail, the LLM times out, output is malformed, required observations/risk state/reference data are missing, output conflicts with the exact submitted readiness/risks/priority, output references unknown inspection or issue IDs, or unsafe action/treatment language appears, Member 2 returns `SafeFailure` with `requiresHumanReview: true`.
+
+A failed attempt marks only the `CropFieldAnalysisAgent` step as retryable `Failed`. The workflow stays non-terminal with `currentStep = CropFieldAnalysisAgent` and `completedAt = null`. Acquisition and completion each advance the workflow concurrency version. Only a validated and successfully persisted `Analyzed` result completes Member 2 and advances to `WeatherResourceAgent`; a completed run is idempotent and is not executed again.
 
 ## Member 3 Handoff
 
-After Member 2 completes, ASP.NET marks the workflow pending for `WeatherResourceAgent` and exposes the Member 3 handoff:
+After Member 2 completes, ASP.NET marks the workflow pending for `WeatherResourceAgent` and exposes a safe read-only summary through the Crop Plan/workflow boundary:
 
 ```http
 GET /api/crop-plans/{cropPlanRequestId}/member-3-handoff
@@ -198,17 +217,25 @@ Handoff response:
   "fieldLocationContext": "Farm: North Farm; Location: North; Field: Field A; Soil: Loam; Area: 2.00",
   "preferredStartDate": "2026-09-20",
   "preferredEndDate": "2026-10-20",
-  "fieldAnalysisSummary": "Stored inspection evidence indicates yellowing in the lower field section.",
+  "fieldAnalysisSummary": "Submitted pre-planting evidence records an exact field-access constraint and remaining land preparation.",
   "priority": "High",
-  "evidenceInspectionIds": ["44444444-4444-4444-4444-444444444444"],
-  "openIssues": [
-    {
-      "issueId": "55555555-5555-5555-5555-555555555555",
-      "severity": "High",
-      "status": "Open",
-      "evidenceInspectionId": "44444444-4444-4444-4444-444444444444"
-    }
+  "warnings": [],
+  "requiresHumanReview": true,
+  "fieldSuitability": "SuitableWithConditions",
+  "soilAssessment": "Soil type Loamy; condition Moderate; moisture Moist.",
+  "waterAssessment": "Water availability Adequate; main source Canal; irrigation Available; reliability Reliable.",
+  "drainageAssessment": "Drainage condition Poor; waterlogging risk Moderate.",
+  "fieldPreparationRequirements": [
+    "Clear the recorded drainage channels before planting."
   ],
-  "warnings": []
+  "plantingReadiness": "RequiresPreparation",
+  "identifiedRisks": ["PoorDrainage"],
+  "recommendedPrePlantingActions": [
+    "Address the recorded drainage concern before planting."
+  ]
 }
 ```
+
+The route is available to Field Officer, Agricultural Officer, Admin, and Resource Officer only when the exact latest workflow has a completed `CropFieldAnalysisAgent` step and `currentStep = WeatherResourceAgent`. Farmer access is denied. Resource Officers remain denied from the full `/field-analysis-result` and every raw/generic PrePlanting inspection route.
+
+This safe response never contains `OfficerNotes`, raw observation rows, risk notes, inspection image metadata, evidence inspection IDs, crop-issue IDs, or generic inspection history. Water, drainage, readiness, risk, and preparation values reach Member 3 only through this completed analysis result; Resource Officers do not re-enter or reassess Member 2 observations.

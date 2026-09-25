@@ -60,4 +60,115 @@ public sealed class ValidatorTests
         Assert.Contains(issueErrors, error => error.Contains("severity"));
         Assert.Contains(issueErrors, error => error.Contains("status"));
     }
+
+    [Fact]
+    public void Pre_planting_draft_validator_allows_an_empty_draft()
+    {
+        var errors = new PrePlantingAssessmentRequestValidator().Validate(new PrePlantingAssessmentRequest());
+
+        Assert.Empty(errors);
+    }
+
+    [Fact]
+    public void Pre_planting_draft_validator_rejects_only_invalid_supplied_values()
+    {
+        var request = new PrePlantingAssessmentRequest
+        {
+            SoilType = (PrePlantingSoilType)99,
+            MainWaterSource = new string('x', 241),
+            IdentifiedRisks = [PrePlantingRisk.PoorDrainage, PrePlantingRisk.PoorDrainage]
+        };
+
+        var errors = new PrePlantingAssessmentRequestValidator().Validate(request);
+
+        Assert.Contains(errors, error => error.Contains("Soil type"));
+        Assert.Contains(errors, error => error.Contains("Main water source"));
+        Assert.Contains(errors, error => error.Contains("duplicate"));
+        Assert.DoesNotContain(errors, error => error.Contains("Planting readiness is required"));
+    }
+
+    [Fact]
+    public void Pre_planting_submission_requires_structured_observations_and_assessed_risks()
+    {
+        var errors = PrePlantingAssessmentRules.ValidateSubmission(new PrePlantingAssessmentRequest());
+
+        Assert.Contains(errors, error => error.Contains("Soil type is required"));
+        Assert.Contains(errors, error => error.Contains("Soil condition is required"));
+        Assert.Contains(errors, error => error.Contains("Soil moisture is required"));
+        Assert.Contains(errors, error => error.Contains("Water availability is required"));
+        Assert.Contains(errors, error => error.Contains("Irrigation availability is required"));
+        Assert.Contains(errors, error => error.Contains("Water reliability is required"));
+        Assert.Contains(errors, error => error.Contains("Drainage condition is required"));
+        Assert.Contains(errors, error => error.Contains("Waterlogging risk is required"));
+        Assert.Contains(errors, error => error.Contains("General field condition is required"));
+        Assert.Contains(errors, error => error.Contains("Planting readiness is required"));
+        Assert.Contains(errors, error => error.Contains("Identified risks must be assessed"));
+    }
+
+    [Theory]
+    [InlineData(PrePlantingWaterAvailability.Adequate, true)]
+    [InlineData(PrePlantingWaterAvailability.Limited, true)]
+    [InlineData(PrePlantingWaterAvailability.Seasonal, true)]
+    [InlineData(PrePlantingWaterAvailability.Unavailable, false)]
+    [InlineData(PrePlantingWaterAvailability.Unknown, false)]
+    public void Pre_planting_submission_requires_water_source_only_when_applicable(
+        PrePlantingWaterAvailability availability,
+        bool requiresSource)
+    {
+        var request = ValidPrePlantingSubmission() with
+        {
+            WaterAvailability = availability,
+            MainWaterSource = null,
+            WaterConcerns = availability is PrePlantingWaterAvailability.Limited
+                or PrePlantingWaterAvailability.Seasonal
+                or PrePlantingWaterAvailability.Unavailable
+                ? "Supply requires review."
+                : null
+        };
+
+        var errors = PrePlantingAssessmentRules.ValidateSubmission(request);
+
+        Assert.Equal(requiresSource, errors.Any(error => error.Contains("Main water source")));
+    }
+
+    [Fact]
+    public void Pre_planting_submission_requires_conditional_notes()
+    {
+        var request = ValidPrePlantingSubmission() with
+        {
+            SoilType = PrePlantingSoilType.Other,
+            GeneralFieldCondition = PrePlantingGeneralFieldCondition.Other,
+            DrainageCondition = PrePlantingDrainageCondition.Poor,
+            WaterloggingRisk = PrePlantingWaterloggingRisk.High,
+            IdentifiedRisks = [PrePlantingRisk.Other],
+            SoilNotes = null,
+            GeneralFieldNotes = null,
+            DrainageNotes = null,
+            RiskNotes = null
+        };
+
+        var errors = PrePlantingAssessmentRules.ValidateSubmission(request);
+
+        Assert.Contains(errors, error => error.Contains("Soil notes"));
+        Assert.Contains(errors, error => error.Contains("General field notes"));
+        Assert.Contains(errors, error => error.Contains("Drainage notes"));
+        Assert.Contains(errors, error => error.Contains("Risk notes"));
+    }
+
+    private static PrePlantingAssessmentRequest ValidPrePlantingSubmission() =>
+        new()
+        {
+            SoilType = PrePlantingSoilType.Loamy,
+            SoilCondition = PrePlantingSoilCondition.Good,
+            SoilMoisture = PrePlantingSoilMoisture.Moist,
+            WaterAvailability = PrePlantingWaterAvailability.Adequate,
+            MainWaterSource = "Canal",
+            IrrigationAvailability = PrePlantingIrrigationAvailability.Available,
+            WaterReliability = PrePlantingWaterReliability.Reliable,
+            DrainageCondition = PrePlantingDrainageCondition.Good,
+            WaterloggingRisk = PrePlantingWaterloggingRisk.NoneObserved,
+            GeneralFieldCondition = PrePlantingGeneralFieldCondition.ClearAndPrepared,
+            PlantingReadiness = PrePlantingPlantingReadiness.Ready,
+            IdentifiedRisks = []
+        };
 }

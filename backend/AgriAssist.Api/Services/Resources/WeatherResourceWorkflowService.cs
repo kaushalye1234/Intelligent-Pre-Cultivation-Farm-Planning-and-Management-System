@@ -39,8 +39,6 @@ public sealed class WeatherResourceWorkflowService(
 
     public async Task<WeatherResourceRunResponse> RunAsync(Guid cropPlanRequestId, CancellationToken cancellationToken)
     {
-        // Also enforces crop plan request access and gives us Member 2's output.
-        var handoff = await cropPlanningService.GetMember3HandoffAsync(cropPlanRequestId, cancellationToken);
         var workflow = await LoadWorkflowAsync(cropPlanRequestId, includeFarm: true, cancellationToken);
         var step = FindStep(workflow);
 
@@ -60,6 +58,8 @@ public sealed class WeatherResourceWorkflowService(
             throw new ApiException(HttpStatusCode.Conflict, "FIELD_ANALYSIS_NOT_COMPLETED", "Field analysis must be completed before weather and resource analysis can run.");
         }
 
+        // Enforces exact crop-plan access/stage and returns only the safe completed Member 2 output.
+        var handoff = await cropPlanningService.GetMember3HandoffAsync(cropPlanRequestId, cancellationToken);
         var location = workflow.CropPlanRequest?.Farm?.Location ?? string.Empty;
         var weather = await weatherService.GetForecastAsync(location, cancellationToken);
         var stocks = await LoadStockSnapshotAsync(cancellationToken);
@@ -74,7 +74,19 @@ public sealed class WeatherResourceWorkflowService(
             handoff.FieldAnalysisSummary,
             weather,
             stocks,
-            LoadRequirements());
+            LoadRequirements(),
+            new Member2FieldAnalysisContext(
+                handoff.FieldSuitability,
+                handoff.SoilAssessment,
+                handoff.WaterAssessment,
+                handoff.DrainageAssessment,
+                handoff.FieldPreparationRequirements,
+                handoff.PlantingReadiness,
+                handoff.IdentifiedRisks,
+                handoff.RecommendedPrePlantingActions,
+                handoff.Priority,
+                handoff.Warnings,
+                handoff.RequiresHumanReview));
 
         var userId = currentUser.UserId ?? throw new ApiException(HttpStatusCode.Unauthorized, "AUTH_REQUIRED", "Authentication is required.");
         step.InputJson = JsonSerializer.Serialize(input, JsonOptions);

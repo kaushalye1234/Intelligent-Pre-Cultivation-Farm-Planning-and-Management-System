@@ -33,6 +33,17 @@ public sealed class WeatherResourceWorkflowTests
         Assert.Equal("Kurunegala", sentInput.Location);
         Assert.Equal("High", sentInput.FieldPriority);
         Assert.Equal(6, sentInput.Stocks.Single().AvailableQuantity);
+        Assert.NotNull(sentInput.Member2FieldAnalysisContext);
+        Assert.Equal("SuitableWithConditions", sentInput.Member2FieldAnalysisContext.FieldSuitability);
+        Assert.Contains("Adequate", sentInput.Member2FieldAnalysisContext.WaterAssessment);
+        Assert.Contains("Poor", sentInput.Member2FieldAnalysisContext.DrainageAssessment);
+        Assert.Equal("RequiresPreparation", sentInput.Member2FieldAnalysisContext.PlantingReadiness);
+        Assert.Equal([PrePlantingRisk.PoorDrainage], sentInput.Member2FieldAnalysisContext.IdentifiedRisks);
+        Assert.NotEmpty(sentInput.Member2FieldAnalysisContext.FieldPreparationRequirements);
+        var inputJson = JsonSerializer.Serialize(sentInput, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.DoesNotContain("officerNotes", inputJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("evidenceInspectionIds", inputJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("openIssues", inputJson, StringComparison.OrdinalIgnoreCase);
 
         var workflow = await db.AgentWorkflows.Include(item => item.Steps).SingleAsync();
         Assert.Equal(AgentWorkflowStatus.Pending, workflow.Status);
@@ -199,7 +210,7 @@ public sealed class WeatherResourceWorkflowTests
 
     private static WeatherResourceWorkflowService NewService(AppDbContext db, IWeatherResourceAIClient aiClient)
     {
-        var officer = new StubCurrentUser(ApplicationRole.AgriculturalOfficer);
+        var officer = new StubCurrentUser(ApplicationRole.ResourceOfficer);
         var cropPlanning = new CropPlanningService(
             db,
             officer,
@@ -230,21 +241,36 @@ public sealed class WeatherResourceWorkflowTests
             Objective = "Plan the next rice season safely.",
             Status = CropPlanRequestStatus.PreliminaryGenerated
         };
-        var fieldAnalysis = new FieldAnalysisOutput(Guid.Empty, "Analyzed", true, [], new FieldAnalysisFieldConditionResponse("Yellowing near low area.", []), [], "High");
         var workflow = new AgentWorkflow
         {
             CropPlanRequest = request,
             InitiatedByUser = farmer,
             Objective = request.Objective,
             Status = AgentWorkflowStatus.Pending,
-            CurrentStep = fieldAnalysisDone ? "WeatherResourceAgent" : "CropFieldAnalysisAgent",
-            Steps =
-            [
-                new AgentStep { AgentName = "CropFieldAnalysisAgent", StepName = "FieldAnalysis", Sequence = 2, Status = fieldAnalysisDone ? AgentStepStatus.Completed : AgentStepStatus.Pending, OutputJson = JsonSerializer.Serialize(fieldAnalysis, new JsonSerializerOptions(JsonSerializerDefaults.Web)) },
-                new AgentStep { AgentName = "WeatherResourceAgent", StepName = "WeatherResourceAnalysis", Sequence = 3 },
-                new AgentStep { AgentName = "SchedulingValidationAgent", StepName = "Scheduling", Sequence = 4 }
-            ]
+            CurrentStep = fieldAnalysisDone ? "WeatherResourceAgent" : "CropFieldAnalysisAgent"
         };
+        var fieldAnalysis = new FieldAnalysisOutput(
+            workflow.Id,
+            "Analyzed",
+            true,
+            ["Field preparation requires Resource Officer awareness."],
+            new FieldAnalysisFieldConditionResponse("Submitted pre-planting evidence requires drainage preparation.", [Guid.NewGuid()]),
+            [new FieldAnalysisOpenIssueResponse(Guid.NewGuid(), "High", "Open", Guid.NewGuid())],
+            "High",
+            "SuitableWithConditions",
+            "Soil type Loamy; condition Moderate; moisture Moist.",
+            "Water availability Adequate; main source Canal; irrigation Available; reliability Reliable.",
+            "Drainage condition Poor; waterlogging risk Moderate.",
+            ["Clear the recorded drainage channels before planting."],
+            "RequiresPreparation",
+            [PrePlantingRisk.PoorDrainage],
+            ["Address the recorded drainage concern before planting."]);
+        workflow.Steps =
+        [
+            new AgentStep { AgentName = "CropFieldAnalysisAgent", StepName = "FieldAnalysis", Sequence = 2, Status = fieldAnalysisDone ? AgentStepStatus.Completed : AgentStepStatus.Pending, OutputJson = JsonSerializer.Serialize(fieldAnalysis, new JsonSerializerOptions(JsonSerializerDefaults.Web)) },
+            new AgentStep { AgentName = "WeatherResourceAgent", StepName = "WeatherResourceAnalysis", Sequence = 3 },
+            new AgentStep { AgentName = "SchedulingValidationAgent", StepName = "Scheduling", Sequence = 4 }
+        ];
         var stock = new InventoryStock
         {
             Resource = new Resource { Name = "Paddy Seed", Unit = "kg", ResourceCategory = new ResourceCategory { Name = "Seed" } },

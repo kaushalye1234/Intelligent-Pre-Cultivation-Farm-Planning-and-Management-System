@@ -72,8 +72,10 @@ public sealed record CropRuleReferenceSummary(
 
 public sealed record AgentInspectionSummaryResponse(
     Guid Id,
+    Guid CropPlanRequestId,
     Guid FieldId,
     Guid InspectorUserId,
+    string InspectionPurpose,
     DateTime ScheduledAt,
     DateTime? CompletedAt,
     string Status,

@@ -246,8 +246,10 @@ public sealed class InternalAgentToolsController(
 
                 return inspections.Select(inspection => new AgentInspectionSummaryResponse(
                     inspection.Id,
+                    inspection.CropPlanRequestId!.Value,
                     inspection.FieldId,
                     inspection.InspectorUserId,
+                    inspection.Purpose.ToString(),
                     inspection.ScheduledAt,
                     inspection.CompletedAt,
                     inspection.Status.ToString(),

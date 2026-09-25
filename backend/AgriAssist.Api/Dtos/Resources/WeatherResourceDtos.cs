@@ -1,4 +1,5 @@
 using AgriAssist.Api.ExternalServices.Weather;
+using AgriAssist.Api.Dtos.CropPlanning;
 
 namespace AgriAssist.Api.Dtos.Resources;
 
@@ -26,6 +27,23 @@ public static class ResourceRequirementStatus
     public const string Unknown = "ResourceRequirementUnknown";
 }
 
+/// <summary>
+/// Safe, read-only Member 2 analysis context. It deliberately excludes raw observations,
+/// staff notes, images, evidence identifiers, and crop-issue identifiers.
+/// </summary>
+public sealed record Member2FieldAnalysisContext(
+    string FieldSuitability,
+    string SoilAssessment,
+    string WaterAssessment,
+    string DrainageAssessment,
+    IReadOnlyList<string> FieldPreparationRequirements,
+    string PlantingReadiness,
+    IReadOnlyList<PrePlantingRisk> IdentifiedRisks,
+    IReadOnlyList<string> RecommendedPrePlantingActions,
+    string Priority,
+    IReadOnlyList<string> Warnings,
+    bool RequiresHumanReview);
+
 /// <summary>Sent to the AI service. All evidence is gathered by ASP.NET so the agent needs no tool calls.</summary>
 public sealed record WeatherResourceInput(
     Guid WorkflowId,
@@ -38,7 +56,8 @@ public sealed record WeatherResourceInput(
     string FieldAnalysisSummary,
     WeatherForecastResponse Weather,
     IReadOnlyList<StockSnapshot> Stocks,
-    IReadOnlyList<ResourceRequirement>? ResourceRequirements = null);
+    IReadOnlyList<ResourceRequirement>? ResourceRequirements = null,
+    Member2FieldAnalysisContext? Member2FieldAnalysisContext = null);
 
 /// <summary>
 /// Requested and Sufficient are null (and RequirementStatus is ResourceRequirementUnknown) when crop
