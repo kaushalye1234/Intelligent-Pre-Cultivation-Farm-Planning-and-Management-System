@@ -182,17 +182,69 @@ export type FieldAnalysisResult = {
   fieldCondition: FieldAnalysisFieldCondition
   openIssues: FieldAnalysisOpenIssue[]
   priority: string
+  fieldSuitability?: 'Suitable' | 'SuitableWithConditions' | 'NotSuitable' | 'RequiresFurtherAssessment' | 'Unknown'
+  soilAssessment?: string
+  waterAssessment?: string
+  drainageAssessment?: string
+  fieldPreparationRequirements?: string[]
+  plantingReadiness?: PrePlantingPlantingReadiness | 'Unknown'
+  identifiedRisks?: PrePlantingRisk[]
+  recommendedPrePlantingActions?: string[]
 }
 
+export type PrePlantingSoilType = 'Sandy' | 'Clay' | 'Loamy' | 'Silty' | 'Mixed' | 'Unknown' | 'Other'
+export type PrePlantingSoilCondition = 'Good' | 'Moderate' | 'Poor' | 'Compacted' | 'Eroded' | 'Unknown' | 'Other'
+export type PrePlantingSoilMoisture = 'Dry' | 'Moist' | 'Wet' | 'Waterlogged' | 'Unknown'
+export type PrePlantingWaterAvailability = 'Adequate' | 'Limited' | 'Unavailable' | 'Seasonal' | 'Unknown'
+export type PrePlantingIrrigationAvailability = 'Available' | 'Limited' | 'Unavailable' | 'NotRequired' | 'Unknown'
+export type PrePlantingWaterReliability = 'Reliable' | 'Intermittent' | 'Seasonal' | 'Unreliable' | 'Unknown'
+export type PrePlantingDrainageCondition = 'Good' | 'Moderate' | 'Poor' | 'Unknown'
+export type PrePlantingWaterloggingRisk = 'NoneObserved' | 'Low' | 'Moderate' | 'High' | 'Unknown'
+export type PrePlantingGeneralFieldCondition =
+  | 'ClearAndPrepared'
+  | 'RequiresLandPreparation'
+  | 'UnevenField'
+  | 'Waterlogged'
+  | 'TooDry'
+  | 'ErosionPresent'
+  | 'AccessLimitation'
+  | 'Other'
+export type PrePlantingPlantingReadiness =
+  | 'Ready'
+  | 'ReadyWithMinorPreparation'
+  | 'RequiresPreparation'
+  | 'NotReady'
+  | 'RequiresFurtherAssessment'
+export type PrePlantingRisk =
+  | 'WaterShortageRisk'
+  | 'FloodingRisk'
+  | 'PoorDrainage'
+  | 'SoilSuitabilityConcern'
+  | 'SoilErosion'
+  | 'FieldAccessProblem'
+  | 'LandPreparationRequired'
+  | 'Other'
+
 export type PrePlantingAssessmentInput = {
-  soilCondition: string
-  waterAvailability: string
-  irrigationAvailability: string
-  drainageCondition: string
-  generalFieldCondition: string
-  plantingReadiness: string
-  risksAndConcerns: string
-  officerNotes: string
+  soilType: PrePlantingSoilType | null
+  soilCondition: PrePlantingSoilCondition | null
+  soilMoisture: PrePlantingSoilMoisture | null
+  soilNotes: string | null
+  waterAvailability: PrePlantingWaterAvailability | null
+  mainWaterSource: string | null
+  irrigationAvailability: PrePlantingIrrigationAvailability | null
+  waterReliability: PrePlantingWaterReliability | null
+  waterConcerns: string | null
+  drainageCondition: PrePlantingDrainageCondition | null
+  waterloggingRisk: PrePlantingWaterloggingRisk | null
+  drainageNotes: string | null
+  generalFieldCondition: PrePlantingGeneralFieldCondition | null
+  generalFieldNotes: string | null
+  plantingReadiness: PrePlantingPlantingReadiness | null
+  identifiedRisks: PrePlantingRisk[] | null
+  riskNotes: string | null
+  risksAndConcerns: string | null
+  officerNotes: string | null
 }
 
 export type PrePlantingAssessmentImage = {
@@ -206,10 +258,31 @@ export type PrePlantingAssessment = PrePlantingAssessmentInput & {
   inspectionId: string
   cropPlanRequestId: string
   fieldId: string
+  inspectorUserId: string
   status: number
   scheduledAt: string
-  completedAt?: string
+  completedAt: string | null
   images: PrePlantingAssessmentImage[]
+}
+
+export type PrePlantingContext = {
+  cropPlanRequestId: string
+  workflowId: string
+  currentStep: string
+  farmerId: string
+  farmerName: string
+  farmId: string
+  farmName: string
+  farmLocation: string
+  fieldId: string
+  fieldName: string
+  cropTypeId: string
+  cropName: string
+  cropVarietyId: string | null
+  cropVarietyName: string | null
+  cultivationSeason: 0 | 1 | 2 | 3
+  preferredStartDate: string
+  preferredEndDate: string
 }
 
 export type ResourceCategory = {

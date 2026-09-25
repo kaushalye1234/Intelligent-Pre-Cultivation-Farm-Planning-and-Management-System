@@ -49,6 +49,64 @@
   gap: 18px;
 }
 
+.preplant-context {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px;
+  background: rgba(247, 249, 243, 0.8);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.preplant-context > div {
+  display: grid;
+  align-content: start;
+  gap: 3px;
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.preplant-context span,
+.preplant-context small {
+  color: var(--color-text-muted);
+}
+
+.preplant-context span {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.preplant-context strong {
+  overflow-wrap: anywhere;
+}
+
+.preplant-form-section {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 18px;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.preplant-form-section > legend {
+  padding: 0 8px;
+  color: var(--color-primary);
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.preplant-form-section > p {
+  margin: 0 0 2px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
 .preplant-form-grid,
 .preplant-readonly {
   display: grid;
@@ -57,7 +115,41 @@
 }
 
 .preplant-form-grid .field-control-wide {
-  grid-column: auto;
+  grid-column: 1 / -1;
+}
+
+.preplant-risk-list {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.preplant-risk-list legend {
+  padding: 0 6px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.preplant-risk-list label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.preplant-risk-list input {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--color-primary);
 }
 
 .preplant-evidence {
@@ -135,6 +227,22 @@
   margin: 0;
 }
 
+.preplant-result-list h4 {
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.preplant-result-list p,
+.preplant-result-list ul {
+  margin: 0;
+}
+
+.preplant-result-list ul {
+  display: grid;
+  gap: 6px;
+  padding-left: 20px;
+}
+
 @media (max-width: 760px) {
   .preplant-header,
   .preplant-actions {
@@ -144,7 +252,9 @@
 
   .preplant-form-grid,
   .preplant-readonly,
-  .preplant-result dl {
+  .preplant-result dl,
+  .preplant-context,
+  .preplant-risk-list {
     grid-template-columns: 1fr;
   }
 
