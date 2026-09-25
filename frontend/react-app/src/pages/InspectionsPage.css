@@ -1,98 +1,12 @@
 .inspections-command-center {
-  --inspection-forest: #173f2b;
-  --inspection-leaf: #2f6f49;
-  --inspection-moss: #6f815b;
-  --inspection-amber: #d49a3a;
-  --inspection-cream: #fbf8f0;
-  --inspection-paper: #fffdf8;
-  --inspection-ink: #1c2b22;
-  --inspection-muted: #687267;
-  --inspection-line: #dcd5c7;
+  --inspection-leaf: var(--color-primary-text);
+  --inspection-moss: var(--color-primary);
+  --inspection-amber: var(--color-warning);
+  --inspection-paper: var(--color-surface);
+  --inspection-ink: var(--color-text);
+  --inspection-muted: var(--color-text-muted);
+  --inspection-line: var(--color-border);
   gap: 20px;
-}
-
-.inspections-command-center > .page-header {
-  position: relative;
-  isolation: isolate;
-  min-height: 178px;
-  align-items: center;
-  overflow: hidden;
-  padding: 30px 32px;
-  color: #fffdf7;
-  background:
-    linear-gradient(105deg, rgba(17, 53, 35, 0.98), rgba(37, 89, 57, 0.94)),
-    var(--inspection-forest);
-  border: 1px solid rgba(19, 64, 39, 0.48);
-  border-radius: 16px;
-  box-shadow: 0 18px 44px rgba(31, 54, 39, 0.16);
-}
-
-.inspections-command-center > .page-header::before,
-.inspections-command-center > .page-header::after {
-  position: absolute;
-  z-index: -1;
-  content: "";
-  pointer-events: none;
-}
-
-.inspections-command-center > .page-header::before {
-  inset: 0;
-  opacity: 0.2;
-  background: repeating-linear-gradient(
-    -11deg,
-    transparent 0,
-    transparent 22px,
-    rgba(255, 255, 255, 0.22) 23px,
-    transparent 24px
-  );
-}
-
-.inspections-command-center > .page-header::after {
-  width: 280px;
-  height: 280px;
-  right: -76px;
-  bottom: -180px;
-  border: 46px solid rgba(225, 178, 91, 0.18);
-  border-radius: 50%;
-}
-
-.inspections-command-center > .page-header .page-header-copy,
-.inspections-command-center > .page-header .page-header-actions {
-  position: relative;
-  z-index: 1;
-}
-
-.inspections-command-center > .page-header .page-header-copy p {
-  margin-bottom: 10px;
-  color: #dbe7d5;
-  letter-spacing: 0.09em;
-}
-
-.inspections-command-center > .page-header .page-header-copy h1 {
-  color: #fffdf7;
-  font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
-  font-size: clamp(34px, 4vw, 46px);
-  font-weight: 700;
-  letter-spacing: -0.025em;
-}
-
-.inspections-command-center > .page-header .page-header-copy span {
-  max-width: 670px;
-  color: rgba(255, 253, 247, 0.76);
-  font-size: 15px;
-}
-
-.inspections-command-center > .page-header .ui-button-primary {
-  min-height: 46px;
-  color: #203125;
-  background: #e3ae55;
-  border-color: #efc477;
-  box-shadow: 0 10px 24px rgba(13, 36, 23, 0.2);
-}
-
-.inspections-command-center > .page-header .ui-button-primary:hover {
-  background: #edbd6b;
-  border-color: #f5cf8d;
 }
 
 .inspections-command-center .inspection-status-overview {
@@ -102,7 +16,7 @@
   background: var(--inspection-paper);
   border: 1px solid var(--inspection-line);
   border-radius: 14px;
-  box-shadow: 0 8px 26px rgba(37, 54, 41, 0.07);
+  box-shadow: var(--shadow-sm);
 }
 
 .inspections-command-center .inspection-status-heading {
@@ -111,7 +25,7 @@
   gap: 4px;
   min-height: 112px;
   padding: 20px 22px;
-  background: #f1eee4;
+  background: var(--color-surface-muted);
   border-right: 1px solid var(--inspection-line);
 }
 
@@ -177,42 +91,41 @@
   width: 8px;
   height: 8px;
   flex: 0 0 auto;
-  background: #8c948d;
+  background: var(--color-text-subtle);
   border-radius: 50%;
-  box-shadow: 0 0 0 4px rgba(140, 148, 141, 0.12);
+  box-shadow: 0 0 0 4px var(--tone-neutral-bg);
 }
 
 .inspections-command-center .inspection-status-stat > strong {
   color: var(--inspection-ink);
-  font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
-  font-size: 28px;
+    font-size: 28px;
   line-height: 1;
 }
 
 .inspections-command-center .status-stat-progress i,
 .inspections-command-center .status-stat-escalated i {
   background: var(--inspection-amber);
-  box-shadow: 0 0 0 4px rgba(212, 154, 58, 0.14);
+  box-shadow: 0 0 0 4px var(--tone-warn-bg);
 }
 
 .inspections-command-center .status-stat-completed i {
-  background: var(--inspection-leaf);
-  box-shadow: 0 0 0 4px rgba(47, 111, 73, 0.14);
+  background: var(--color-primary);
+  box-shadow: 0 0 0 4px var(--color-glow);
 }
 
 .inspections-command-center .status-stat-cancelled i {
-  background: #a34b3c;
-  box-shadow: 0 0 0 4px rgba(163, 75, 60, 0.12);
+  background: var(--color-danger);
+  box-shadow: 0 0 0 4px var(--tone-bad-bg);
 }
 
 .inspections-command-center .inspection-filter-panel {
   display: grid;
   gap: 18px;
   padding: 20px 22px;
-  background: rgba(255, 253, 248, 0.86);
+  background: var(--color-surface);
   border: 1px solid var(--inspection-line);
   border-radius: 14px;
-  box-shadow: 0 6px 18px rgba(37, 54, 41, 0.05);
+  box-shadow: var(--shadow-sm);
 }
 
 .inspections-command-center .inspection-filter-heading,
@@ -245,7 +158,7 @@
 }
 
 .inspections-command-center .inspection-filter-panel .field-control > span {
-  color: #39473d;
+  color: var(--color-text);
   font-size: 12px;
   font-weight: 800;
 }
@@ -253,21 +166,19 @@
 .inspections-command-center .inspection-filter-panel input,
 .inspections-command-center .inspection-filter-panel select {
   min-height: 44px;
-  background: #fffefb;
-  border-color: #cbc3b5;
+  background: var(--color-input-bg);
+  border-color: var(--color-border-strong);
   border-radius: 8px;
 }
 
 .inspections-command-center .inspection-filter-panel input:hover,
 .inspections-command-center .inspection-filter-panel select:hover {
-  border-color: #9fa994;
+  border-color: var(--color-text-subtle);
 }
 
 .inspections-command-center .inspection-filter-panel .ui-button-primary {
   min-height: 44px;
   padding-inline: 22px;
-  background: var(--inspection-leaf);
-  border-color: var(--inspection-leaf);
 }
 
 .inspections-command-center .inspection-work-queue {
@@ -278,7 +189,7 @@
 
 .inspections-command-center .inspection-queue-heading {
   padding: 20px 22px;
-  background: #f8f5ed;
+  background: var(--color-table-header);
   border-bottom: 1px solid var(--inspection-line);
   border-radius: 14px 14px 0 0;
 }
@@ -292,7 +203,7 @@
 
 .inspections-command-center .inspection-queue-heading > span {
   padding: 7px 10px;
-  background: #ebe7dc;
+  background: var(--tone-neutral-bg);
   border-radius: 999px;
   font-weight: 800;
   white-space: nowrap;
@@ -312,14 +223,14 @@
 .inspections-command-center .inspection-work-queue .data-table th {
   padding-top: 16px;
   padding-bottom: 12px;
-  color: #768074;
-  border-bottom-color: #d5cdbf;
+  color: var(--color-text-muted);
+  border-bottom-color: var(--color-border);
   letter-spacing: 0.06em;
 }
 
 .inspections-command-center .inspection-work-queue .data-table td {
   height: 78px;
-  border-bottom-color: #e5dfd3;
+  border-bottom-color: var(--color-border);
 }
 
 .inspections-command-center .inspection-work-queue .data-table tbody tr {
@@ -327,12 +238,12 @@
 }
 
 .inspections-command-center .inspection-work-queue .data-table tbody tr:hover {
-  background: #f5f7f1;
+  background: var(--color-row-hover);
   box-shadow: inset 3px 0 0 var(--inspection-moss);
 }
 
 .inspections-command-center .inspection-scheduled-at {
-  color: #445148;
+  color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -345,7 +256,7 @@
 .inspections-command-center .inspection-summary-copy {
   display: block;
   max-width: 430px;
-  color: #37443b;
+  color: var(--color-text);
   line-height: 1.45;
 }
 
@@ -356,15 +267,15 @@
 
 .inspections-command-center .inspection-details-action {
   min-height: 40px;
-  color: #255f3d;
-  background: #e7efe3;
-  border: 1px solid #c9dbc2;
+  color: var(--color-primary-text);
+  background: var(--color-primary-soft);
+  border: 1px solid var(--tone-good-border);
 }
 
 .inspections-command-center .inspection-details-action:hover {
-  color: #17472c;
-  background: #dce9d7;
-  border-color: #aec8a4;
+  color: var(--color-primary-text);
+  background: var(--color-primary-soft);
+  border-color: var(--color-primary);
 }
 
 .inspections-command-center .inspection-action-menu {
@@ -377,9 +288,9 @@
   display: inline-grid;
   place-items: center;
   padding: 0;
-  color: #425047;
-  background: #fffdf8;
-  border: 1px solid #d4ccbe;
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
   border-radius: 8px;
   cursor: pointer;
   transition: color 150ms ease, background 150ms ease, border-color 150ms ease, transform 150ms ease;
@@ -387,9 +298,9 @@
 
 .inspections-command-center .inspection-action-trigger:hover,
 .inspections-command-center .inspection-action-trigger[aria-expanded="true"] {
-  color: #17472c;
-  background: #eef3e9;
-  border-color: #aabc9f;
+  color: var(--color-primary-text);
+  background: var(--color-primary-soft);
+  border-color: var(--color-primary);
 }
 
 .inspections-command-center .inspection-action-trigger:hover {
@@ -405,10 +316,10 @@
   display: grid;
   gap: 3px;
   padding: 6px;
-  background: #fffefb;
-  border: 1px solid #d4ccbe;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
   border-radius: 10px;
-  box-shadow: 0 18px 38px rgba(28, 43, 34, 0.18);
+  box-shadow: var(--shadow-md);
   animation: inspection-menu-in 130ms ease-out both;
 }
 
@@ -418,7 +329,7 @@
   align-items: center;
   gap: 10px;
   padding: 0 11px;
-  color: #354239;
+  color: var(--color-text);
   background: transparent;
   border: 0;
   border-radius: 7px;
@@ -429,28 +340,28 @@
 
 .inspections-command-center .inspection-action-popover button:hover,
 .inspections-command-center .inspection-action-popover button:focus-visible {
-  background: #edf3e9;
+  background: var(--color-primary-soft);
 }
 
 .inspections-command-center .inspection-action-popover .inspection-menu-danger {
-  color: #8c382d;
+  color: var(--color-danger);
 }
 
 .inspections-command-center .inspection-action-popover .inspection-menu-danger:hover,
 .inspections-command-center .inspection-action-popover .inspection-menu-danger:focus-visible {
-  background: #faece8;
+  background: var(--tone-bad-bg);
 }
 
 .inspections-command-center .status-info {
-  color: #5b481a;
-  background: #f3e8c5;
-  border-color: #dfca8f;
+  color: var(--tone-info-text);
+  background: var(--tone-info-bg);
+  border-color: var(--tone-info-border);
 }
 
 .inspections-command-center .status-warn {
-  color: #74480f;
-  background: #f4e0b7;
-  border-color: #dfbd72;
+  color: var(--tone-warn-text);
+  background: var(--tone-warn-bg);
+  border-color: var(--tone-warn-border);
 }
 
 @keyframes inspection-menu-in {
@@ -507,11 +418,6 @@
 @media (max-width: 768px) {
   .inspections-command-center {
     gap: 16px;
-  }
-
-  .inspections-command-center > .page-header {
-    min-height: auto;
-    padding: 24px;
   }
 
   .inspections-command-center > .page-header .page-header-actions,
@@ -608,12 +514,12 @@
     background: var(--inspection-paper);
     border: 1px solid var(--inspection-line);
     border-radius: 12px;
-    box-shadow: 0 8px 24px rgba(37, 54, 41, 0.07);
+    box-shadow: var(--shadow-sm);
   }
 
   .inspections-command-center .inspection-work-queue .data-table tbody tr:hover {
     background: var(--inspection-paper);
-    box-shadow: 0 10px 28px rgba(37, 54, 41, 0.1);
+    box-shadow: var(--shadow-sm), 0 10px 24px -16px var(--color-glow-strong);
   }
 
   .inspections-command-center .inspection-work-queue .data-table td {
@@ -634,7 +540,7 @@
   }
 
   .inspections-command-center .inspection-work-queue .data-table td::before {
-    color: #7a8279;
+    color: var(--color-text-subtle);
     font-size: 10px;
     font-weight: 900;
     letter-spacing: 0.07em;
@@ -662,7 +568,7 @@
     padding-top: 14px;
     padding-bottom: 16px;
     margin-top: 4px;
-    border-top: 1px solid #e4ddd0;
+    border-top: 1px solid var(--color-border);
   }
 
   .inspections-command-center .inspection-work-queue .data-table td:nth-child(5)::before {
@@ -691,7 +597,6 @@
 }
 
 @media (max-width: 520px) {
-  .inspections-command-center > .page-header,
   .inspections-command-center .inspection-filter-panel,
   .inspections-command-center .inspection-status-heading {
     padding: 20px;
