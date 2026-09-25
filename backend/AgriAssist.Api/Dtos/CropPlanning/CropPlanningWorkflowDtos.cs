@@ -267,6 +267,13 @@ public sealed record Member3HandoffResponse(
     DateOnly PreferredEndDate,
     string FieldAnalysisSummary,
     string Priority,
-    IReadOnlyList<Guid> EvidenceInspectionIds,
-    IReadOnlyList<FieldAnalysisOpenIssueResponse> OpenIssues,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<string> Warnings,
+    bool RequiresHumanReview,
+    string FieldSuitability,
+    string SoilAssessment,
+    string WaterAssessment,
+    string DrainageAssessment,
+    IReadOnlyList<string> FieldPreparationRequirements,
+    string PlantingReadiness,
+    IReadOnlyList<PrePlantingRisk> IdentifiedRisks,
+    IReadOnlyList<string> RecommendedPrePlantingActions);

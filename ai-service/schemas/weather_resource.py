@@ -40,6 +40,22 @@ class ResourceRequirement(CamelModel):
     requested_quantity: float = Field(alias="requestedQuantity", ge=0)
 
 
+class Member2FieldAnalysisContext(CamelModel):
+    """Completed safe Member 2 output; never raw inspection evidence or staff notes."""
+
+    field_suitability: str = Field(alias="fieldSuitability")
+    soil_assessment: str = Field(alias="soilAssessment")
+    water_assessment: str = Field(alias="waterAssessment")
+    drainage_assessment: str = Field(alias="drainageAssessment")
+    field_preparation_requirements: list[str] = Field(default_factory=list, alias="fieldPreparationRequirements")
+    planting_readiness: str = Field(alias="plantingReadiness")
+    identified_risks: list[str] = Field(default_factory=list, alias="identifiedRisks")
+    recommended_pre_planting_actions: list[str] = Field(default_factory=list, alias="recommendedPrePlantingActions")
+    priority: str
+    warnings: list[str] = Field(default_factory=list)
+    requires_human_review: bool = Field(alias="requiresHumanReview")
+
+
 class WeatherResourceInput(CamelModel):
     workflow_id: UUID = Field(alias="workflowId")
     agent_step_id: UUID = Field(alias="agentStepId")
@@ -52,6 +68,10 @@ class WeatherResourceInput(CamelModel):
     weather: WeatherForecast
     stocks: list[StockSnapshot] = Field(default_factory=list)
     resource_requirements: list[ResourceRequirement] = Field(default_factory=list, alias="resourceRequirements")
+    member_2_field_analysis_context: Member2FieldAnalysisContext | None = Field(
+        default=None,
+        alias="member2FieldAnalysisContext",
+    )
 
     @field_validator("location")
     @classmethod

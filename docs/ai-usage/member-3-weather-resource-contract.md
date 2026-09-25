@@ -17,6 +17,7 @@ When Member 2 completes, the workflow's `CurrentStep` is `WeatherResourceAgent`.
 | --- | --- | --- |
 | POST | `/api/crop-plans/{id}/run-weather-resource-analysis` | Admin, AgriculturalOfficer, ResourceOfficer |
 | GET | `/api/crop-plans/{id}/weather-resource-result` | Anyone who can see the crop plan request |
+| GET | `/api/crop-plans/{id}/member-3-handoff` | FieldOfficer, ResourceOfficer, AgriculturalOfficer, Admin; exact completed Member 2 workflow only |
 
 On success the step is `Completed`, the workflow is `Pending` and `CurrentStep` is
 `SchedulingValidationAgent`. On failure the step is `Failed` and the workflow ends as `SafeFailure`
@@ -24,7 +25,7 @@ On success the step is `Completed`, the workflow is `Pending` and `CurrentStep` 
 
 ## How the step works
 
-1. ASP.NET reads Member 2's handoff (`GetMember3HandoffAsync`), the farm location, the weather
+1. ASP.NET reads Member 2's safe completed handoff (`GetMember3HandoffAsync`), the farm location, the weather
    forecast (`IWeatherService`) and a snapshot of up to 100 active inventory rows.
 2. It sends all of that to the AI service at `POST /workflows/crop-planning/weather-resource`.
    The agent needs no backend tool calls.
@@ -33,6 +34,26 @@ On success the step is `Completed`, the workflow is `Pending` and `CurrentStep` 
 4. ASP.NET validates the output before saving it: the workflow ID must match, only stock IDs from
    the snapshot may appear, available quantities must equal the snapshot, and a weather risk other
    than `Unknown` is rejected when no forecast was available.
+
+`WeatherResourceInput` preserves the legacy `fieldPriority` and `fieldAnalysisSummary` fields and adds optional read-only `member2FieldAnalysisContext`:
+
+```json
+{
+  "fieldSuitability": "SuitableWithConditions",
+  "soilAssessment": "Soil type Loamy; condition Moderate; moisture Moist.",
+  "waterAssessment": "Water availability Adequate; main source Canal; irrigation Available; reliability Reliable.",
+  "drainageAssessment": "Drainage condition Poor; waterlogging risk Moderate.",
+  "fieldPreparationRequirements": ["Clear the recorded drainage channels before planting."],
+  "plantingReadiness": "RequiresPreparation",
+  "identifiedRisks": ["PoorDrainage"],
+  "recommendedPrePlantingActions": ["Address the recorded drainage concern before planting."],
+  "priority": "High",
+  "warnings": [],
+  "requiresHumanReview": true
+}
+```
+
+This is completed structured Member 2 output, not raw evidence. It excludes staff notes, raw observation rows, image metadata, inspection/evidence IDs, crop-issue IDs, and unrelated history. Resource Officers do not manually re-enter Member 2 water, irrigation, drainage, waterlogging, readiness, or risk observations. Pumps, pipes, tanks, and irrigation equipment remain ordinary Member 3 inventory resources and are not substitutes for these Field Officer observations. `WeatherResourceAgent` receives the context read-only; its existing weather and inventory reasoning is unchanged.
 
 Weather risk rules: heavy rain (30 mm in a day or 80 mm total), heat (38 C or more) or wind (15 m/s
 or more) is `High`; moderate rain (10 mm/day or 30 mm total), 34 C or more, or 10 m/s or more is

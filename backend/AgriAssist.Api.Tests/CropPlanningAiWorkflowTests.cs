@@ -214,8 +214,13 @@ public sealed class CropPlanningAiWorkflowTests
         Assert.Equal("WeatherResourceAgent", workflow.CurrentStep);
         Assert.Contains(workflow.Steps, step => step.AgentName == "CropFieldAnalysisAgent" && step.Status == AgentStepStatus.Completed);
         Assert.Equal("High", handoff.Priority);
-        Assert.Contains(saved.InspectionId, handoff.EvidenceInspectionIds);
-        Assert.Equal(issue.Id, handoff.OpenIssues.Single().IssueId);
+        Assert.Equal("SuitableWithConditions", handoff.FieldSuitability);
+        Assert.Equal("ReadyWithMinorPreparation", handoff.PlantingReadiness);
+        Assert.Equal([PrePlantingRisk.LandPreparationRequired], handoff.IdentifiedRisks);
+        Assert.Contains("Adequate", handoff.WaterAssessment);
+        Assert.Contains("Good", handoff.DrainageAssessment);
+        Assert.NotEmpty(handoff.FieldPreparationRequirements);
+        Assert.NotEmpty(handoff.RecommendedPrePlantingActions);
     }
 
     [Fact]

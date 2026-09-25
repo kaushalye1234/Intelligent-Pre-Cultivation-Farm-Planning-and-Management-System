@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using AgriAssist.Api.Data;
+using AgriAssist.Api.Dtos.CropPlanning;
 using AgriAssist.Api.Dtos.Inspections;
 using AgriAssist.Api.Dtos.Shared;
 using AgriAssist.Api.Models.CropPlanning;
@@ -50,8 +51,25 @@ public sealed class PrePlantingAuthorizationIntegrationTests
 
             Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync($"/api/crop-plans/{data.CropPlanRequestId}/pre-planting-assessment")).StatusCode);
             Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync($"/api/crop-plans/{data.CropPlanRequestId}/field-analysis-result")).StatusCode);
-            Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync($"/api/crop-plans/{data.CropPlanRequestId}/member-3-handoff")).StatusCode);
         }
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await farmer.GetAsync($"/api/crop-plans/{data.CropPlanRequestId}/member-3-handoff")).StatusCode);
+        var safeResponse = await resourceOfficer.GetAsync($"/api/crop-plans/{data.CropPlanRequestId}/member-3-handoff");
+        Assert.Equal(HttpStatusCode.OK, safeResponse.StatusCode);
+        var safeJson = await safeResponse.Content.ReadAsStringAsync();
+        Assert.Contains("fieldSuitability", safeJson, StringComparison.Ordinal);
+        Assert.Contains("waterAssessment", safeJson, StringComparison.Ordinal);
+        Assert.Contains("drainageAssessment", safeJson, StringComparison.Ordinal);
+        Assert.Contains("plantingReadiness", safeJson, StringComparison.Ordinal);
+        Assert.Contains("identifiedRisks", safeJson, StringComparison.Ordinal);
+        Assert.Contains("fieldPreparationRequirements", safeJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("officerNotes", safeJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("riskNotes", safeJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("evidenceInspectionIds", safeJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("openIssues", safeJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("inspectionImages", safeJson, StringComparison.OrdinalIgnoreCase);
+        Assert.NotEqual(HttpStatusCode.OK, (await resourceOfficer.GetAsync(
+            $"/api/crop-plans/{data.UnrelatedCropPlanRequestId}/member-3-handoff")).StatusCode);
     }
 
     [Fact]
@@ -88,6 +106,12 @@ public sealed class PrePlantingAuthorizationIntegrationTests
         using var imageBody = new MultipartFormDataContent();
         Assert.Equal(HttpStatusCode.Forbidden, (await resourceOfficer.PostAsync(
             $"/api/inspections/{data.PrePlantingInspectionId}/images", imageBody)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await resourceOfficer.PutAsJsonAsync(
+            $"/api/crop-plans/{data.CropPlanRequestId}/pre-planting-assessment", new { })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await resourceOfficer.PostAsync(
+            $"/api/crop-plans/{data.CropPlanRequestId}/pre-planting-assessment/submit", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await resourceOfficer.PostAsync(
+            $"/api/crop-plans/{data.CropPlanRequestId}/run-field-analysis", null)).StatusCode);
     }
 
     private static async Task<SeededAuthorizationData> SeedAsync(WebApplicationFactory<Program> factory)
@@ -112,6 +136,18 @@ public sealed class PrePlantingAuthorizationIntegrationTests
             PreferredEndDate = new DateOnly(2027, 1, 1),
             Budget = 12000,
             Objective = "Verify raw assessment authorization.",
+            Status = CropPlanRequestStatus.PreliminaryGenerated
+        };
+        var unrelatedRequest = new CropPlanRequest
+        {
+            Farm = farm,
+            Field = field,
+            CropType = crop,
+            RequestedByUser = farmer,
+            PreferredStartDate = new DateOnly(2027, 2, 1),
+            PreferredEndDate = new DateOnly(2027, 5, 1),
+            Budget = 9000,
+            Objective = "Unrelated crop plan still waiting for Member 2.",
             Status = CropPlanRequestStatus.PreliminaryGenerated
         };
         var routine = new FieldInspection
@@ -146,8 +182,58 @@ public sealed class PrePlantingAuthorizationIntegrationTests
             ContentType = "image/jpeg",
             SizeBytes = 10
         };
+        var workflow = new AgentWorkflow
+        {
+            CropPlanRequest = request,
+            InitiatedByUser = farmer,
+            Objective = request.Objective,
+            Status = AgentWorkflowStatus.Pending,
+            CurrentStep = "WeatherResourceAgent"
+        };
+        var fieldAnalysis = new FieldAnalysisOutput(
+            workflow.Id,
+            "Analyzed",
+            true,
+            ["Human review remains required."],
+            new FieldAnalysisFieldConditionResponse("Structured staff analysis summary.", [prePlanting.Id]),
+            [new FieldAnalysisOpenIssueResponse(prePlantingIssue.Id, "High", "Open", prePlanting.Id)],
+            "High",
+            "SuitableWithConditions",
+            "Soil type Loamy; condition Moderate; moisture Moist.",
+            "Water availability Adequate; main source Canal; irrigation Available; reliability Reliable.",
+            "Drainage condition Poor; waterlogging risk Moderate.",
+            ["Clear drainage channels before planting."],
+            "RequiresPreparation",
+            [PrePlantingRisk.PoorDrainage],
+            ["Address the drainage concern before planting."]);
+        workflow.Steps =
+        [
+            new AgentStep
+            {
+                AgentName = "CropFieldAnalysisAgent",
+                StepName = "FieldAnalysis",
+                Sequence = 2,
+                Status = AgentStepStatus.Completed,
+                OutputJson = JsonSerializer.Serialize(fieldAnalysis, Json)
+            },
+            new AgentStep { AgentName = "WeatherResourceAgent", StepName = "WeatherResourceAnalysis", Sequence = 3 }
+        ];
+        var unrelatedWorkflow = new AgentWorkflow
+        {
+            CropPlanRequest = unrelatedRequest,
+            InitiatedByUser = farmer,
+            Objective = unrelatedRequest.Objective,
+            Status = AgentWorkflowStatus.Pending,
+            CurrentStep = "CropFieldAnalysisAgent",
+            Steps =
+            [
+                new AgentStep { AgentName = "CropFieldAnalysisAgent", StepName = "FieldAnalysis", Sequence = 2, Status = AgentStepStatus.Pending },
+                new AgentStep { AgentName = "WeatherResourceAgent", StepName = "WeatherResourceAnalysis", Sequence = 3 }
+            ]
+        };
         db.AddRange(farmer, fieldOfficer, resourceOfficer, agriculturalOfficer, admin, farm, field, crop, request,
-            routine, prePlanting, routineObservation, prePlantingObservation, routineIssue, prePlantingIssue, recommendation, image);
+            unrelatedRequest, routine, prePlanting, routineObservation, prePlantingObservation, routineIssue,
+            prePlantingIssue, recommendation, image, workflow, unrelatedWorkflow);
         await db.SaveChangesAsync();
 
         return new SeededAuthorizationData(
@@ -157,6 +243,7 @@ public sealed class PrePlantingAuthorizationIntegrationTests
             admin.Email,
             field.Id,
             request.Id,
+            unrelatedRequest.Id,
             routine.Id,
             prePlanting.Id,
             prePlantingIssue.Id);
@@ -210,6 +297,7 @@ public sealed class PrePlantingAuthorizationIntegrationTests
         string AdminEmail,
         Guid FieldId,
         Guid CropPlanRequestId,
+        Guid UnrelatedCropPlanRequestId,
         Guid RoutineInspectionId,
         Guid PrePlantingInspectionId,
         Guid PrePlantingIssueId);

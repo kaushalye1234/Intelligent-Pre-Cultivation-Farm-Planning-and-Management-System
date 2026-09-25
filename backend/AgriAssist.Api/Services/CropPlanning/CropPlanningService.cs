@@ -1149,7 +1149,7 @@ public sealed class CropPlanningService(
 
     public async Task<Member3HandoffResponse> GetMember3HandoffAsync(Guid requestId, CancellationToken cancellationToken)
     {
-        RequirePrePlantingViewer();
+        RequireMember3HandoffViewer();
         await EnsurePlanRequestAccessAsync(requestId, cancellationToken);
         var workflow = await LatestWorkflowQuery(requestId)
             .Include(item => item.CropPlanRequest)!
@@ -1161,10 +1161,26 @@ public sealed class CropPlanningService(
             ?? throw NotFound("AI workflow");
 
         var planRequest = workflow.CropPlanRequest ?? throw NotFound("Crop plan request");
+        var fieldStep = workflow.Steps
+            .OrderBy(step => step.Sequence)
+            .FirstOrDefault(step => step.AgentName == FieldAnalysisAgentName && step.StepName == FieldAnalysisStepName)
+            ?? throw NotFound("Field analysis step");
+        if (fieldStep.Status != AgentStepStatus.Completed || workflow.CurrentStep != WeatherResourceAgentName)
+        {
+            throw new ApiException(HttpStatusCode.Conflict, "MEMBER3_FIELD_CONTEXT_NOT_READY", "A completed field analysis at the WeatherResourceAgent stage is required.");
+        }
         var fieldAnalysis = ReadFieldAnalysisOutput(
-            workflow.Steps.OrderBy(step => step.Sequence).FirstOrDefault(step => step.AgentName == FieldAnalysisAgentName && step.StepName == FieldAnalysisStepName)?.OutputJson,
+            fieldStep.OutputJson,
             workflow.Id,
             ["Field analysis output is not available yet."]);
+        if (fieldAnalysis.WorkflowId != workflow.Id
+            || !fieldAnalysis.Status.Equals("Analyzed", StringComparison.Ordinal)
+            || fieldAnalysis.FieldPreparationRequirements is null
+            || fieldAnalysis.IdentifiedRisks is null
+            || fieldAnalysis.RecommendedPrePlantingActions is null)
+        {
+            throw new ApiException(HttpStatusCode.Conflict, "MEMBER3_FIELD_CONTEXT_INVALID", "The completed field analysis does not contain a valid structured Member 3 context.");
+        }
 
         var cropCycleId = planRequest.FieldId.HasValue
             ? await dbContext.CropCycles.AsNoTracking()
@@ -1188,9 +1204,16 @@ public sealed class CropPlanningService(
             planRequest.PreferredEndDate,
             fieldAnalysis.FieldCondition.Summary,
             fieldAnalysis.Priority,
-            fieldAnalysis.FieldCondition.EvidenceInspectionIds,
-            fieldAnalysis.OpenIssues,
-            fieldAnalysis.Warnings);
+            fieldAnalysis.Warnings,
+            fieldAnalysis.RequiresHumanReview,
+            fieldAnalysis.FieldSuitability,
+            fieldAnalysis.SoilAssessment,
+            fieldAnalysis.WaterAssessment,
+            fieldAnalysis.DrainageAssessment,
+            fieldAnalysis.FieldPreparationRequirements,
+            fieldAnalysis.PlantingReadiness,
+            fieldAnalysis.IdentifiedRisks,
+            fieldAnalysis.RecommendedPrePlantingActions);
     }
     private async Task<CropPlanRequestResponse> CreateRequestCoreAsync(CropPlanRequestCreate request, CropPlanRequestStatus status, string note, CancellationToken cancellationToken)
     {
@@ -1828,6 +1851,17 @@ public sealed class CropPlanningService(
         if (currentUser.Role is not (ApplicationRole.FieldOfficer or ApplicationRole.AgriculturalOfficer or ApplicationRole.Admin))
         {
             throw new ApiException(HttpStatusCode.Forbidden, "FIELD_ASSESSMENT_VIEWER_REQUIRED", "A Field Officer, Agricultural Officer or administrator is required.");
+        }
+    }
+
+    private void RequireMember3HandoffViewer()
+    {
+        if (currentUser.Role is not (ApplicationRole.FieldOfficer
+            or ApplicationRole.ResourceOfficer
+            or ApplicationRole.AgriculturalOfficer
+            or ApplicationRole.Admin))
+        {
+            throw new ApiException(HttpStatusCode.Forbidden, "MEMBER3_FIELD_CONTEXT_VIEWER_REQUIRED", "A staff role assigned to the crop-planning workflow is required.");
         }
     }
 

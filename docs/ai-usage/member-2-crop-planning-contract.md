@@ -200,7 +200,7 @@ A failed attempt marks only the `CropFieldAnalysisAgent` step as retryable `Fail
 
 ## Member 3 Handoff
 
-After Member 2 completes, ASP.NET marks the workflow pending for `WeatherResourceAgent` and exposes the Member 3 handoff:
+After Member 2 completes, ASP.NET marks the workflow pending for `WeatherResourceAgent` and exposes a safe read-only summary through the Crop Plan/workflow boundary:
 
 ```http
 GET /api/crop-plans/{cropPlanRequestId}/member-3-handoff
@@ -219,15 +219,23 @@ Handoff response:
   "preferredEndDate": "2026-10-20",
   "fieldAnalysisSummary": "Submitted pre-planting evidence records an exact field-access constraint and remaining land preparation.",
   "priority": "High",
-  "evidenceInspectionIds": ["44444444-4444-4444-4444-444444444444"],
-  "openIssues": [
-    {
-      "issueId": "55555555-5555-5555-5555-555555555555",
-      "severity": "High",
-      "status": "Open",
-      "evidenceInspectionId": "44444444-4444-4444-4444-444444444444"
-    }
+  "warnings": [],
+  "requiresHumanReview": true,
+  "fieldSuitability": "SuitableWithConditions",
+  "soilAssessment": "Soil type Loamy; condition Moderate; moisture Moist.",
+  "waterAssessment": "Water availability Adequate; main source Canal; irrigation Available; reliability Reliable.",
+  "drainageAssessment": "Drainage condition Poor; waterlogging risk Moderate.",
+  "fieldPreparationRequirements": [
+    "Clear the recorded drainage channels before planting."
   ],
-  "warnings": []
+  "plantingReadiness": "RequiresPreparation",
+  "identifiedRisks": ["PoorDrainage"],
+  "recommendedPrePlantingActions": [
+    "Address the recorded drainage concern before planting."
+  ]
 }
 ```
+
+The route is available to Field Officer, Agricultural Officer, Admin, and Resource Officer only when the exact latest workflow has a completed `CropFieldAnalysisAgent` step and `currentStep = WeatherResourceAgent`. Farmer access is denied. Resource Officers remain denied from the full `/field-analysis-result` and every raw/generic PrePlanting inspection route.
+
+This safe response never contains `OfficerNotes`, raw observation rows, risk notes, inspection image metadata, evidence inspection IDs, crop-issue IDs, or generic inspection history. Water, drainage, readiness, risk, and preparation values reach Member 3 only through this completed analysis result; Resource Officers do not re-enter or reassess Member 2 observations.
