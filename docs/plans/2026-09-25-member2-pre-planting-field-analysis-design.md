@@ -78,6 +78,8 @@ Each populated scalar is stored as one typed `InspectionObservation`. Each risk 
 
 `identifiedRisks` preserves three meanings: `null` means not assessed, `[]` means assessed with none identified, and a non-empty list contains identified risks. Draft persistence never normalizes `null` to `[]`. Submission requires a non-null list and rejects duplicates.
 
+Persistence uses an `IdentifiedRisksAssessment = Assessed` marker observation whenever the list is non-null. The marker with no `IdentifiedRisk` rows represents an explicit empty list; absence of the marker represents null.
+
 ## Draft and Submission Validation
 
 Draft save allows every observation to be absent. It validates exact request/farm/field linkage, the active Member 2 stage, owning Field Officer, supplied value formats, list uniqueness, and text lengths. It keeps the inspection `InProgress` and never runs AI or advances the workflow. A submitted assessment cannot be overwritten.
