@@ -4,7 +4,22 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontendreact-app</title>
+    <meta name="description" content="AgriAssist - smart agricultural planning and farm operations management." />
+    <title>AgriAssist</title>
+    <script>
+      // Apply the saved (or system) theme before first paint; src/theme.ts takes over after load.
+      (function () {
+        var theme = null
+        try {
+          theme = localStorage.getItem('agriassist-theme')
+        } catch (error) {}
+        if (theme !== 'light' && theme !== 'dark') {
+          theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+        }
+        document.documentElement.dataset.theme = theme
+        document.documentElement.style.colorScheme = theme
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

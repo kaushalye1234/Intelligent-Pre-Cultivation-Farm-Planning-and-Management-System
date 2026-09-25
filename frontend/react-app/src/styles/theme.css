@@ -1,0 +1,387 @@
+/* =========================================================
+   AgriAssist global theme
+   One set of design tokens for the whole web app. The active mode is set on <html data-theme>
+   by src/theme.ts; every page and shared component reads these variables, so switching the
+   theme restyles the entire application. Page stylesheets should use these tokens rather than
+   hard-coded colours.
+   ========================================================= */
+
+:root {
+  /* Scale (mode independent) */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 40px;
+  --space-8: 48px;
+  --content-width: 1180px;
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --ease-out: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --duration-fast: 160ms;
+  --duration: 200ms;
+}
+
+/* ---------- Light mode (default) ---------- */
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --color-bg: #f5f7f5;
+  --color-bg-public: #f7f9f7;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f0f4f1;
+  --color-surface-raised: #ffffff;
+  --color-input-bg: #ffffff;
+  --color-table-header: #f6f9f7;
+  --color-row-hover: #f1f8f3;
+  --color-header-bg: rgba(255, 255, 255, 0.86);
+
+  --color-border: #dfe6e1;
+  --color-border-strong: #c3d0c7;
+
+  --color-text: #0f1a14;
+  --color-text-muted: #56655b;
+  --color-text-subtle: #75837a;
+
+  --color-primary: #15803d;
+  --color-primary-hover: #166534;
+  --color-primary-soft: #e2f4e7;
+  --color-primary-text: #166534;
+  --color-on-primary: #ffffff;
+  --color-glow: rgba(21, 128, 61, 0.16);
+  --color-glow-strong: rgba(21, 128, 61, 0.3);
+
+  --color-success: #15803d;
+  --color-warning: #b45309;
+  --color-danger: #b42318;
+  --color-danger-hover: #912018;
+  --color-danger-glow: rgba(180, 35, 24, 0.16);
+  --color-info: #1d6a82;
+
+  --tone-good-text: #166534;
+  --tone-good-bg: #e3f6e8;
+  --tone-good-border: #b7e2c3;
+  --tone-warn-text: #92400e;
+  --tone-warn-bg: #fdf3dc;
+  --tone-warn-border: #f1d392;
+  --tone-bad-text: #a61b12;
+  --tone-bad-bg: #fdeceb;
+  --tone-bad-border: #f4c1bc;
+  --tone-info-text: #155e75;
+  --tone-info-bg: #e3f2f7;
+  --tone-info-border: #b5dbe7;
+  --tone-neutral-text: #3f4d44;
+  --tone-neutral-bg: #eef2ef;
+  --tone-neutral-border: #d6ded8;
+
+  /* The sidebar, footer and dark bands stay dark in both modes to anchor the brand. */
+  --color-sidebar: #0d1410;
+  --color-sidebar-text: #e8efea;
+  --color-sidebar-muted: rgba(232, 239, 234, 0.62);
+  --color-sidebar-subtle: rgba(232, 239, 234, 0.42);
+  --color-sidebar-hover: rgba(34, 197, 94, 0.1);
+  --color-sidebar-active: rgba(34, 197, 94, 0.16);
+  --color-sidebar-accent: #4ade80;
+  --color-sidebar-border: rgba(255, 255, 255, 0.08);
+  --color-inverse-bg: #0d1410;
+  --color-inverse-surface: #131c17;
+  --color-inverse-text: #e8efea;
+  --color-inverse-muted: rgba(232, 239, 234, 0.66);
+  --color-inverse-border: rgba(255, 255, 255, 0.09);
+  --color-inverse-accent: #4ade80;
+
+  --color-backdrop: rgba(12, 20, 15, 0.45);
+  --shadow-sm: 0 1px 2px rgba(16, 26, 20, 0.05), 0 1px 3px rgba(16, 26, 20, 0.06);
+  --shadow-md: 0 24px 48px -12px rgba(16, 26, 20, 0.22);
+  --focus-ring: 0 0 0 3px rgba(21, 128, 61, 0.35);
+}
+
+/* ---------- Dark mode ---------- */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-bg: #090c0a;
+  --color-bg-public: #090c0a;
+  --color-surface: #111714;
+  --color-surface-muted: #0d1210;
+  --color-surface-raised: #161e1a;
+  --color-input-bg: #0c110e;
+  --color-table-header: #141b17;
+  --color-row-hover: rgba(34, 197, 94, 0.06);
+  --color-header-bg: rgba(12, 17, 14, 0.84);
+
+  --color-border: #222d27;
+  --color-border-strong: #33423a;
+
+  --color-text: #e8efea;
+  --color-text-muted: #9aaa9f;
+  --color-text-subtle: #7a8a80;
+
+  --color-primary: #22c55e;
+  --color-primary-hover: #16a34a;
+  --color-primary-soft: rgba(34, 197, 94, 0.13);
+  --color-primary-text: #4ade80;
+  --color-on-primary: #03140a;
+  --color-glow: rgba(34, 197, 94, 0.18);
+  --color-glow-strong: rgba(34, 197, 94, 0.34);
+
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-danger: #f87171;
+  --color-danger-hover: #ef4444;
+  --color-danger-glow: rgba(248, 113, 113, 0.2);
+  --color-info: #67c3dc;
+
+  --tone-good-text: #4ade80;
+  --tone-good-bg: rgba(34, 197, 94, 0.12);
+  --tone-good-border: rgba(34, 197, 94, 0.32);
+  --tone-warn-text: #fbbf24;
+  --tone-warn-bg: rgba(245, 158, 11, 0.12);
+  --tone-warn-border: rgba(245, 158, 11, 0.34);
+  --tone-bad-text: #fca5a5;
+  --tone-bad-bg: rgba(248, 113, 113, 0.12);
+  --tone-bad-border: rgba(248, 113, 113, 0.34);
+  --tone-info-text: #7dd3e8;
+  --tone-info-bg: rgba(103, 195, 220, 0.12);
+  --tone-info-border: rgba(103, 195, 220, 0.3);
+  --tone-neutral-text: #c4d0c8;
+  --tone-neutral-bg: rgba(196, 208, 200, 0.08);
+  --tone-neutral-border: rgba(196, 208, 200, 0.2);
+
+  --color-sidebar: #070a08;
+  --color-sidebar-border: #18211c;
+  --color-inverse-bg: #060907;
+  --color-inverse-surface: #0e1411;
+  --color-inverse-border: #1a231e;
+
+  --color-backdrop: rgba(0, 0, 0, 0.65);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 24px 60px -12px rgba(0, 0, 0, 0.7);
+  --focus-ring: 0 0 0 3px rgba(34, 197, 94, 0.4);
+}
+
+/* ---------- Base ---------- */
+* {
+  box-sizing: border-box;
+}
+
+html {
+  color: var(--color-text);
+  background: var(--color-bg);
+  font-family: var(--font-sans);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  color: var(--color-text);
+  background: var(--color-bg);
+  transition: background-color var(--duration) ease, color var(--duration) ease;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+input,
+select,
+textarea {
+  color: var(--color-text);
+}
+
+::placeholder {
+  color: var(--color-text-subtle);
+}
+
+::selection {
+  color: var(--color-on-primary);
+  background: var(--color-primary);
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+button,
+a,
+input,
+select,
+textarea,
+summary {
+  outline-color: transparent;
+}
+
+/* Visible, consistent keyboard focus everywhere. */
+:where(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* ---------- Global button interaction ----------
+   Hover: green outline, soft glow and a small lift. Active: slight press. Applies to every
+   button-like control so the whole product behaves the same way. */
+.ui-button,
+.icon-button,
+.table-action,
+.theme-toggle,
+.tabs button,
+.action-menu summary,
+.interactive-card {
+  transition:
+    background-color var(--duration) ease,
+    border-color var(--duration) ease,
+    color var(--duration) ease,
+    box-shadow var(--duration) ease,
+    transform var(--duration) var(--ease-out);
+}
+
+.ui-button:hover:not(:disabled),
+.icon-button:hover:not(:disabled),
+.table-action:hover:not(:disabled),
+.theme-toggle:hover,
+.action-menu summary:hover,
+.interactive-card:hover {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-glow), 0 8px 18px -10px var(--color-glow-strong);
+  transform: translateY(-1px);
+}
+
+.tabs button:hover:not(.active) {
+  color: var(--color-text);
+  border-color: var(--color-border-strong);
+  transform: translateY(-1px);
+}
+
+.ui-button:active:not(:disabled),
+.icon-button:active:not(:disabled),
+.table-action:active:not(:disabled),
+.theme-toggle:active,
+.tabs button:active,
+.interactive-card:active {
+  transform: translateY(0) scale(0.99);
+  box-shadow: 0 0 0 2px var(--color-glow);
+}
+
+.ui-button:focus-visible,
+.icon-button:focus-visible,
+.table-action:focus-visible,
+.theme-toggle:focus-visible,
+.tabs button:focus-visible,
+.interactive-card:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  box-shadow: var(--focus-ring);
+}
+
+/* ---------- Theme toggle ---------- */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 40px;
+  padding: 0 var(--space-3) 0 6px;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.theme-toggle-track {
+  position: relative;
+  width: 52px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 7px;
+  color: var(--color-text-muted);
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+}
+
+.theme-toggle-track svg {
+  position: relative;
+  z-index: 1;
+  transition: color var(--duration) ease;
+}
+
+.theme-toggle-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  background: var(--color-primary);
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px var(--color-glow);
+  transition: transform 220ms var(--ease-out);
+}
+
+.theme-toggle[aria-checked="true"] .theme-toggle-thumb {
+  transform: translateX(24px);
+}
+
+.theme-toggle[aria-checked="false"] .theme-toggle-sun,
+.theme-toggle[aria-checked="true"] .theme-toggle-moon {
+  color: var(--color-on-primary);
+}
+
+.theme-toggle-label {
+  min-width: 32px;
+  text-align: left;
+}
+
+/* Toggle placed on a permanently dark band (sidebar). */
+.theme-toggle.theme-toggle-inverse {
+  color: var(--color-sidebar-text);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--color-sidebar-border);
+}
+
+.theme-toggle.theme-toggle-inverse .theme-toggle-track {
+  color: var(--color-sidebar-muted);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--color-sidebar-border);
+}
+
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .ui-button:hover:not(:disabled),
+  .icon-button:hover:not(:disabled),
+  .table-action:hover:not(:disabled),
+  .theme-toggle:hover,
+  .tabs button:hover,
+  .interactive-card:hover {
+    transform: none;
+  }
+}
