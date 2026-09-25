@@ -197,9 +197,18 @@ public sealed class CropPlanningAiWorkflowTests
         var service = NewService(db, data.Farmer.Id, new FieldAnalysisAiClient(saved.InspectionId, issue.Id, data.Request.Id), ApplicationRole.FieldOfficer);
 
         var result = await service.RunFieldAnalysisAsync(data.Request.Id, CancellationToken.None);
+        var persistedResult = await service.GetFieldAnalysisResultAsync(data.Request.Id, CancellationToken.None);
         var handoff = await service.GetMember3HandoffAsync(data.Request.Id, CancellationToken.None);
 
         Assert.Equal("Analyzed", result.Status);
+        Assert.Equal("SuitableWithConditions", persistedResult.FieldSuitability);
+        Assert.Contains("Loamy", persistedResult.SoilAssessment);
+        Assert.Contains("Adequate", persistedResult.WaterAssessment);
+        Assert.Contains("Good", persistedResult.DrainageAssessment);
+        Assert.Equal("ReadyWithMinorPreparation", persistedResult.PlantingReadiness);
+        Assert.Equal([PrePlantingRisk.LandPreparationRequired], persistedResult.IdentifiedRisks);
+        Assert.NotEmpty(persistedResult.FieldPreparationRequirements!);
+        Assert.NotEmpty(persistedResult.RecommendedPrePlantingActions!);
         var workflow = await db.AgentWorkflows.Include(item => item.Steps).SingleAsync();
         Assert.Equal(AgentWorkflowStatus.Pending, workflow.Status);
         Assert.Equal("WeatherResourceAgent", workflow.CurrentStep);
@@ -280,6 +289,29 @@ public sealed class CropPlanningAiWorkflowTests
         var workflow = await db.AgentWorkflows.Include(item => item.Steps).SingleAsync();
         Assert.Equal("CropFieldAnalysisAgent", workflow.CurrentStep);
         Assert.Equal(AgentStepStatus.Pending, workflow.Steps.Single(item => item.AgentName == "CropFieldAnalysisAgent").Status);
+    }
+
+    [Fact]
+    public async Task Structured_output_that_conflicts_with_current_observations_is_rejected_and_retryable()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.Submitted);
+        await NewService(db, data.Farmer.Id, new PlannedAiClient())
+            .StartAiWorkflowAsync(data.Request.Id, CancellationToken.None);
+        var setup = NewService(db, data.Farmer.Id, new PlannedAiClient(), ApplicationRole.FieldOfficer);
+        var assessment = await setup.SavePrePlantingAssessmentAsync(data.Request.Id, ValidAssessment(), CancellationToken.None);
+        await setup.SubmitPrePlantingAssessmentAsync(data.Request.Id, CancellationToken.None);
+        var service = NewService(db, data.Farmer.Id, new MismatchedStructuredAiClient(assessment.InspectionId), ApplicationRole.FieldOfficer);
+
+        var result = await service.RunFieldAnalysisAsync(data.Request.Id, CancellationToken.None);
+
+        Assert.Equal("SafeFailure", result.Status);
+        Assert.Contains(result.Warnings, warning => warning.Contains("evidence-based priority", StringComparison.Ordinal));
+        var workflow = await db.AgentWorkflows.Include(item => item.Steps).SingleAsync();
+        Assert.Equal(AgentWorkflowStatus.Pending, workflow.Status);
+        Assert.Equal("CropFieldAnalysisAgent", workflow.CurrentStep);
+        Assert.Null(workflow.CompletedAt);
+        Assert.Equal(AgentStepStatus.Failed, workflow.Steps.Single(item => item.AgentName == "CropFieldAnalysisAgent").Status);
     }
 
     [Fact]
@@ -670,7 +702,7 @@ public sealed class CropPlanningAiWorkflowTests
                 ]));
 
         public virtual Task<FieldAnalysisOutput> RunFieldAnalysisAsync(FieldAnalysisInput input, CancellationToken cancellationToken) =>
-            Task.FromResult(new FieldAnalysisOutput(input.WorkflowId, "SafeFailure", true, ["Not configured for this test."], new FieldAnalysisFieldConditionResponse(string.Empty, []), [], "Unknown"));
+            Task.FromResult(SafeFailure(input.WorkflowId, "Not configured for this test."));
     }
 
     private sealed class RecordingAiClient : PlannedAiClient
@@ -697,7 +729,15 @@ public sealed class CropPlanningAiWorkflowTests
                 [],
                 new FieldAnalysisFieldConditionResponse("Stored pre-planting evidence indicates an access constraint that needs review.", [inspectionId]),
                 [new FieldAnalysisOpenIssueResponse(issueId, "High", "Open", inspectionId)],
-                "High"));
+                "High",
+                "SuitableWithConditions",
+                "Soil type Loamy; condition Good; moisture Moist.",
+                "Water availability Adequate; main source Canal; irrigation Available; reliability Reliable.",
+                "Drainage condition Good; waterlogging risk Low.",
+                ["Complete the recorded land preparation before planting."],
+                "ReadyWithMinorPreparation",
+                [PrePlantingRisk.LandPreparationRequired],
+                ["Resolve the recorded access constraint before field operations begin."]));
         }
     }
 
@@ -720,7 +760,15 @@ public sealed class CropPlanningAiWorkflowTests
                 [],
                 new FieldAnalysisFieldConditionResponse("The submitted pre-planting assessment is ready for planning.", [evidenceInspectionId]),
                 [],
-                "Low");
+                "Medium",
+                "SuitableWithConditions",
+                "Soil type Loamy; condition Good; moisture Moist.",
+                "Water availability Adequate; main source Canal; irrigation Available; reliability Reliable.",
+                "Drainage condition Good; waterlogging risk Low.",
+                ["Complete the recorded land preparation before planting."],
+                "ReadyWithMinorPreparation",
+                [PrePlantingRisk.LandPreparationRequired],
+                ["Recheck field readiness before planting activities begin."]);
     }
 
     private sealed class RetryingFieldAnalysisAiClient(Guid inspectionId) : CountingFieldAnalysisAiClient(inspectionId)
@@ -736,7 +784,15 @@ public sealed class CropPlanningAiWorkflowTests
                     ["The analysis provider could not produce a validated result."],
                     new FieldAnalysisFieldConditionResponse(string.Empty, []),
                     [],
-                    "Unknown")
+                    "Unknown",
+                    "Unknown",
+                    string.Empty,
+                    string.Empty,
+                    string.Empty,
+                    [],
+                    "Unknown",
+                    [],
+                    [])
                 : Success(input.WorkflowId, InspectionId));
         }
     }
@@ -758,6 +814,15 @@ public sealed class CropPlanningAiWorkflowTests
         }
     }
 
+    private sealed class MismatchedStructuredAiClient(Guid inspectionId) : CountingFieldAnalysisAiClient(inspectionId)
+    {
+        public override Task<FieldAnalysisOutput> RunFieldAnalysisAsync(FieldAnalysisInput input, CancellationToken cancellationToken)
+        {
+            FieldAnalysisCalls++;
+            return Task.FromResult(Success(input.WorkflowId, InspectionId) with { Priority = "Low" });
+        }
+    }
+
     private sealed class MissingReferenceAiClient : IAgenticAIClient
     {
         public Task<CropPlanningCoordinatorOutput> RunCropPlanningCoordinatorAsync(CropPlanningCoordinatorInput input, CancellationToken cancellationToken) =>
@@ -771,7 +836,7 @@ public sealed class CropPlanningAiWorkflowTests
                 []));
 
         public Task<FieldAnalysisOutput> RunFieldAnalysisAsync(FieldAnalysisInput input, CancellationToken cancellationToken) =>
-            Task.FromResult(new FieldAnalysisOutput(input.WorkflowId, "SafeFailure", true, ["Reference data unavailable."], new FieldAnalysisFieldConditionResponse(string.Empty, []), [], "Unknown"));
+            Task.FromResult(SafeFailure(input.WorkflowId, "Reference data unavailable."));
     }
 
     private sealed class ThrowingAiClient : IAgenticAIClient
@@ -782,4 +847,22 @@ public sealed class CropPlanningAiWorkflowTests
         public Task<FieldAnalysisOutput> RunFieldAnalysisAsync(FieldAnalysisInput input, CancellationToken cancellationToken) =>
             throw new HttpRequestException("No service.");
     }
+
+    private static FieldAnalysisOutput SafeFailure(Guid workflowId, string warning) =>
+        new(
+            workflowId,
+            "SafeFailure",
+            true,
+            [warning],
+            new FieldAnalysisFieldConditionResponse(string.Empty, []),
+            [],
+            "Unknown",
+            "Unknown",
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            [],
+            "Unknown",
+            [],
+            []);
 }

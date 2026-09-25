@@ -1544,11 +1544,32 @@ public sealed class CropPlanningService(
         if (output.Warnings is null) errors.Add("FieldAnalysis warnings array is required.");
         if (output.FieldCondition is null) errors.Add("FieldAnalysis fieldCondition is required.");
         if (output.OpenIssues is null) errors.Add("FieldAnalysis openIssues array is required.");
+        if (output.FieldPreparationRequirements is null) errors.Add("FieldAnalysis fieldPreparationRequirements array is required.");
+        if (output.IdentifiedRisks is null) errors.Add("FieldAnalysis identifiedRisks array is required.");
+        if (output.RecommendedPrePlantingActions is null) errors.Add("FieldAnalysis recommendedPrePlantingActions array is required.");
+        if (!new[] { "High", "Medium", "Low", "Unknown" }.Contains(output.Priority, StringComparer.Ordinal))
+            errors.Add("FieldAnalysis priority is invalid.");
+        if (!new[] { "Suitable", "SuitableWithConditions", "NotSuitable", "RequiresFurtherAssessment", "Unknown" }.Contains(output.FieldSuitability, StringComparer.Ordinal))
+            errors.Add("FieldAnalysis fieldSuitability is invalid.");
+        if (!new[] { "Ready", "ReadyWithMinorPreparation", "RequiresPreparation", "NotReady", "RequiresFurtherAssessment", "Unknown" }.Contains(output.PlantingReadiness, StringComparer.Ordinal))
+            errors.Add("FieldAnalysis plantingReadiness is invalid.");
+        ValidateAnalysisText(output.SoilAssessment, "soilAssessment", errors);
+        ValidateAnalysisText(output.WaterAssessment, "waterAssessment", errors);
+        ValidateAnalysisText(output.DrainageAssessment, "drainageAssessment", errors);
+        ValidateAnalysisList(output.FieldPreparationRequirements, "fieldPreparationRequirements", errors);
+        ValidateAnalysisList(output.RecommendedPrePlantingActions, "recommendedPrePlantingActions", errors);
+        if (output.IdentifiedRisks is not null)
+        {
+            if (output.IdentifiedRisks.Any(risk => !Enum.IsDefined(risk))) errors.Add("FieldAnalysis identifiedRisks contains an invalid value.");
+            if (output.IdentifiedRisks.Distinct().Count() != output.IdentifiedRisks.Count) errors.Add("FieldAnalysis identifiedRisks contains duplicate values.");
+        }
         if (output.FieldCondition is null || output.OpenIssues is null) return errors;
 
         if (output.Status.Equals("SafeFailure", StringComparison.OrdinalIgnoreCase))
         {
             if (!output.RequiresHumanReview) errors.Add("FieldAnalysis safe failures must require human review.");
+            if (output.Priority != "Unknown" || output.FieldSuitability != "Unknown" || output.PlantingReadiness != "Unknown")
+                errors.Add("FieldAnalysis safe failures must use Unknown structured states.");
             return errors;
         }
 
@@ -1556,6 +1577,11 @@ public sealed class CropPlanningService(
         {
             errors.Add("FieldAnalysis status must be Analyzed or SafeFailure.");
         }
+        if (string.IsNullOrWhiteSpace(output.FieldCondition.Summary) || output.FieldCondition.Summary.Length > 2000)
+            errors.Add("FieldAnalysis fieldCondition summary is required and must be 2000 characters or fewer.");
+        if (string.IsNullOrWhiteSpace(output.SoilAssessment)) errors.Add("FieldAnalysis soilAssessment is required for analyzed output.");
+        if (string.IsNullOrWhiteSpace(output.WaterAssessment)) errors.Add("FieldAnalysis waterAssessment is required for analyzed output.");
+        if (string.IsNullOrWhiteSpace(output.DrainageAssessment)) errors.Add("FieldAnalysis drainageAssessment is required for analyzed output.");
 
         foreach (var inspectionId in output.FieldCondition.EvidenceInspectionIds)
         {
@@ -1571,7 +1597,97 @@ public sealed class CropPlanningService(
             if (!knownIssueIds.Contains(issue.IssueId)) errors.Add($"FieldAnalysis referenced unknown crop issue ID {issue.IssueId}.");
         }
 
+        var observations = await dbContext.InspectionObservations.AsNoTracking()
+            .Where(item => item.FieldInspectionId == assessmentId && !item.IsDeleted)
+            .OrderBy(item => item.CreatedAt)
+            .ToListAsync(cancellationToken);
+        var persistedErrors = new List<string>();
+        var persistedAssessment = ReadAssessmentRequest(observations, persistedErrors);
+        errors.AddRange(persistedErrors);
+        if (!string.Equals(output.PlantingReadiness, persistedAssessment.PlantingReadiness?.ToString(), StringComparison.Ordinal))
+            errors.Add("FieldAnalysis plantingReadiness does not match the submitted assessment.");
+        if (output.IdentifiedRisks is not null && persistedAssessment.IdentifiedRisks is not null
+            && !output.IdentifiedRisks.SequenceEqual(persistedAssessment.IdentifiedRisks))
+            errors.Add("FieldAnalysis identifiedRisks do not match the submitted assessment.");
+        var expectedPriority = await CalculateFieldAnalysisPriorityAsync(persistedAssessment, assessmentId, cancellationToken);
+        if (!string.Equals(output.Priority, expectedPriority, StringComparison.Ordinal))
+            errors.Add($"FieldAnalysis priority {output.Priority} does not match evidence-based priority {expectedPriority}.");
+
         return errors;
+    }
+
+    private async Task<string> CalculateFieldAnalysisPriorityAsync(
+        PrePlantingAssessmentRequest assessment,
+        Guid assessmentId,
+        CancellationToken cancellationToken)
+    {
+        var risks = assessment.IdentifiedRisks?.ToHashSet() ?? [];
+        var high = assessment.PlantingReadiness == PrePlantingPlantingReadiness.NotReady
+            || assessment.WaterAvailability == PrePlantingWaterAvailability.Unavailable
+            || assessment.WaterloggingRisk == PrePlantingWaterloggingRisk.High
+            || assessment.GeneralFieldCondition == PrePlantingGeneralFieldCondition.Waterlogged
+            || assessment.SoilMoisture == PrePlantingSoilMoisture.Waterlogged
+            || assessment.SoilCondition == PrePlantingSoilCondition.Poor
+            || risks.Overlaps([PrePlantingRisk.WaterShortageRisk, PrePlantingRisk.FloodingRisk, PrePlantingRisk.SoilSuitabilityConcern]);
+        var medium = assessment.PlantingReadiness is PrePlantingPlantingReadiness.RequiresPreparation or PrePlantingPlantingReadiness.RequiresFurtherAssessment
+            || assessment.WaterAvailability is PrePlantingWaterAvailability.Limited or PrePlantingWaterAvailability.Seasonal
+            || assessment.DrainageCondition == PrePlantingDrainageCondition.Poor
+            || assessment.WaterloggingRisk == PrePlantingWaterloggingRisk.Moderate
+            || assessment.GeneralFieldCondition is PrePlantingGeneralFieldCondition.RequiresLandPreparation
+                or PrePlantingGeneralFieldCondition.UnevenField
+                or PrePlantingGeneralFieldCondition.ErosionPresent
+                or PrePlantingGeneralFieldCondition.AccessLimitation
+                or PrePlantingGeneralFieldCondition.TooDry
+                or PrePlantingGeneralFieldCondition.Other
+            || assessment.SoilCondition is PrePlantingSoilCondition.Moderate
+                or PrePlantingSoilCondition.Compacted
+                or PrePlantingSoilCondition.Eroded
+                or PrePlantingSoilCondition.Other
+            || assessment.SoilMoisture is PrePlantingSoilMoisture.Dry or PrePlantingSoilMoisture.Wet
+            || assessment.IrrigationAvailability is PrePlantingIrrigationAvailability.Limited or PrePlantingIrrigationAvailability.Unavailable
+            || assessment.WaterReliability is PrePlantingWaterReliability.Intermittent
+                or PrePlantingWaterReliability.Seasonal
+                or PrePlantingWaterReliability.Unreliable
+            || risks.Overlaps([
+                PrePlantingRisk.PoorDrainage,
+                PrePlantingRisk.SoilErosion,
+                PrePlantingRisk.FieldAccessProblem,
+                PrePlantingRisk.LandPreparationRequired,
+                PrePlantingRisk.Other]);
+        var unknown = assessment.SoilType == PrePlantingSoilType.Unknown
+            || assessment.SoilCondition == PrePlantingSoilCondition.Unknown
+            || assessment.SoilMoisture == PrePlantingSoilMoisture.Unknown
+            || assessment.WaterAvailability == PrePlantingWaterAvailability.Unknown
+            || assessment.IrrigationAvailability == PrePlantingIrrigationAvailability.Unknown
+            || assessment.WaterReliability == PrePlantingWaterReliability.Unknown
+            || assessment.DrainageCondition == PrePlantingDrainageCondition.Unknown
+            || assessment.WaterloggingRisk == PrePlantingWaterloggingRisk.Unknown;
+        var basePriority = high ? "High" : medium ? "Medium" : unknown ? "Unknown" : "Low";
+
+        var issueSeverities = await dbContext.CropIssues.AsNoTracking()
+            .Where(issue => issue.FieldInspectionId == assessmentId
+                && !issue.IsDeleted
+                && (issue.Status == CropIssueStatus.Open || issue.Status == CropIssueStatus.Escalated))
+            .Select(issue => issue.Severity)
+            .ToListAsync(cancellationToken);
+        if (issueSeverities.Any(severity => severity is CropIssueSeverity.High or CropIssueSeverity.Critical)) return "High";
+        if (issueSeverities.Contains(CropIssueSeverity.Medium) && basePriority is "Low" or "Unknown") return "Medium";
+        return basePriority;
+    }
+
+    private static void ValidateAnalysisText(string? value, string name, List<string> errors)
+    {
+        if (value is not null && value.Length > 2000) errors.Add($"FieldAnalysis {name} must be 2000 characters or fewer.");
+    }
+
+    private static void ValidateAnalysisList(IReadOnlyList<string>? values, string name, List<string> errors)
+    {
+        if (values is null) return;
+        if (values.Count > 20) errors.Add($"FieldAnalysis {name} must contain 20 items or fewer.");
+        if (values.Any(value => string.IsNullOrWhiteSpace(value) || value.Length > 500))
+            errors.Add($"FieldAnalysis {name} items must contain text and be 500 characters or fewer.");
+        if (values.Distinct(StringComparer.Ordinal).Count() != values.Count)
+            errors.Add($"FieldAnalysis {name} contains duplicate values.");
     }
     private static IReadOnlyList<string> ValidateCoordinatorOutput(Guid workflowId, CropPlanningCoordinatorOutput output)
     {
@@ -1625,7 +1741,22 @@ public sealed class CropPlanningService(
 
 
     private static FieldAnalysisOutput CreateFieldAnalysisSafeFailureOutput(Guid workflowId, IEnumerable<string> warnings) =>
-        new(workflowId, "SafeFailure", true, warnings.ToArray(), new FieldAnalysisFieldConditionResponse(string.Empty, []), [], "Unknown");
+        new(
+            workflowId,
+            "SafeFailure",
+            true,
+            warnings.ToArray(),
+            new FieldAnalysisFieldConditionResponse(string.Empty, []),
+            [],
+            "Unknown",
+            "Unknown",
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            [],
+            "Unknown",
+            [],
+            []);
 
     private static FieldAnalysisOutput ReadFieldAnalysisOutput(string? outputJson, Guid workflowId, IEnumerable<string> emptyWarnings)
     {

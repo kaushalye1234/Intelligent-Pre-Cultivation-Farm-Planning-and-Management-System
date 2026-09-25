@@ -239,7 +239,15 @@ public sealed record FieldAnalysisOutput(
     IReadOnlyList<string> Warnings,
     FieldAnalysisFieldConditionResponse FieldCondition,
     IReadOnlyList<FieldAnalysisOpenIssueResponse> OpenIssues,
-    string Priority);
+    string Priority,
+    string FieldSuitability = "Unknown",
+    string SoilAssessment = "",
+    string WaterAssessment = "",
+    string DrainageAssessment = "",
+    IReadOnlyList<string>? FieldPreparationRequirements = null,
+    string PlantingReadiness = "Unknown",
+    IReadOnlyList<PrePlantingRisk>? IdentifiedRisks = null,
+    IReadOnlyList<string>? RecommendedPrePlantingActions = null);
 
 public sealed record FieldAnalysisRunResponse(
     Guid WorkflowId,

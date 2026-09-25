@@ -242,6 +242,9 @@ describe('PrePlantingAssessmentPanel', () => {
     expect(await screen.findByText('The field is suitable for planting.')).toBeInTheDocument()
     expect(screen.getByText('SuitableWithConditions')).toBeInTheDocument()
     expect(screen.getByText('Canal water is adequate and reliable.')).toBeInTheDocument()
+    expect(screen.getByText('Complete final harrowing.')).toBeInTheDocument()
+    expect(screen.getByText('Recheck the field before sowing.')).toBeInTheDocument()
+    expect(screen.getAllByText('None identified')).toHaveLength(2)
     expect(screen.queryByRole('button', { name: /save draft|submit assessment|run field analysis/i })).not.toBeInTheDocument()
   })
 
