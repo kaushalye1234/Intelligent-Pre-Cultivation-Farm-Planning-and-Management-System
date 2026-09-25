@@ -1,9 +1,10 @@
-﻿import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { LogOut, Menu, X } from 'lucide-react'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Home, Info, LogOut, Menu, X } from 'lucide-react'
 import { useState } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import { roleLabels } from '../labels'
 import { getNavigationGroups, getSectionContext, portalIcon } from '../routing'
+import { ThemeToggle } from './ThemeToggle'
 import { Button } from './Ui'
 
 export function Layout() {
@@ -45,6 +46,17 @@ export function Layout() {
               })}
             </section>
           ))}
+          <section className="nav-group">
+            <p>Website</p>
+            <NavLink to="/" end onClick={() => setIsDrawerOpen(false)}>
+              <Home size={18} aria-hidden="true" />
+              <span>Home</span>
+            </NavLink>
+            <NavLink to="/about" onClick={() => setIsDrawerOpen(false)}>
+              <Info size={18} aria-hidden="true" />
+              <span>About</span>
+            </NavLink>
+          </section>
         </nav>
         <div className="sidebar-footer">
           <div className="avatar" aria-hidden="true">{user?.fullName?.slice(0, 2).toUpperCase() ?? 'AA'}</div>
@@ -63,7 +75,7 @@ export function Layout() {
           <button type="button" className="icon-button mobile-menu-toggle" onClick={() => setIsDrawerOpen((current) => !current)} aria-label="Open navigation">
             {isDrawerOpen ? <X size={18} aria-hidden="true" /> : <Menu size={18} aria-hidden="true" />}
           </button>
-          <div>
+          <div className="topbar-context">
             <span>{context.section}</span>
             <strong>{context.title}</strong>
           </div>
@@ -71,9 +83,12 @@ export function Layout() {
             <span>{user?.fullName}</span>
             <strong>{user ? roleLabels[user.role] : ''}</strong>
           </div>
-          <Button variant="ghost" icon={<LogOut size={16} aria-hidden="true" />} onClick={handleLogout}>
-            Logout
-          </Button>
+          <div className="topbar-actions">
+            <ThemeToggle />
+            <Button variant="ghost" icon={<LogOut size={16} aria-hidden="true" />} onClick={handleLogout}>
+              Logout
+            </Button>
+          </div>
         </header>
         <Outlet />
       </main>
