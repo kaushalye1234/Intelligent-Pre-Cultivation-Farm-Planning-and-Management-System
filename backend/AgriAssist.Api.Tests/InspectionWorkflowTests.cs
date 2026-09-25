@@ -83,7 +83,7 @@ public sealed class InspectionWorkflowTests
     }
 
     [Fact]
-    public async Task Only_field_officer_can_mutate_pre_planting_inspection()
+    public async Task Only_owning_field_officer_can_mutate_pre_planting_draft_and_generic_submit_is_blocked()
     {
         await using var db = NewDbContext();
         var data = await SeedFieldAsync(db);
@@ -113,8 +113,83 @@ public sealed class InspectionWorkflowTests
         Assert.Empty(await db.InspectionObservations.ToListAsync());
 
         var fieldOfficerService = NewService(db, ApplicationRole.FieldOfficer, data.OfficerId);
-        var submitted = await fieldOfficerService.SubmitInspectionAsync(inspection.Id, CancellationToken.None);
+        var created = await fieldOfficerService.CreateObservationAsync(
+            new ObservationRequest(inspection.Id, "OfficerNotes", "Owner draft note."),
+            CancellationToken.None);
+        Assert.Equal(inspection.Id, created.FieldInspectionId);
+
+        var otherOfficerService = NewService(db, ApplicationRole.FieldOfficer, Guid.NewGuid());
+        var ownerError = await Assert.ThrowsAsync<ApiException>(() => otherOfficerService.CreateObservationAsync(
+            new ObservationRequest(inspection.Id, "OfficerNotes", "Other officer edit."),
+            CancellationToken.None));
+        var submitErrorForOwner = await Assert.ThrowsAsync<ApiException>(() =>
+            fieldOfficerService.SubmitInspectionAsync(inspection.Id, CancellationToken.None));
+
+        Assert.Equal("PREPLANT_ASSESSMENT_OWNER_REQUIRED", ownerError.Code);
+        Assert.Equal("PREPLANT_DEDICATED_SUBMISSION_REQUIRED", submitErrorForOwner.Code);
+        Assert.Equal(InspectionStatus.InProgress, (await db.FieldInspections.SingleAsync()).Status);
+    }
+
+    [Fact]
+    public async Task Completed_pre_planting_assessment_rejects_all_generic_mutations()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedFieldAsync(db);
+        var inspection = new FieldInspection
+        {
+            FieldId = data.FieldId,
+            InspectorUserId = data.OfficerId,
+            Purpose = InspectionPurpose.PrePlanting,
+            ScheduledAt = DateTime.UtcNow.AddDays(-1),
+            CompletedAt = DateTime.UtcNow,
+            Status = InspectionStatus.Completed,
+            Summary = "Submitted pre-planting assessment."
+        };
+        db.FieldInspections.Add(inspection);
+        await db.SaveChangesAsync();
+        var service = NewService(db, ApplicationRole.FieldOfficer, data.OfficerId);
+
+        var update = await Assert.ThrowsAsync<ApiException>(() => service.UpdateInspectionAsync(
+            inspection.Id,
+            new FieldInspectionRequest(data.FieldId, DateTime.UtcNow, InspectionStatus.InProgress, "Reopen attempt."),
+            CancellationToken.None));
+        var observation = await Assert.ThrowsAsync<ApiException>(() => service.CreateObservationAsync(
+            new ObservationRequest(inspection.Id, "OfficerNotes", "Late edit."), CancellationToken.None));
+        var issue = await Assert.ThrowsAsync<ApiException>(() => service.CreateIssueAsync(
+            new CropIssueRequest(inspection.Id, "Late issue", "Late evidence.", CropIssueSeverity.High, CropIssueStatus.Open),
+            CancellationToken.None));
+        var image = await Assert.ThrowsAsync<ApiException>(() => service.UploadImageAsync(
+            inspection.Id, CreateFormFile(), CancellationToken.None));
+        var close = await Assert.ThrowsAsync<ApiException>(() => service.CloseInspectionAsync(
+            inspection.Id, CancellationToken.None));
+
+        Assert.All([update, observation, issue, image, close], error => Assert.Equal("PREPLANT_ASSESSMENT_IMMUTABLE", error.Code));
+        Assert.Equal(InspectionStatus.Completed, (await db.FieldInspections.SingleAsync()).Status);
+        Assert.Empty(await db.InspectionObservations.ToListAsync());
+        Assert.Empty(await db.CropIssues.ToListAsync());
+        Assert.Empty(await db.InspectionImages.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Routine_inspection_behavior_remains_available_to_existing_roles()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedFieldAsync(db);
+        var fieldOfficer = NewService(db, ApplicationRole.FieldOfficer, data.OfficerId);
+        var inspection = await fieldOfficer.CreateInspectionAsync(
+            new FieldInspectionRequest(data.FieldId, DateTime.UtcNow, InspectionStatus.InProgress, "Routine inspection."),
+            CancellationToken.None);
+        var admin = NewService(db, ApplicationRole.Admin, data.OfficerId);
+
+        await admin.CreateObservationAsync(
+            new ObservationRequest(inspection.Id, "Routine", "Administrative routine note."),
+            CancellationToken.None);
+        var submitted = await admin.SubmitInspectionAsync(inspection.Id, CancellationToken.None);
+        var farmer = NewService(db, ApplicationRole.Farmer, data.FarmerId);
+        var visible = await farmer.GetInspectionAsync(inspection.Id, CancellationToken.None);
+
         Assert.Equal(InspectionStatus.Completed, submitted.Status);
+        Assert.Single(visible.Observations);
     }
 
     [Fact]

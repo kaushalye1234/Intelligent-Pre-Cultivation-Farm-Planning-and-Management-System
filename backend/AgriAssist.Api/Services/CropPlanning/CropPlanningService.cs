@@ -1067,6 +1067,7 @@ public sealed class CropPlanningService(
 
     public async Task<FieldAnalysisOutput> GetFieldAnalysisResultAsync(Guid requestId, CancellationToken cancellationToken)
     {
+        RequirePrePlantingViewer();
         await EnsurePlanRequestAccessAsync(requestId, cancellationToken);
         var workflow = await LatestWorkflowQuery(requestId)
             .Include(item => item.Steps)
@@ -1082,6 +1083,7 @@ public sealed class CropPlanningService(
 
     public async Task<Member3HandoffResponse> GetMember3HandoffAsync(Guid requestId, CancellationToken cancellationToken)
     {
+        RequirePrePlantingViewer();
         await EnsurePlanRequestAccessAsync(requestId, cancellationToken);
         var workflow = await LatestWorkflowQuery(requestId)
             .Include(item => item.CropPlanRequest)!

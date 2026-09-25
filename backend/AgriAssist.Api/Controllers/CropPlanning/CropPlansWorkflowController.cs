@@ -55,10 +55,12 @@ public sealed class CropPlansWorkflowController(ICropPlanningService cropPlannin
         Ok(await cropPlanningService.GetPlanningResultAsync(id, cancellationToken));
 
     [HttpGet("{id:guid}/field-analysis-result")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.FieldOfficer)},{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
     public async Task<ActionResult<FieldAnalysisOutput>> GetFieldAnalysisResult(Guid id, CancellationToken cancellationToken) =>
         Ok(await cropPlanningService.GetFieldAnalysisResultAsync(id, cancellationToken));
 
     [HttpGet("{id:guid}/member-3-handoff")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.FieldOfficer)},{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
     public async Task<ActionResult<Member3HandoffResponse>> GetMember3Handoff(Guid id, CancellationToken cancellationToken) =>
         Ok(await cropPlanningService.GetMember3HandoffAsync(id, cancellationToken));
 }
