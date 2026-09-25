@@ -173,7 +173,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.HasOne(inspection => inspection.CropPlanRequest).WithMany().HasForeignKey(inspection => inspection.CropPlanRequestId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(inspection => inspection.InspectorUser).WithMany().HasForeignKey(inspection => inspection.InspectorUserId).OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(inspection => inspection.FieldId);
-            entity.HasIndex(inspection => new { inspection.CropPlanRequestId, inspection.Purpose }).IsUnique();
+            entity.HasIndex(inspection => inspection.CropPlanRequestId)
+                .IsUnique()
+                .HasFilter("\"CropPlanRequestId\" IS NOT NULL AND \"Purpose\" = 'PrePlanting'");
             entity.HasIndex(inspection => inspection.Status);
             entity.HasIndex(inspection => inspection.ScheduledAt);
         });

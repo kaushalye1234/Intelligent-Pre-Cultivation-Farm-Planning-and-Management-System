@@ -34,6 +34,9 @@ public sealed class CropPlanningService(
     private const string FieldAnalysisAgentName = "CropFieldAnalysisAgent";
     private const string FieldAnalysisStepName = "FieldAnalysis";
     private const string WeatherResourceAgentName = "WeatherResourceAgent";
+    private const string RiskAssessmentObservationType = "IdentifiedRisksAssessment";
+    private const string RiskObservationType = "IdentifiedRisk";
+    private const string RiskAssessmentCompleteValue = "Assessed";
 
     public CropPlanningService(
         AppDbContext dbContext,
@@ -661,6 +664,46 @@ public sealed class CropPlanningService(
             : await MapPrePlantingAssessmentAsync(assessment, cancellationToken);
     }
 
+    public async Task<PrePlantingContextResponse> GetPrePlantingContextAsync(Guid requestId, CancellationToken cancellationToken)
+    {
+        RequirePrePlantingViewer();
+        await EnsurePlanRequestAccessAsync(requestId, cancellationToken);
+        var planRequest = await dbContext.CropPlanRequests.AsNoTracking()
+            .Include(item => item.RequestedByUser)
+            .Include(item => item.Farm)
+            .Include(item => item.Field)
+            .Include(item => item.CropType)
+            .Include(item => item.CropVariety)
+            .SingleOrDefaultAsync(item => item.Id == requestId && !item.IsDeleted, cancellationToken)
+            ?? throw NotFound("Crop plan request");
+        var workflow = await LatestWorkflowQuery(requestId)
+            .AsNoTracking()
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw NotFound("AI workflow");
+
+        if (planRequest.FieldId is null || planRequest.Field is null)
+            throw new ApiException(HttpStatusCode.BadRequest, "PREPLANT_FIELD_REQUIRED", "A field is required for pre-planting assessment context.");
+
+        return new PrePlantingContextResponse(
+            planRequest.Id,
+            workflow.Id,
+            workflow.CurrentStep,
+            planRequest.RequestedByUserId,
+            planRequest.RequestedByUser?.FullName ?? string.Empty,
+            planRequest.FarmId,
+            planRequest.Farm?.Name ?? string.Empty,
+            planRequest.Farm?.Location ?? string.Empty,
+            planRequest.FieldId.Value,
+            planRequest.Field.Name,
+            planRequest.CropTypeId,
+            planRequest.CropType?.Name ?? string.Empty,
+            planRequest.CropVarietyId,
+            planRequest.CropVariety?.Name,
+            planRequest.CultivationSeason,
+            planRequest.PreferredStartDate,
+            planRequest.PreferredEndDate);
+    }
+
     public async Task<PrePlantingAssessmentResponse> SavePrePlantingAssessmentAsync(
         Guid requestId,
         PrePlantingAssessmentRequest request,
@@ -677,14 +720,7 @@ public sealed class CropPlanningService(
         {
             throw new ApiException(HttpStatusCode.BadRequest, "PREPLANT_FIELD_REQUIRED", "A field is required before a pre-planting assessment can be saved.");
         }
-
-        var workflow = await LatestWorkflowQuery(requestId)
-            .SingleOrDefaultAsync(cancellationToken)
-            ?? throw NotFound("AI workflow");
-        if (workflow.CurrentStep != FieldAnalysisAgentName)
-        {
-            throw new ApiException(HttpStatusCode.Conflict, "PREPLANT_STAGE_NOT_ACTIVE", "The workflow is not waiting for pre-planting field analysis.");
-        }
+        await EnsurePrePlantingFieldLinkageAsync(planRequest, cancellationToken);
 
         var actor = RequireUser();
         var assessment = await dbContext.FieldInspections
@@ -699,6 +735,25 @@ public sealed class CropPlanningService(
             throw new ApiException(HttpStatusCode.Conflict, "PREPLANT_ASSESSMENT_SUBMITTED", "A submitted pre-planting assessment cannot be edited.");
         }
 
+        if (assessment is not null && assessment.InspectorUserId != actor)
+        {
+            throw new ApiException(HttpStatusCode.Forbidden, "PREPLANT_ASSESSMENT_OWNER_REQUIRED", "Only the Field Officer who created this assessment may change or submit it.");
+        }
+
+        if (assessment is not null && assessment.FieldId != planRequest.FieldId.Value)
+        {
+            throw new ApiException(HttpStatusCode.Conflict, "PREPLANT_ASSESSMENT_LINKAGE_INVALID", "The saved pre-planting assessment is not linked to the crop plan field.");
+        }
+
+        var workflow = await LatestWorkflowQuery(requestId)
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw NotFound("AI workflow");
+        if (workflow.CurrentStep != FieldAnalysisAgentName)
+        {
+            throw new ApiException(HttpStatusCode.Conflict, "PREPLANT_STAGE_NOT_ACTIVE", "The workflow is not waiting for pre-planting field analysis.");
+        }
+
+        var isNewAssessment = assessment is null;
         if (assessment is null)
         {
             assessment = new FieldInspection
@@ -709,7 +764,7 @@ public sealed class CropPlanningService(
                 InspectorUserId = actor,
                 ScheduledAt = DateTime.UtcNow,
                 Status = InspectionStatus.InProgress,
-                Summary = request.GeneralFieldCondition.Trim(),
+                Summary = BuildAssessmentSummary(request),
                 CreatedByUserId = actor,
                 UpdatedByUserId = actor
             };
@@ -717,8 +772,7 @@ public sealed class CropPlanningService(
         }
         else
         {
-            assessment.FieldId = planRequest.FieldId.Value;
-            assessment.Summary = request.GeneralFieldCondition.Trim();
+            assessment.Summary = BuildAssessmentSummary(request);
             assessment.UpdatedAt = DateTime.UtcNow;
             assessment.UpdatedByUserId = actor;
         }
@@ -727,17 +781,99 @@ public sealed class CropPlanningService(
             .Where(item => item.FieldInspectionId == assessment.Id && !item.IsDeleted)
             .ToListAsync(cancellationToken);
         dbContext.InspectionObservations.RemoveRange(existingObservations);
-        dbContext.InspectionObservations.AddRange(
-            CreateAssessmentObservation(assessment, "SoilCondition", request.SoilCondition, actor),
-            CreateAssessmentObservation(assessment, "WaterAvailability", request.WaterAvailability, actor),
-            CreateAssessmentObservation(assessment, "IrrigationAvailability", request.IrrigationAvailability, actor),
-            CreateAssessmentObservation(assessment, "DrainageCondition", request.DrainageCondition, actor),
-            CreateAssessmentObservation(assessment, "GeneralFieldCondition", request.GeneralFieldCondition, actor),
-            CreateAssessmentObservation(assessment, "PlantingReadiness", request.PlantingReadiness, actor),
-            CreateAssessmentObservation(assessment, "RisksAndConcerns", request.RisksAndConcerns, actor),
-            CreateAssessmentObservation(assessment, "OfficerNotes", request.OfficerNotes, actor));
+        dbContext.InspectionObservations.AddRange(CreateAssessmentObservations(assessment, request, actor));
 
-        await dbContext.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException) when (isNewAssessment)
+        {
+            dbContext.ChangeTracker.Clear();
+            var concurrentAssessment = await dbContext.FieldInspections.AsNoTracking()
+                .SingleOrDefaultAsync(item =>
+                    item.CropPlanRequestId == requestId
+                    && item.Purpose == InspectionPurpose.PrePlanting
+                    && !item.IsDeleted,
+                    cancellationToken);
+            if (concurrentAssessment is null) throw;
+            if (concurrentAssessment.InspectorUserId != actor)
+                throw new ApiException(HttpStatusCode.Conflict, "PREPLANT_ASSESSMENT_ALREADY_EXISTS", "A pre-planting assessment already exists for this crop plan request.");
+            return await MapPrePlantingAssessmentAsync(concurrentAssessment, cancellationToken);
+        }
+
+        return await MapPrePlantingAssessmentAsync(assessment, cancellationToken);
+    }
+
+    public async Task<PrePlantingAssessmentResponse> SubmitPrePlantingAssessmentAsync(
+        Guid requestId,
+        CancellationToken cancellationToken)
+    {
+        RequireFieldOfficer();
+        await EnsurePlanRequestAccessAsync(requestId, cancellationToken);
+        var planRequest = await dbContext.CropPlanRequests.AsNoTracking()
+            .SingleOrDefaultAsync(item => item.Id == requestId && !item.IsDeleted, cancellationToken)
+            ?? throw NotFound("Crop plan request");
+        if (!planRequest.FieldId.HasValue)
+            throw new ApiException(HttpStatusCode.BadRequest, "PREPLANT_FIELD_REQUIRED", "A field is required before a pre-planting assessment can be submitted.");
+        await EnsurePrePlantingFieldLinkageAsync(planRequest, cancellationToken);
+
+        var workflow = await LatestWorkflowQuery(requestId)
+            .Include(item => item.Steps)
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw NotFound("AI workflow");
+
+        var assessment = await dbContext.FieldInspections
+            .SingleOrDefaultAsync(item =>
+                item.CropPlanRequestId == requestId
+                && item.Purpose == InspectionPurpose.PrePlanting
+                && !item.IsDeleted,
+                cancellationToken)
+            ?? throw new ApiException(HttpStatusCode.Conflict, "PREPLANT_ASSESSMENT_REQUIRED", "A linked pre-planting assessment must be saved before submission.");
+        var actor = RequireUser();
+        if (assessment.InspectorUserId != actor)
+            throw new ApiException(HttpStatusCode.Forbidden, "PREPLANT_ASSESSMENT_OWNER_REQUIRED", "Only the Field Officer who created this assessment may change or submit it.");
+        if (assessment.CropPlanRequestId != requestId
+            || assessment.FieldId != planRequest.FieldId.Value
+            || assessment.Purpose != InspectionPurpose.PrePlanting)
+        {
+            throw new ApiException(HttpStatusCode.Conflict, "PREPLANT_ASSESSMENT_LINKAGE_INVALID", "The pre-planting assessment does not match the crop plan request and field.");
+        }
+        if (assessment.Status is not (InspectionStatus.InProgress or InspectionStatus.Completed))
+            throw new ApiException(HttpStatusCode.Conflict, "PREPLANT_ASSESSMENT_STATE_INVALID", "Only an in-progress pre-planting assessment can be submitted.");
+
+        var observations = await dbContext.InspectionObservations.AsNoTracking()
+            .Where(item => item.FieldInspectionId == assessment.Id && !item.IsDeleted)
+            .OrderBy(item => item.CreatedAt)
+            .ToListAsync(cancellationToken);
+        var images = await dbContext.InspectionImages.AsNoTracking()
+            .Where(item => item.FieldInspectionId == assessment.Id && !item.IsDeleted)
+            .ToListAsync(cancellationToken);
+        if (images.Any(image => image.FieldInspectionId != assessment.Id))
+            throw new ApiException(HttpStatusCode.Conflict, "PREPLANT_EVIDENCE_LINKAGE_INVALID", "Assessment evidence is not linked to the exact pre-planting inspection.");
+
+        var persistenceErrors = new List<string>();
+        var persistedRequest = ReadAssessmentRequest(observations, persistenceErrors);
+        persistenceErrors.AddRange(PrePlantingAssessmentRules.ValidateSubmission(persistedRequest));
+        if (persistenceErrors.Count > 0)
+        {
+            throw new ApiException(
+                HttpStatusCode.BadRequest,
+                "PREPLANT_ASSESSMENT_INVALID",
+                string.Join(" ", persistenceErrors.Distinct(StringComparer.Ordinal)));
+        }
+
+        if (assessment.Status == InspectionStatus.InProgress)
+        {
+            if (workflow.CurrentStep != FieldAnalysisAgentName)
+                throw new ApiException(HttpStatusCode.Conflict, "PREPLANT_STAGE_NOT_ACTIVE", "The workflow is not waiting for pre-planting field analysis.");
+            assessment.Status = InspectionStatus.Completed;
+            assessment.CompletedAt = DateTime.UtcNow;
+            assessment.UpdatedAt = DateTime.UtcNow;
+            assessment.UpdatedByUserId = actor;
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
         return await MapPrePlantingAssessmentAsync(assessment, cancellationToken);
     }
 
@@ -1119,6 +1255,20 @@ public sealed class CropPlanningService(
         if (!await ApplyPlanRequestAccess(dbContext.CropPlanRequests.AsNoTracking()).AnyAsync(item => item.Id == requestId, cancellationToken)) throw NotFound("Crop plan request");
     }
 
+    private async Task EnsurePrePlantingFieldLinkageAsync(CropPlanRequest planRequest, CancellationToken cancellationToken)
+    {
+        if (!planRequest.FieldId.HasValue
+            || !await dbContext.Fields.AsNoTracking().AnyAsync(field =>
+                field.Id == planRequest.FieldId.Value
+                && field.FarmId == planRequest.FarmId
+                && field.IsActive
+                && !field.IsDeleted,
+                cancellationToken))
+        {
+            throw new ApiException(HttpStatusCode.Conflict, "PREPLANT_FIELD_LINKAGE_INVALID", "The crop plan request must reference an active field on the same farm.");
+        }
+    }
+
     private IQueryable<AgentWorkflow> LatestWorkflowQuery(Guid requestId) =>
         dbContext.AgentWorkflows
             .Where(workflow => workflow.CropPlanRequestId == requestId && !workflow.IsDeleted)
@@ -1152,48 +1302,171 @@ public sealed class CropPlanningService(
             .Where(item => item.FieldInspectionId == assessment.Id && !item.IsDeleted)
             .OrderBy(item => item.CreatedAt)
             .ToListAsync(cancellationToken);
-        var values = observations
-            .GroupBy(item => item.ObservationType)
-            .ToDictionary(group => group.Key, group => group.Last().Notes);
+        var request = ReadAssessmentRequest(observations);
         var images = await dbContext.InspectionImages.AsNoTracking()
             .Where(item => item.FieldInspectionId == assessment.Id && !item.IsDeleted)
             .OrderBy(item => item.CreatedAt)
             .Select(item => new PrePlantingAssessmentImageResponse(item.Id, item.Url, item.ContentType, item.SizeBytes))
             .ToListAsync(cancellationToken);
 
-        string Value(string key) => values.TryGetValue(key, out var value) ? value : string.Empty;
-
-        return new PrePlantingAssessmentResponse(
-            assessment.Id,
-            assessment.CropPlanRequestId!.Value,
-            assessment.FieldId,
-            assessment.Status,
-            assessment.ScheduledAt,
-            assessment.CompletedAt,
-            Value("SoilCondition"),
-            Value("WaterAvailability"),
-            Value("IrrigationAvailability"),
-            Value("DrainageCondition"),
-            Value("GeneralFieldCondition"),
-            Value("PlantingReadiness"),
-            Value("RisksAndConcerns"),
-            Value("OfficerNotes"),
-            images);
+        return new PrePlantingAssessmentResponse
+        {
+            InspectionId = assessment.Id,
+            CropPlanRequestId = assessment.CropPlanRequestId!.Value,
+            FieldId = assessment.FieldId,
+            InspectorUserId = assessment.InspectorUserId,
+            Status = assessment.Status,
+            ScheduledAt = assessment.ScheduledAt,
+            CompletedAt = assessment.CompletedAt,
+            SoilType = request.SoilType,
+            SoilCondition = request.SoilCondition,
+            SoilMoisture = request.SoilMoisture,
+            SoilNotes = request.SoilNotes,
+            WaterAvailability = request.WaterAvailability,
+            MainWaterSource = request.MainWaterSource,
+            IrrigationAvailability = request.IrrigationAvailability,
+            WaterReliability = request.WaterReliability,
+            WaterConcerns = request.WaterConcerns,
+            DrainageCondition = request.DrainageCondition,
+            WaterloggingRisk = request.WaterloggingRisk,
+            DrainageNotes = request.DrainageNotes,
+            GeneralFieldCondition = request.GeneralFieldCondition,
+            GeneralFieldNotes = request.GeneralFieldNotes,
+            PlantingReadiness = request.PlantingReadiness,
+            IdentifiedRisks = request.IdentifiedRisks,
+            RiskNotes = request.RiskNotes,
+            RisksAndConcerns = request.RiskNotes,
+            OfficerNotes = request.OfficerNotes,
+            Images = images
+        };
     }
 
-    private static InspectionObservation CreateAssessmentObservation(
-        FieldInspection assessment,
-        string observationType,
-        string notes,
-        Guid actor) =>
-        new()
+    private static PrePlantingAssessmentRequest ReadAssessmentRequest(
+        IReadOnlyList<InspectionObservation> observations,
+        List<string>? errors = null)
+    {
+        string? Value(string observationType)
         {
-            FieldInspection = assessment,
-            ObservationType = observationType,
-            Notes = notes.Trim(),
-            CreatedByUserId = actor,
-            UpdatedByUserId = actor
+            var matches = observations.Where(item => item.ObservationType == observationType).ToArray();
+            if (matches.Length > 1)
+                errors?.Add($"Assessment contains duplicate {observationType} observations.");
+            return matches.LastOrDefault()?.Notes;
+        }
+
+        TEnum? EnumValue<TEnum>(string observationType)
+            where TEnum : struct, Enum
+        {
+            var value = Value(observationType);
+            if (value is null) return null;
+            if (Enum.TryParse<TEnum>(value, false, out var parsed) && Enum.IsDefined(parsed)) return parsed;
+            errors?.Add($"Assessment contains an invalid {observationType} value.");
+            return null;
+        }
+
+        var markers = observations.Where(item => item.ObservationType == RiskAssessmentObservationType).ToArray();
+        if (markers.Length > 1)
+            errors?.Add("Assessment contains duplicate identified-risk state markers.");
+        var risksAssessed = markers.Length > 0;
+        if (markers.Any(marker => marker.Notes != RiskAssessmentCompleteValue))
+            errors?.Add("Assessment contains an invalid identified-risk state marker.");
+
+        var riskRows = observations.Where(item => item.ObservationType == RiskObservationType).ToArray();
+        if (!risksAssessed && riskRows.Length > 0)
+            errors?.Add("Assessment contains identified risks without an assessed-risk marker.");
+        IReadOnlyList<PrePlantingRisk>? identifiedRisks = null;
+        if (risksAssessed)
+        {
+            var parsedRisks = new List<PrePlantingRisk>();
+            foreach (var riskRow in riskRows)
+            {
+                if (Enum.TryParse<PrePlantingRisk>(riskRow.Notes, false, out var risk) && Enum.IsDefined(risk))
+                    parsedRisks.Add(risk);
+                else
+                    errors?.Add("Assessment contains an invalid identified risk value.");
+            }
+            identifiedRisks = parsedRisks;
+        }
+
+        var legacyRiskNotes = Value("RisksAndConcerns");
+        return new PrePlantingAssessmentRequest
+        {
+            SoilType = EnumValue<PrePlantingSoilType>("SoilType"),
+            SoilCondition = EnumValue<PrePlantingSoilCondition>("SoilCondition"),
+            SoilMoisture = EnumValue<PrePlantingSoilMoisture>("SoilMoisture"),
+            SoilNotes = Value("SoilNotes"),
+            WaterAvailability = EnumValue<PrePlantingWaterAvailability>("WaterAvailability"),
+            MainWaterSource = Value("MainWaterSource"),
+            IrrigationAvailability = EnumValue<PrePlantingIrrigationAvailability>("IrrigationAvailability"),
+            WaterReliability = EnumValue<PrePlantingWaterReliability>("WaterReliability"),
+            WaterConcerns = Value("WaterConcerns"),
+            DrainageCondition = EnumValue<PrePlantingDrainageCondition>("DrainageCondition"),
+            WaterloggingRisk = EnumValue<PrePlantingWaterloggingRisk>("WaterloggingRisk"),
+            DrainageNotes = Value("DrainageNotes"),
+            GeneralFieldCondition = EnumValue<PrePlantingGeneralFieldCondition>("GeneralFieldCondition"),
+            GeneralFieldNotes = Value("GeneralFieldNotes"),
+            PlantingReadiness = EnumValue<PrePlantingPlantingReadiness>("PlantingReadiness"),
+            IdentifiedRisks = identifiedRisks,
+            RiskNotes = Value("RiskNotes") ?? legacyRiskNotes,
+            RisksAndConcerns = legacyRiskNotes,
+            OfficerNotes = Value("OfficerNotes")
         };
+    }
+
+    private static IReadOnlyList<InspectionObservation> CreateAssessmentObservations(
+        FieldInspection assessment,
+        PrePlantingAssessmentRequest request,
+        Guid actor)
+    {
+        var observations = new List<InspectionObservation>();
+
+        void AddValue(string observationType, string? value)
+        {
+            if (value is null) return;
+            observations.Add(new InspectionObservation
+            {
+                FieldInspection = assessment,
+                ObservationType = observationType,
+                Notes = value.Trim(),
+                CreatedByUserId = actor,
+                UpdatedByUserId = actor
+            });
+        }
+
+        void AddEnum<TEnum>(string observationType, TEnum? value)
+            where TEnum : struct, Enum => AddValue(observationType, value?.ToString());
+
+        AddEnum("SoilType", request.SoilType);
+        AddEnum("SoilCondition", request.SoilCondition);
+        AddEnum("SoilMoisture", request.SoilMoisture);
+        AddValue("SoilNotes", request.SoilNotes);
+        AddEnum("WaterAvailability", request.WaterAvailability);
+        AddValue("MainWaterSource", request.MainWaterSource);
+        AddEnum("IrrigationAvailability", request.IrrigationAvailability);
+        AddEnum("WaterReliability", request.WaterReliability);
+        AddValue("WaterConcerns", request.WaterConcerns);
+        AddEnum("DrainageCondition", request.DrainageCondition);
+        AddEnum("WaterloggingRisk", request.WaterloggingRisk);
+        AddValue("DrainageNotes", request.DrainageNotes);
+        AddEnum("GeneralFieldCondition", request.GeneralFieldCondition);
+        AddValue("GeneralFieldNotes", request.GeneralFieldNotes);
+        AddEnum("PlantingReadiness", request.PlantingReadiness);
+        AddValue("RiskNotes", request.RiskNotes ?? request.RisksAndConcerns);
+        AddValue("OfficerNotes", request.OfficerNotes);
+
+        if (request.IdentifiedRisks is not null)
+        {
+            AddValue(RiskAssessmentObservationType, RiskAssessmentCompleteValue);
+            foreach (var risk in request.IdentifiedRisks)
+                AddValue(RiskObservationType, risk.ToString());
+        }
+
+        return observations;
+    }
+
+    private static string BuildAssessmentSummary(PrePlantingAssessmentRequest request) =>
+        (request.GeneralFieldNotes
+            ?? request.GeneralFieldCondition?.ToString()
+            ?? "Pre-planting assessment draft").Trim();
 
     private async Task<IReadOnlyList<string>> ValidateFieldAnalysisOutputAsync(Guid workflowId, Guid assessmentId, FieldAnalysisOutput output, CancellationToken cancellationToken)
     {

@@ -144,22 +144,107 @@ public sealed class PrePlantingAssessmentRequestValidator : IRequestValidator<Pr
     public IReadOnlyList<string> Validate(PrePlantingAssessmentRequest request)
     {
         var errors = new List<string>();
-        ValidateRequired(request.SoilCondition, 240, "Soil type / condition", errors);
-        ValidateRequired(request.WaterAvailability, 500, "Water availability", errors);
-        ValidateRequired(request.IrrigationAvailability, 500, "Irrigation availability", errors);
-        ValidateRequired(request.DrainageCondition, 500, "Drainage condition", errors);
-        ValidateRequired(request.GeneralFieldCondition, 1000, "General field condition", errors);
-        ValidateRequired(request.PlantingReadiness, 500, "Planting readiness", errors);
-        ValidateRequired(request.RisksAndConcerns, 1500, "Risks / concerns", errors);
-        ValidateRequired(request.OfficerNotes, 2000, "Officer notes", errors);
+        ValidateEnum(request.SoilType, "Soil type", errors);
+        ValidateEnum(request.SoilCondition, "Soil condition", errors);
+        ValidateEnum(request.SoilMoisture, "Soil moisture", errors);
+        ValidateEnum(request.WaterAvailability, "Water availability", errors);
+        ValidateEnum(request.IrrigationAvailability, "Irrigation availability", errors);
+        ValidateEnum(request.WaterReliability, "Water reliability", errors);
+        ValidateEnum(request.DrainageCondition, "Drainage condition", errors);
+        ValidateEnum(request.WaterloggingRisk, "Waterlogging risk", errors);
+        ValidateEnum(request.GeneralFieldCondition, "General field condition", errors);
+        ValidateEnum(request.PlantingReadiness, "Planting readiness", errors);
+        ValidateOptionalText(request.SoilNotes, 1000, "Soil notes", errors);
+        ValidateOptionalText(request.MainWaterSource, 240, "Main water source", errors);
+        ValidateOptionalText(request.WaterConcerns, 1000, "Water concerns", errors);
+        ValidateOptionalText(request.DrainageNotes, 1000, "Drainage notes", errors);
+        ValidateOptionalText(request.GeneralFieldNotes, 1000, "General field notes", errors);
+        ValidateOptionalText(request.RiskNotes, 1500, "Risk notes", errors);
+        ValidateOptionalText(request.RisksAndConcerns, 1500, "Risks / concerns", errors);
+        ValidateOptionalText(request.OfficerNotes, 2000, "Officer notes", errors);
+
+        if (request.IdentifiedRisks is not null)
+        {
+            if (request.IdentifiedRisks.Any(risk => !Enum.IsDefined(risk)))
+                errors.Add("Identified risks contain an invalid value.");
+            if (request.IdentifiedRisks.Distinct().Count() != request.IdentifiedRisks.Count)
+                errors.Add("Identified risks contain duplicate values.");
+        }
+
         return errors;
     }
 
-    private static void ValidateRequired(string value, int maxLength, string name, List<string> errors)
+    private static void ValidateEnum<TEnum>(TEnum? value, string name, List<string> errors)
+        where TEnum : struct, Enum
     {
-        if (string.IsNullOrWhiteSpace(value) || value.Length > maxLength)
+        if (value.HasValue && !Enum.IsDefined(value.Value)) errors.Add($"{name} is invalid.");
+    }
+
+    private static void ValidateOptionalText(string? value, int maxLength, string name, List<string> errors)
+    {
+        if (value is not null && (string.IsNullOrWhiteSpace(value) || value.Length > maxLength))
+            errors.Add($"{name} must contain text and be {maxLength} characters or fewer when supplied.");
+    }
+}
+
+public static class PrePlantingAssessmentRules
+{
+    public static IReadOnlyList<string> ValidateSubmission(PrePlantingAssessmentRequest request)
+    {
+        var errors = new List<string>(new PrePlantingAssessmentRequestValidator().Validate(request));
+        Require(request.SoilType, "Soil type", errors);
+        Require(request.SoilCondition, "Soil condition", errors);
+        Require(request.SoilMoisture, "Soil moisture", errors);
+        Require(request.WaterAvailability, "Water availability", errors);
+        Require(request.IrrigationAvailability, "Irrigation availability", errors);
+        Require(request.WaterReliability, "Water reliability", errors);
+        Require(request.DrainageCondition, "Drainage condition", errors);
+        Require(request.WaterloggingRisk, "Waterlogging risk", errors);
+        Require(request.GeneralFieldCondition, "General field condition", errors);
+        Require(request.PlantingReadiness, "Planting readiness", errors);
+
+        if (request.IdentifiedRisks is null)
+            errors.Add("Identified risks must be assessed before submission.");
+
+        if (request.WaterAvailability is PrePlantingWaterAvailability.Adequate
+            or PrePlantingWaterAvailability.Limited
+            or PrePlantingWaterAvailability.Seasonal)
         {
-            errors.Add($"{name} is required and must be {maxLength} characters or fewer.");
+            RequireText(request.MainWaterSource, "Main water source", errors);
         }
+
+        if (request.WaterAvailability is PrePlantingWaterAvailability.Limited
+            or PrePlantingWaterAvailability.Unavailable
+            or PrePlantingWaterAvailability.Seasonal)
+        {
+            RequireText(request.WaterConcerns, "Water concerns", errors);
+        }
+
+        if (request.SoilType == PrePlantingSoilType.Other || request.SoilCondition == PrePlantingSoilCondition.Other)
+            RequireText(request.SoilNotes, "Soil notes", errors);
+        if (request.GeneralFieldCondition == PrePlantingGeneralFieldCondition.Other)
+            RequireText(request.GeneralFieldNotes, "General field notes", errors);
+        if (request.DrainageCondition == PrePlantingDrainageCondition.Poor
+            || request.WaterloggingRisk is PrePlantingWaterloggingRisk.Moderate or PrePlantingWaterloggingRisk.High)
+        {
+            RequireText(request.DrainageNotes, "Drainage notes", errors);
+        }
+
+        var riskNotes = request.RiskNotes ?? request.RisksAndConcerns;
+        if (request.IdentifiedRisks?.Contains(PrePlantingRisk.Other) == true)
+            RequireText(riskNotes, "Risk notes", errors);
+
+        return errors;
+    }
+
+    private static void Require<T>(T? value, string name, List<string> errors)
+        where T : struct
+    {
+        if (!value.HasValue) errors.Add($"{name} is required before submission.");
+    }
+
+    private static void RequireText(string? value, string name, List<string> errors)
+    {
+        if (string.IsNullOrWhiteSpace(value)) errors.Add($"{name} is required before submission.");
     }
 }

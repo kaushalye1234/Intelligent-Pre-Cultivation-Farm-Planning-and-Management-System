@@ -210,6 +210,53 @@ public sealed class CropPlanningAiWorkflowTests
     }
 
     [Fact]
+    public async Task Field_officer_saves_incomplete_draft_and_preserves_null_versus_empty_risks()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.Submitted);
+        await NewService(db, data.Farmer.Id, new PlannedAiClient())
+            .StartAiWorkflowAsync(data.Request.Id, CancellationToken.None);
+        var service = NewService(db, data.Farmer.Id, new PlannedAiClient(), ApplicationRole.FieldOfficer);
+
+        var unassessed = await service.SavePrePlantingAssessmentAsync(
+            data.Request.Id,
+            new PrePlantingAssessmentRequest { SoilType = PrePlantingSoilType.Loamy },
+            CancellationToken.None);
+
+        Assert.Equal(InspectionStatus.InProgress, unassessed.Status);
+        Assert.Null(unassessed.IdentifiedRisks);
+        Assert.Single(await db.InspectionObservations.ToListAsync());
+
+        var assessedNone = await service.SavePrePlantingAssessmentAsync(
+            data.Request.Id,
+            new PrePlantingAssessmentRequest
+            {
+                SoilType = PrePlantingSoilType.Loamy,
+                IdentifiedRisks = []
+            },
+            CancellationToken.None);
+
+        Assert.NotNull(assessedNone.IdentifiedRisks);
+        Assert.Empty(assessedNone.IdentifiedRisks);
+        Assert.Single(await db.FieldInspections.ToListAsync());
+        Assert.Equal(1, await db.InspectionObservations.CountAsync(item => item.ObservationType == "IdentifiedRisksAssessment"));
+        Assert.Equal(0, await db.InspectionObservations.CountAsync(item => item.ObservationType == "IdentifiedRisk"));
+
+        var assessedRisks = await service.SavePrePlantingAssessmentAsync(
+            data.Request.Id,
+            new PrePlantingAssessmentRequest
+            {
+                SoilType = PrePlantingSoilType.Loamy,
+                IdentifiedRisks = [PrePlantingRisk.PoorDrainage, PrePlantingRisk.SoilErosion]
+            },
+            CancellationToken.None);
+
+        Assert.Equal([PrePlantingRisk.PoorDrainage, PrePlantingRisk.SoilErosion], assessedRisks.IdentifiedRisks);
+        Assert.Equal(1, await db.InspectionObservations.CountAsync(item => item.ObservationType == "IdentifiedRisksAssessment"));
+        Assert.Equal(2, await db.InspectionObservations.CountAsync(item => item.ObservationType == "IdentifiedRisk"));
+    }
+
+    [Fact]
     public async Task Field_officer_saves_linked_pre_planting_assessment_and_officers_can_view_it()
     {
         await using var db = NewDbContext();
@@ -226,21 +273,125 @@ public sealed class CropPlanningAiWorkflowTests
         Assert.Equal(data.Request.Id, saved.CropPlanRequestId);
         Assert.Equal(data.Field.Id, saved.FieldId);
         Assert.Equal(InspectionStatus.InProgress, saved.Status);
+        Assert.Equal(data.Farmer.Id, saved.InspectorUserId);
         var inspection = await db.FieldInspections.SingleAsync();
         Assert.Equal(InspectionPurpose.PrePlanting, inspection.Purpose);
         Assert.Equal(data.Request.Id, inspection.CropPlanRequestId);
-        Assert.Equal(8, await db.InspectionObservations.CountAsync());
+        Assert.Equal(19, await db.InspectionObservations.CountAsync());
 
         var viewerService = NewService(db, data.Farmer.Id, new PlannedAiClient(), ApplicationRole.AgriculturalOfficer);
         var viewed = await viewerService.GetPrePlantingAssessmentAsync(data.Request.Id, CancellationToken.None);
         Assert.NotNull(viewed);
-        Assert.Equal("Moist loam", viewed.SoilCondition);
-        Assert.Equal("Ready after final harrowing", viewed.PlantingReadiness);
+        Assert.Equal(PrePlantingSoilCondition.Good, viewed.SoilCondition);
+        Assert.Equal(PrePlantingPlantingReadiness.ReadyWithMinorPreparation, viewed.PlantingReadiness);
 
         var resourceOfficerService = NewService(db, data.Farmer.Id, new PlannedAiClient(), ApplicationRole.ResourceOfficer);
         var resourceOfficerError = await Assert.ThrowsAsync<ApiException>(() =>
             resourceOfficerService.GetPrePlantingAssessmentAsync(data.Request.Id, CancellationToken.None));
         Assert.Equal("FIELD_ASSESSMENT_VIEWER_REQUIRED", resourceOfficerError.Code);
+    }
+
+    [Fact]
+    public async Task Only_owning_field_officer_can_update_or_submit_a_draft()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.Submitted);
+        await NewService(db, data.Farmer.Id, new PlannedAiClient())
+            .StartAiWorkflowAsync(data.Request.Id, CancellationToken.None);
+        var owner = NewService(db, data.Farmer.Id, new PlannedAiClient(), ApplicationRole.FieldOfficer);
+        await owner.SavePrePlantingAssessmentAsync(data.Request.Id, ValidAssessment(), CancellationToken.None);
+        var otherOfficer = NewService(db, Guid.NewGuid(), new PlannedAiClient(), ApplicationRole.FieldOfficer);
+
+        var saveError = await Assert.ThrowsAsync<ApiException>(() => otherOfficer.SavePrePlantingAssessmentAsync(
+            data.Request.Id, ValidAssessment(), CancellationToken.None));
+        var submitError = await Assert.ThrowsAsync<ApiException>(() => otherOfficer.SubmitPrePlantingAssessmentAsync(
+            data.Request.Id, CancellationToken.None));
+
+        Assert.Equal("PREPLANT_ASSESSMENT_OWNER_REQUIRED", saveError.Code);
+        Assert.Equal("PREPLANT_ASSESSMENT_OWNER_REQUIRED", submitError.Code);
+    }
+
+    [Fact]
+    public async Task Submission_reloads_validates_completes_and_is_idempotent_without_advancing_workflow()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.Submitted);
+        await NewService(db, data.Farmer.Id, new PlannedAiClient())
+            .StartAiWorkflowAsync(data.Request.Id, CancellationToken.None);
+        var service = NewService(db, data.Farmer.Id, new PlannedAiClient(), ApplicationRole.FieldOfficer);
+        await service.SavePrePlantingAssessmentAsync(data.Request.Id, new PrePlantingAssessmentRequest(), CancellationToken.None);
+
+        var invalid = await Assert.ThrowsAsync<ApiException>(() => service.SubmitPrePlantingAssessmentAsync(
+            data.Request.Id, CancellationToken.None));
+        Assert.Equal("PREPLANT_ASSESSMENT_INVALID", invalid.Code);
+
+        await service.SavePrePlantingAssessmentAsync(data.Request.Id, ValidAssessment(), CancellationToken.None);
+        var submitted = await service.SubmitPrePlantingAssessmentAsync(data.Request.Id, CancellationToken.None);
+
+        Assert.Equal(InspectionStatus.Completed, submitted.Status);
+        Assert.NotNull(submitted.CompletedAt);
+        var workflow = await db.AgentWorkflows.Include(item => item.Steps).SingleAsync();
+        Assert.Equal("CropFieldAnalysisAgent", workflow.CurrentStep);
+        Assert.Equal(AgentStepStatus.Pending, workflow.Steps.Single(item => item.AgentName == "CropFieldAnalysisAgent").Status);
+
+        workflow.CurrentStep = "WeatherResourceAgent";
+        await db.SaveChangesAsync();
+        var repeated = await service.SubmitPrePlantingAssessmentAsync(data.Request.Id, CancellationToken.None);
+
+        Assert.Equal(submitted.InspectionId, repeated.InspectionId);
+        Assert.Equal(submitted.CompletedAt, repeated.CompletedAt);
+        Assert.Equal("WeatherResourceAgent", workflow.CurrentStep);
+
+        var immutable = await Assert.ThrowsAsync<ApiException>(() => service.SavePrePlantingAssessmentAsync(
+            data.Request.Id, ValidAssessment() with { OfficerNotes = "Changed after submission" }, CancellationToken.None));
+        Assert.Equal("PREPLANT_ASSESSMENT_SUBMITTED", immutable.Code);
+    }
+
+    [Fact]
+    public async Task Submission_rejects_changed_field_linkage()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.Submitted);
+        await NewService(db, data.Farmer.Id, new PlannedAiClient())
+            .StartAiWorkflowAsync(data.Request.Id, CancellationToken.None);
+        var service = NewService(db, data.Farmer.Id, new PlannedAiClient(), ApplicationRole.FieldOfficer);
+        await service.SavePrePlantingAssessmentAsync(data.Request.Id, ValidAssessment(), CancellationToken.None);
+        var inspection = await db.FieldInspections.SingleAsync();
+        inspection.FieldId = Guid.NewGuid();
+        await db.SaveChangesAsync();
+
+        var error = await Assert.ThrowsAsync<ApiException>(() => service.SubmitPrePlantingAssessmentAsync(
+            data.Request.Id, CancellationToken.None));
+
+        Assert.Equal("PREPLANT_ASSESSMENT_LINKAGE_INVALID", error.Code);
+    }
+
+    [Fact]
+    public async Task Pre_planting_context_returns_exact_plan_and_workflow_details()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.Submitted);
+        var variety = new CropVariety { CropTypeId = data.Request.CropTypeId, Name = "Bg 352", IsActive = true };
+        data.Request.CropVariety = variety;
+        data.Request.CultivationSeason = CultivationSeason.Maha;
+        db.Add(variety);
+        await db.SaveChangesAsync();
+        await NewService(db, data.Farmer.Id, new PlannedAiClient())
+            .StartAiWorkflowAsync(data.Request.Id, CancellationToken.None);
+        var service = NewService(db, data.Farmer.Id, new PlannedAiClient(), ApplicationRole.FieldOfficer);
+
+        var context = await service.GetPrePlantingContextAsync(data.Request.Id, CancellationToken.None);
+
+        Assert.Equal(data.Request.Id, context.CropPlanRequestId);
+        Assert.Equal(data.Farmer.Id, context.FarmerId);
+        Assert.Equal("Farmer", context.FarmerName);
+        Assert.Equal("North Farm", context.FarmName);
+        Assert.Equal(data.Field.Id, context.FieldId);
+        Assert.Equal("Field A", context.FieldName);
+        Assert.Equal("Rice", context.CropName);
+        Assert.Equal("Bg 352", context.CropVarietyName);
+        Assert.Equal(CultivationSeason.Maha, context.CultivationSeason);
+        Assert.Equal("CropFieldAnalysisAgent", context.CurrentStep);
     }
 
     [Fact]
@@ -360,15 +511,27 @@ public sealed class CropPlanningAiWorkflowTests
             new DateOnly(2026, 10, 1), new DateOnly(2027, 1, 1), 12000, "Farmer objective");
 
     private static PrePlantingAssessmentRequest ValidAssessment() =>
-        new(
-            "Moist loam",
-            "Canal supply available",
-            "Pump is operational",
-            "Drainage channels are clear",
-            "Field is cleared and level",
-            "Ready after final harrowing",
-            "Low area may retain water",
-            "Recheck the low area before sowing");
+        new()
+        {
+            SoilType = PrePlantingSoilType.Loamy,
+            SoilCondition = PrePlantingSoilCondition.Good,
+            SoilMoisture = PrePlantingSoilMoisture.Moist,
+            SoilNotes = "Moist loam with no visible compaction.",
+            WaterAvailability = PrePlantingWaterAvailability.Adequate,
+            MainWaterSource = "Canal",
+            IrrigationAvailability = PrePlantingIrrigationAvailability.Available,
+            WaterReliability = PrePlantingWaterReliability.Reliable,
+            WaterConcerns = "Supply should be rechecked before sowing.",
+            DrainageCondition = PrePlantingDrainageCondition.Good,
+            WaterloggingRisk = PrePlantingWaterloggingRisk.Low,
+            DrainageNotes = "Drainage channels are clear.",
+            GeneralFieldCondition = PrePlantingGeneralFieldCondition.ClearAndPrepared,
+            GeneralFieldNotes = "Field is cleared and level.",
+            PlantingReadiness = PrePlantingPlantingReadiness.ReadyWithMinorPreparation,
+            IdentifiedRisks = [PrePlantingRisk.LandPreparationRequired],
+            RiskNotes = "Final harrowing remains.",
+            OfficerNotes = "Recheck the low area before sowing."
+        };
 
     private sealed record SeededPlan(AppUser Farmer, CropPlanRequest Request, Field Field);
 

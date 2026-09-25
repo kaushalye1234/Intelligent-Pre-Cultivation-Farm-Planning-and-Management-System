@@ -1,5 +1,7 @@
 ﻿using AgriAssist.Api.Models.Inspections;
 using AgriAssist.Api.Models.Shared;
+using AgriAssist.Api.Models.CropPlanning;
+using System.Text.Json.Serialization;
 
 namespace AgriAssist.Api.Dtos.CropPlanning;
 
@@ -81,15 +83,88 @@ public sealed record FieldAnalysisInput(
     Guid? CropReferenceProfileId,
     Guid? AgentStepId);
 
-public sealed record PrePlantingAssessmentRequest(
-    string SoilCondition,
-    string WaterAvailability,
-    string IrrigationAvailability,
-    string DrainageCondition,
-    string GeneralFieldCondition,
-    string PlantingReadiness,
-    string RisksAndConcerns,
-    string OfficerNotes);
+[JsonConverter(typeof(JsonStringEnumConverter<PrePlantingSoilType>))]
+public enum PrePlantingSoilType { Sandy, Clay, Loamy, Silty, Mixed, Unknown, Other }
+
+[JsonConverter(typeof(JsonStringEnumConverter<PrePlantingSoilCondition>))]
+public enum PrePlantingSoilCondition { Good, Moderate, Poor, Compacted, Eroded, Unknown, Other }
+
+[JsonConverter(typeof(JsonStringEnumConverter<PrePlantingSoilMoisture>))]
+public enum PrePlantingSoilMoisture { Dry, Moist, Wet, Waterlogged, Unknown }
+
+[JsonConverter(typeof(JsonStringEnumConverter<PrePlantingWaterAvailability>))]
+public enum PrePlantingWaterAvailability { Adequate, Limited, Unavailable, Seasonal, Unknown }
+
+[JsonConverter(typeof(JsonStringEnumConverter<PrePlantingIrrigationAvailability>))]
+public enum PrePlantingIrrigationAvailability { Available, Limited, Unavailable, NotRequired, Unknown }
+
+[JsonConverter(typeof(JsonStringEnumConverter<PrePlantingWaterReliability>))]
+public enum PrePlantingWaterReliability { Reliable, Intermittent, Seasonal, Unreliable, Unknown }
+
+[JsonConverter(typeof(JsonStringEnumConverter<PrePlantingDrainageCondition>))]
+public enum PrePlantingDrainageCondition { Good, Moderate, Poor, Unknown }
+
+[JsonConverter(typeof(JsonStringEnumConverter<PrePlantingWaterloggingRisk>))]
+public enum PrePlantingWaterloggingRisk { NoneObserved, Low, Moderate, High, Unknown }
+
+[JsonConverter(typeof(JsonStringEnumConverter<PrePlantingGeneralFieldCondition>))]
+public enum PrePlantingGeneralFieldCondition
+{
+    ClearAndPrepared,
+    RequiresLandPreparation,
+    UnevenField,
+    Waterlogged,
+    TooDry,
+    ErosionPresent,
+    AccessLimitation,
+    Other
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter<PrePlantingPlantingReadiness>))]
+public enum PrePlantingPlantingReadiness
+{
+    Ready,
+    ReadyWithMinorPreparation,
+    RequiresPreparation,
+    NotReady,
+    RequiresFurtherAssessment
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter<PrePlantingRisk>))]
+public enum PrePlantingRisk
+{
+    WaterShortageRisk,
+    FloodingRisk,
+    PoorDrainage,
+    SoilSuitabilityConcern,
+    SoilErosion,
+    FieldAccessProblem,
+    LandPreparationRequired,
+    Other
+}
+
+public sealed record PrePlantingAssessmentRequest
+{
+    public PrePlantingSoilType? SoilType { get; init; }
+    public PrePlantingSoilCondition? SoilCondition { get; init; }
+    public PrePlantingSoilMoisture? SoilMoisture { get; init; }
+    public string? SoilNotes { get; init; }
+    public PrePlantingWaterAvailability? WaterAvailability { get; init; }
+    public string? MainWaterSource { get; init; }
+    public PrePlantingIrrigationAvailability? IrrigationAvailability { get; init; }
+    public PrePlantingWaterReliability? WaterReliability { get; init; }
+    public string? WaterConcerns { get; init; }
+    public PrePlantingDrainageCondition? DrainageCondition { get; init; }
+    public PrePlantingWaterloggingRisk? WaterloggingRisk { get; init; }
+    public string? DrainageNotes { get; init; }
+    public PrePlantingGeneralFieldCondition? GeneralFieldCondition { get; init; }
+    public string? GeneralFieldNotes { get; init; }
+    public PrePlantingPlantingReadiness? PlantingReadiness { get; init; }
+    public IReadOnlyList<PrePlantingRisk>? IdentifiedRisks { get; init; }
+    public string? RiskNotes { get; init; }
+    public string? RisksAndConcerns { get; init; }
+    public string? OfficerNotes { get; init; }
+}
 
 public sealed record PrePlantingAssessmentImageResponse(
     Guid Id,
@@ -97,22 +172,55 @@ public sealed record PrePlantingAssessmentImageResponse(
     string ContentType,
     long SizeBytes);
 
-public sealed record PrePlantingAssessmentResponse(
-    Guid InspectionId,
+public sealed record PrePlantingAssessmentResponse
+{
+    public Guid InspectionId { get; init; }
+    public Guid CropPlanRequestId { get; init; }
+    public Guid FieldId { get; init; }
+    public Guid InspectorUserId { get; init; }
+    public InspectionStatus Status { get; init; }
+    public DateTime ScheduledAt { get; init; }
+    public DateTime? CompletedAt { get; init; }
+    public PrePlantingSoilType? SoilType { get; init; }
+    public PrePlantingSoilCondition? SoilCondition { get; init; }
+    public PrePlantingSoilMoisture? SoilMoisture { get; init; }
+    public string? SoilNotes { get; init; }
+    public PrePlantingWaterAvailability? WaterAvailability { get; init; }
+    public string? MainWaterSource { get; init; }
+    public PrePlantingIrrigationAvailability? IrrigationAvailability { get; init; }
+    public PrePlantingWaterReliability? WaterReliability { get; init; }
+    public string? WaterConcerns { get; init; }
+    public PrePlantingDrainageCondition? DrainageCondition { get; init; }
+    public PrePlantingWaterloggingRisk? WaterloggingRisk { get; init; }
+    public string? DrainageNotes { get; init; }
+    public PrePlantingGeneralFieldCondition? GeneralFieldCondition { get; init; }
+    public string? GeneralFieldNotes { get; init; }
+    public PrePlantingPlantingReadiness? PlantingReadiness { get; init; }
+    public IReadOnlyList<PrePlantingRisk>? IdentifiedRisks { get; init; }
+    public string? RiskNotes { get; init; }
+    public string? RisksAndConcerns { get; init; }
+    public string? OfficerNotes { get; init; }
+    public IReadOnlyList<PrePlantingAssessmentImageResponse> Images { get; init; } = [];
+}
+
+public sealed record PrePlantingContextResponse(
     Guid CropPlanRequestId,
+    Guid WorkflowId,
+    string CurrentStep,
+    Guid FarmerId,
+    string FarmerName,
+    Guid FarmId,
+    string FarmName,
+    string FarmLocation,
     Guid FieldId,
-    InspectionStatus Status,
-    DateTime ScheduledAt,
-    DateTime? CompletedAt,
-    string SoilCondition,
-    string WaterAvailability,
-    string IrrigationAvailability,
-    string DrainageCondition,
-    string GeneralFieldCondition,
-    string PlantingReadiness,
-    string RisksAndConcerns,
-    string OfficerNotes,
-    IReadOnlyList<PrePlantingAssessmentImageResponse> Images);
+    string FieldName,
+    Guid CropTypeId,
+    string CropName,
+    Guid? CropVarietyId,
+    string? CropVarietyName,
+    CultivationSeason CultivationSeason,
+    DateOnly PreferredStartDate,
+    DateOnly PreferredEndDate);
 
 public sealed record FieldAnalysisFieldConditionResponse(
     string Summary,
