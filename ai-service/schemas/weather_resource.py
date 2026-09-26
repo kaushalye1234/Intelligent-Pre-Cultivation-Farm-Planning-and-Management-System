@@ -1,9 +1,15 @@
-from datetime import date
+from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import Field, field_validator
 
 from schemas.common import AgentEnvelope, CamelModel
+
+SUFFICIENT = "Sufficient"
+INSUFFICIENT = "Insufficient"
+REQUIREMENT_UNKNOWN = "ResourceRequirementUnknown"
+NOT_COMPARABLE = "InventoryNotComparable"
+INCOMPLETE = "Incomplete"
 
 
 class WeatherDay(CamelModel):
@@ -23,6 +29,8 @@ class WeatherForecast(CamelModel):
 
 
 class StockSnapshot(CamelModel):
+    """One inventory row from GetResourceAvailability / GetLowStockStatus. availableQuantity already nets reservations."""
+
     inventory_stock_id: UUID = Field(alias="inventoryStockId")
     resource_id: UUID = Field(alias="resourceId")
     resource_name: str = Field(alias="resourceName")
@@ -33,11 +41,58 @@ class StockSnapshot(CamelModel):
     low_stock_threshold: float = Field(alias="lowStockThreshold")
 
 
-class ResourceRequirement(CamelModel):
-    """How much of one resource crop planning says is needed. Never estimated by the agent."""
-
+class ReservationSnapshot(CamelModel):
+    reservation_id: UUID = Field(alias="reservationId")
+    inventory_stock_id: UUID = Field(alias="inventoryStockId")
     resource_id: UUID = Field(alias="resourceId")
-    requested_quantity: float = Field(alias="requestedQuantity", ge=0)
+    resource_name: str = Field(alias="resourceName")
+    unit: str
+    quantity: float
+    purpose: str = ""
+    created_at: datetime = Field(alias="createdAt")
+
+
+class RequirementSource(CamelModel):
+    crop_reference_profile_id: UUID = Field(alias="cropReferenceProfileId")
+    source_name: str = Field(alias="sourceName")
+    source_url: str | None = Field(default=None, alias="sourceUrl")
+    source_version: str = Field(alias="sourceVersion")
+    verified_at: datetime = Field(alias="verifiedAt")
+    region: str | None = None
+    variety_name: str | None = Field(default=None, alias="varietyName")
+
+
+class CalculatedResourceRequirement(CamelModel):
+    """One verified requirement rule. requiredQuantity is calculated by the backend, or None when unknown."""
+
+    rule_id: UUID = Field(alias="ruleId")
+    rule_key: str = Field(alias="ruleKey")
+    resource_id: UUID | None = Field(default=None, alias="resourceId")
+    resource_name: str = Field(alias="resourceName")
+    resource_match: str = Field(alias="resourceMatch")
+    quantity_per_area: float | None = Field(default=None, alias="quantityPerArea")
+    resource_unit: str | None = Field(default=None, alias="resourceUnit")
+    area_unit: str | None = Field(default=None, alias="areaUnit")
+    required_quantity: float | None = Field(default=None, alias="requiredQuantity")
+    status: str
+    basis: str | None = None
+    reason: str | None = None
+
+
+class CropResourceRequirements(CamelModel):
+    """GetCropResourceRequirements result. status is Available, Incomplete or Unavailable."""
+
+    crop_plan_request_id: UUID = Field(alias="cropPlanRequestId")
+    crop_type_id: UUID = Field(alias="cropTypeId")
+    crop_name: str = Field(alias="cropName")
+    variety_name: str | None = Field(default=None, alias="varietyName")
+    field_id: UUID | None = Field(default=None, alias="fieldId")
+    field_area: float | None = Field(default=None, alias="fieldArea")
+    field_area_unit: str | None = Field(default=None, alias="fieldAreaUnit")
+    status: str
+    reason: str | None = None
+    source: RequirementSource | None = None
+    requirements: list[CalculatedResourceRequirement] = Field(default_factory=list)
 
 
 class Member2FieldAnalysisContext(CamelModel):
@@ -57,17 +112,17 @@ class Member2FieldAnalysisContext(CamelModel):
 
 
 class WeatherResourceInput(CamelModel):
+    """Crop plan context from ASP.NET. Evidence is gathered by the agent through the backend tools."""
+
     workflow_id: UUID = Field(alias="workflowId")
     agent_step_id: UUID = Field(alias="agentStepId")
     crop_plan_request_id: UUID = Field(alias="cropPlanRequestId")
+    field_id: UUID | None = Field(default=None, alias="fieldId")
     location: str
     preferred_start_date: date = Field(alias="preferredStartDate")
     preferred_end_date: date = Field(alias="preferredEndDate")
     field_priority: str = Field(alias="fieldPriority")
     field_analysis_summary: str = Field(alias="fieldAnalysisSummary")
-    weather: WeatherForecast
-    stocks: list[StockSnapshot] = Field(default_factory=list)
-    resource_requirements: list[ResourceRequirement] = Field(default_factory=list, alias="resourceRequirements")
     member_2_field_analysis_context: Member2FieldAnalysisContext | None = Field(
         default=None,
         alias="member2FieldAnalysisContext",
@@ -81,13 +136,6 @@ class WeatherResourceInput(CamelModel):
             raise ValueError("Location must be 200 characters or fewer.")
         return value
 
-    @field_validator("stocks")
-    @classmethod
-    def stocks_are_bounded(cls, value: list[StockSnapshot]) -> list[StockSnapshot]:
-        if len(value) > 100:
-            raise ValueError("At most 100 inventory rows may be analyzed.")
-        return value
-
 
 class ResourceCheck(CamelModel):
     inventory_stock_id: UUID = Field(alias="inventoryStockId")
@@ -96,10 +144,27 @@ class ResourceCheck(CamelModel):
     unit: str
     available_quantity: float = Field(alias="availableQuantity")
     is_low_stock: bool = Field(alias="isLowStock")
-    # requested/sufficient stay None (status ResourceRequirementUnknown) when no requirement was supplied.
+    # requested/sufficient stay None (status ResourceRequirementUnknown) when no verified requirement exists.
     requested: float | None = None
     sufficient: bool | None = None
-    requirement_status: str = Field(default="ResourceRequirementUnknown", alias="requirementStatus")
+    requirement_status: str = Field(default=REQUIREMENT_UNKNOWN, alias="requirementStatus")
+
+
+class ResourceRequirementAssessment(CamelModel):
+    """The agent's assessment of one verified requirement against inventory after reservations."""
+
+    rule_id: UUID | None = Field(default=None, alias="ruleId")
+    resource_id: UUID | None = Field(default=None, alias="resourceId")
+    resource_name: str = Field(alias="resourceName")
+    unit: str | None = None
+    required_quantity: float | None = Field(default=None, alias="requiredQuantity")
+    available_quantity: float | None = Field(default=None, alias="availableQuantity")
+    reserved_quantity: float | None = Field(default=None, alias="reservedQuantity")
+    shortage_quantity: float | None = Field(default=None, alias="shortageQuantity")
+    sufficient: bool | None = None
+    requirement_status: str = Field(alias="requirementStatus")
+    basis: str | None = None
+    reason: str | None = None
 
 
 class WeatherResourceOutput(AgentEnvelope):
@@ -107,3 +172,8 @@ class WeatherResourceOutput(AgentEnvelope):
     weather_summary: str = Field(alias="weatherSummary")
     resource_checks: list[ResourceCheck] = Field(default_factory=list, alias="resourceChecks")
     recommendations: list[str] = Field(default_factory=list)
+    resource_requirements: list[ResourceRequirementAssessment] = Field(default_factory=list, alias="resourceRequirements")
+    requirement_status: str = Field(default=REQUIREMENT_UNKNOWN, alias="requirementStatus")
+    requirement_source: RequirementSource | None = Field(default=None, alias="requirementSource")
+    reason: str | None = None
+    tools_used: list[str] = Field(default_factory=list, alias="toolsUsed")
