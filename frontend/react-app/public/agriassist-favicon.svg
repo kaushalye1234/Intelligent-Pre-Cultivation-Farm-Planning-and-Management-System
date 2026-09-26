@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="agriassist-favicon-title">
+  <title id="agriassist-favicon-title">AgriAssist</title>
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="#173f35" />
+  <path d="M32 49V29" stroke="#f6f3df" stroke-width="5" stroke-linecap="round" />
+  <path d="M30 31C20 31 13 25 13 15c10 0 18 5 19 15v1h-2Z" fill="#a7d46f" />
+  <path d="M34 30c0-10 7-17 18-17 0 11-7 18-18 18v-1Z" fill="#6fbe4b" />
+  <path d="M17 50c9-6 21-6 30 0" fill="none" stroke="#d7e8bf" stroke-width="4" stroke-linecap="round" />
+</svg>
