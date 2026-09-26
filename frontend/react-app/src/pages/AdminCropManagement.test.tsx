@@ -85,4 +85,32 @@ describe('Admin crop management', () => {
 
     expect(await within(screen.getByRole('dialog', { name: 'Edit crop' })).findByRole('alert')).toHaveTextContent('Crop type already exists.')
   })
+
+  it('confirms deletes and explains when historical use blocks deletion', async () => {
+    vi.spyOn(api, 'get').mockImplementation((url: string) => {
+      if (url.includes('/crop-types')) return Promise.resolve(paged([{ id: 'crop-1', name: 'Rice', description: '', isActive: true }]))
+      if (url.includes('/crop-varieties')) return Promise.resolve(paged([{ id: 'variety-1', cropTypeId: 'crop-1', name: 'Bg 352', isActive: true }]))
+      return Promise.resolve(paged([]))
+    })
+    const remove = vi.spyOn(api, 'delete')
+      .mockResolvedValueOnce({ data: {} })
+      .mockRejectedValueOnce(new Error('This variety is already in use. Deactivate it instead.'))
+
+    render(<AdminCropManagement />)
+    await screen.findByText('Rice')
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    const cropDelete = screen.getByRole('dialog', { name: 'Delete crop?' })
+    expect(cropDelete).toHaveTextContent('Use Deactivate instead')
+    fireEvent.click(within(cropDelete).getByRole('button', { name: 'Delete crop' }))
+    await waitFor(() => expect(remove).toHaveBeenCalledWith('/crop-planning/crop-types/crop-1'))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Delete crop?' })).not.toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('tab', { name: /Varieties/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    const varietyDelete = screen.getByRole('dialog', { name: 'Delete variety?' })
+    fireEvent.click(within(varietyDelete).getByRole('button', { name: 'Delete variety' }))
+
+    expect(await within(varietyDelete).findByRole('alert')).toHaveTextContent('Deactivate it instead.')
+    expect(remove).toHaveBeenCalledWith('/crop-planning/crop-varieties/variety-1')
+  })
 })

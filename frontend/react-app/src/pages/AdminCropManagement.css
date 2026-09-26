@@ -254,6 +254,21 @@
   justify-content: flex-end;
 }
 
+.crop-admin-delete-message {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--tone-warn-border);
+  border-radius: var(--radius-md);
+  color: var(--tone-warn-text);
+  background: var(--tone-warn-bg);
+}
+
+.crop-admin-delete-message p {
+  margin: 0;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

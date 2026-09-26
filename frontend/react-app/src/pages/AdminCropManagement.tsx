@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import { BookOpenCheck, Pencil, Plus, Power, Search, Sprout } from 'lucide-react'
+import { BookOpenCheck, Pencil, Plus, Power, Search, Sprout, Trash2 } from 'lucide-react'
 import { api, getErrorMessage } from '../api/client'
 import { SelectInput, TextAreaInput, TextInput } from '../components/FormControls'
 import { DataTable } from '../components/DataTable'
@@ -12,6 +12,7 @@ import './AdminCropManagement.css'
 
 type AdminTab = 'crops' | 'varieties' | 'references'
 type StatusFilter = 'all' | 'active' | 'inactive'
+type DeleteTarget = { kind: 'crop' | 'variety'; id: string; name: string } | null
 type StageForm = { stageName: string; sequence: number; typicalMinDays: string; typicalMaxDays: string; notes: string }
 type RuleForm = { ruleType: string; ruleKey: string; structuredValueJson: string }
 
@@ -48,6 +49,7 @@ export function AdminCropManagement() {
   const [varietyStatus, setVarietyStatus] = useState<StatusFilter>('all')
   const [cropDialogOpen, setCropDialogOpen] = useState(false)
   const [varietyDialogOpen, setVarietyDialogOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget>(null)
   const [error, setError] = useState('')
   const [dialogError, setDialogError] = useState('')
   const [success, setSuccess] = useState('')
@@ -181,6 +183,21 @@ export function AdminCropManagement() {
     }, `Variety ${isActive ? 'reactivated' : 'deactivated'}.`)
   }
 
+  function openDelete(target: Exclude<DeleteTarget, null>) {
+    setDialogError('')
+    setDeleteTarget(target)
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return
+    const label = deleteTarget.kind === 'crop' ? 'Crop' : 'Variety'
+    const path = deleteTarget.kind === 'crop' ? 'crop-types' : 'crop-varieties'
+    const deleted = await run(async () => {
+      await api.delete(`/crop-planning/${path}/${deleteTarget.id}`)
+    }, `${label} deleted.`, 'dialog')
+    if (deleted) setDeleteTarget(null)
+  }
+
   async function saveReference(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const includedStages = stages.filter((stage) => stage.stageName.trim())
@@ -261,7 +278,7 @@ export function AdminCropManagement() {
             <DataTable rows={filteredCrops} emptyTitle="No crops found" emptyMessage="Try another search or status filter." getRowKey={(crop) => crop.id} columns={[
               { header: 'Crop', render: (crop) => <PrimaryCell title={crop.name} detail={crop.description || 'No reference notes'} /> },
               { header: 'State', render: (crop) => <StatusPill label={crop.isActive ? 'Active' : 'Inactive'} tone={crop.isActive ? 'good' : 'bad'} /> },
-              { header: 'Actions', className: 'crop-admin-actions-column', render: (crop) => <div className="crop-admin-actions"><Button variant="secondary" icon={<Pencil size={15} />} disabled={busy} onClick={() => openEditCrop(crop)}>Edit</Button><Button variant="ghost" icon={<Power size={15} />} disabled={busy} onClick={() => void setCropActive(crop)}>{crop.isActive ? 'Deactivate' : 'Reactivate'}</Button></div> },
+              { header: 'Actions', className: 'crop-admin-actions-column', render: (crop) => <div className="crop-admin-actions"><Button variant="secondary" icon={<Pencil size={15} />} disabled={busy} onClick={() => openEditCrop(crop)}>Edit</Button><Button variant="ghost" icon={<Power size={15} />} disabled={busy} onClick={() => void setCropActive(crop)}>{crop.isActive ? 'Deactivate' : 'Reactivate'}</Button><Button variant="danger" icon={<Trash2 size={15} />} disabled={busy} onClick={() => openDelete({ kind: 'crop', id: crop.id, name: crop.name })}>Delete</Button></div> },
             ]} />
           )}
         </section>
@@ -278,7 +295,7 @@ export function AdminCropManagement() {
             <DataTable rows={filteredVarieties} emptyTitle="No varieties found" emptyMessage="Try another search or status filter." getRowKey={(variety) => variety.id} columns={[
               { header: 'Variety', render: (variety) => <PrimaryCell title={variety.name} detail={cropName(variety.cropTypeId)} /> },
               { header: 'State', render: (variety) => <StatusPill label={variety.isActive ? 'Active' : 'Inactive'} tone={variety.isActive ? 'good' : 'bad'} /> },
-              { header: 'Actions', className: 'crop-admin-actions-column', render: (variety) => <div className="crop-admin-actions"><Button variant="secondary" icon={<Pencil size={15} />} disabled={busy} onClick={() => openEditVariety(variety)}>Edit</Button><Button variant="ghost" icon={<Power size={15} />} disabled={busy} onClick={() => void setVarietyActive(variety)}>{variety.isActive ? 'Deactivate' : 'Reactivate'}</Button></div> },
+              { header: 'Actions', className: 'crop-admin-actions-column', render: (variety) => <div className="crop-admin-actions"><Button variant="secondary" icon={<Pencil size={15} />} disabled={busy} onClick={() => openEditVariety(variety)}>Edit</Button><Button variant="ghost" icon={<Power size={15} />} disabled={busy} onClick={() => void setVarietyActive(variety)}>{variety.isActive ? 'Deactivate' : 'Reactivate'}</Button><Button variant="danger" icon={<Trash2 size={15} />} disabled={busy} onClick={() => openDelete({ kind: 'variety', id: variety.id, name: variety.name })}>Delete</Button></div> },
             ]} />
           )}
         </section>
@@ -345,6 +362,7 @@ export function AdminCropManagement() {
 
       <CropDialog open={cropDialogOpen} form={cropForm} error={dialogError} busy={busy} onChange={setCropForm} onClose={() => setCropDialogOpen(false)} onSubmit={saveCrop} />
       <VarietyDialog open={varietyDialogOpen} form={varietyForm} cropOptions={varietyCropOptions} error={dialogError} busy={busy} onChange={setVarietyForm} onClose={() => setVarietyDialogOpen(false)} onSubmit={saveVariety} />
+      <DeleteDialog target={deleteTarget} error={dialogError} busy={busy} onCancel={() => setDeleteTarget(null)} onConfirm={confirmDelete} />
     </div>
   )
 }
@@ -384,4 +402,21 @@ function VarietyDialog({ open, form, cropOptions, error, busy, onChange, onClose
 
 function CompactSwitch({ label, description, checked, onChange }: { label: string; description: string; checked: boolean; onChange: (checked: boolean) => void }) {
   return <label className="crop-admin-switch field-control-wide"><span><strong>{label}</strong><small>{description}</small></span><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /><i aria-hidden="true" /></label>
+}
+
+function DeleteDialog({ target, error, busy, onCancel, onConfirm }: { target: DeleteTarget; error: string; busy: boolean; onCancel: () => void; onConfirm: () => void | Promise<void> }) {
+  const label = target?.kind === 'crop' ? 'crop' : 'variety'
+  return <Modal
+    open={Boolean(target)}
+    title={`Delete ${label}?`}
+    description="This action is allowed only when no planning or reference history depends on the item."
+    onClose={onCancel}
+    footer={<><Button variant="secondary" onClick={onCancel} disabled={busy}>Cancel</Button><Button variant="danger" onClick={() => void onConfirm()} disabled={busy}>{busy ? 'Deleting…' : `Delete ${label}`}</Button></>}
+  >
+    {error ? <Notice tone="error">{error}</Notice> : null}
+    <div className="crop-admin-delete-message">
+      <p>Delete <strong>{target?.name}</strong> from the admin catalog?</p>
+      <p>If it is already in use, deletion will be blocked to protect historical data. Use <strong>Deactivate</strong> instead.</p>
+    </div>
+  </Modal>
 }
