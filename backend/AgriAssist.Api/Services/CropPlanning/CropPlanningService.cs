@@ -280,6 +280,33 @@ public sealed class CropPlanningService(
         return MapCropType(cropType);
     }
 
+    public async Task DeleteCropTypeAsync(Guid id, CancellationToken cancellationToken)
+    {
+        RequireAdmin();
+        await using var transaction = await BeginCatalogDeletionTransactionAsync(cancellationToken);
+        var cropType = await dbContext.CropTypes.SingleOrDefaultAsync(item => item.Id == id && !item.IsDeleted, cancellationToken)
+            ?? throw NotFound("Crop type");
+
+        var hasVarieties = await dbContext.CropVarieties.AnyAsync(item => item.CropTypeId == id && !item.IsDeleted, cancellationToken);
+        var hasCycles = await dbContext.CropCycles.AnyAsync(item => item.CropTypeId == id, cancellationToken);
+        var hasRequests = await dbContext.CropPlanRequests.AnyAsync(item => item.CropTypeId == id || item.PreviousCropTypeId == id, cancellationToken);
+        var hasReferences = await dbContext.CropReferenceProfiles.AnyAsync(item => item.CropTypeId == id, cancellationToken);
+        if (hasVarieties || hasCycles || hasRequests || hasReferences)
+        {
+            throw new ApiException(
+                HttpStatusCode.Conflict,
+                "CROP_TYPE_IN_USE",
+                "This crop cannot be deleted because varieties, plans, field history, workflows, or verified references already use it. Deactivate it instead.");
+        }
+
+        cropType.IsActive = false;
+        cropType.IsDeleted = true;
+        cropType.UpdatedAt = DateTime.UtcNow;
+        cropType.UpdatedByUserId = currentUser.UserId;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+    }
+
     public async Task<PagedResult<CropVarietyResponse>> SearchCropVarietiesAsync(PagedQuery query, Guid? cropTypeId, CancellationToken cancellationToken, bool includeInactive = false)
     {
         query.Normalize();
@@ -334,6 +361,33 @@ public sealed class CropPlanningService(
         variety.UpdatedByUserId = currentUser.UserId;
         await dbContext.SaveChangesAsync(cancellationToken);
         return MapVariety(variety);
+    }
+
+    public async Task DeleteCropVarietyAsync(Guid id, CancellationToken cancellationToken)
+    {
+        RequireAdmin();
+        await using var transaction = await BeginCatalogDeletionTransactionAsync(cancellationToken);
+        var variety = await dbContext.CropVarieties.SingleOrDefaultAsync(item => item.Id == id && !item.IsDeleted, cancellationToken)
+            ?? throw NotFound("Crop variety");
+
+        var hasRequests = await dbContext.CropPlanRequests.AnyAsync(item => item.CropVarietyId == id, cancellationToken);
+        var hasReferences = await dbContext.CropReferenceProfiles.AnyAsync(
+            item => item.CropTypeId == variety.CropTypeId && item.VarietyName == variety.Name,
+            cancellationToken);
+        if (hasRequests || hasReferences)
+        {
+            throw new ApiException(
+                HttpStatusCode.Conflict,
+                "CROP_VARIETY_IN_USE",
+                "This variety cannot be deleted because plans, workflows, or verified references already use it. Deactivate it instead.");
+        }
+
+        variety.IsActive = false;
+        variety.IsDeleted = true;
+        variety.UpdatedAt = DateTime.UtcNow;
+        variety.UpdatedByUserId = currentUser.UserId;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
     }
 
     public async Task<PagedResult<CropReferenceProfileResponse>> SearchReferenceProfilesAsync(PagedQuery query, Guid? cropTypeId, CancellationToken cancellationToken)
@@ -1300,6 +1354,11 @@ public sealed class CropPlanningService(
     private async Task<IDbContextTransaction?> BeginCapacityTransactionAsync(CancellationToken cancellationToken) =>
         UsesPostgreSql
             ? await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+
+    private async Task<IDbContextTransaction?> BeginCatalogDeletionTransactionAsync(CancellationToken cancellationToken) =>
+        UsesPostgreSql
+            ? await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
             : null;
 
     private async Task<Farm> LockFarmForCapacityAsync(Guid farmId, CancellationToken cancellationToken)

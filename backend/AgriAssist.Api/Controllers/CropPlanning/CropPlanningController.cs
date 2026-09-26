@@ -69,6 +69,14 @@ public sealed class CropPlanningController(ICropPlanningService cropPlanningServ
     public async Task<ActionResult<CropTypeResponse>> UpdateCropType(Guid id, CropTypeRequest request, CancellationToken cancellationToken) =>
         Ok(await cropPlanningService.UpdateCropTypeAsync(id, request, cancellationToken));
 
+    [HttpDelete("crop-types/{id:guid}")]
+    [Authorize(Roles = nameof(ApplicationRole.Admin))]
+    public async Task<IActionResult> DeleteCropType(Guid id, CancellationToken cancellationToken)
+    {
+        await cropPlanningService.DeleteCropTypeAsync(id, cancellationToken);
+        return NoContent();
+    }
+
     [HttpGet("crop-varieties")]
     public async Task<ActionResult<PagedResult<CropVarietyResponse>>> SearchCropVarieties([FromQuery] PagedQuery query, [FromQuery] Guid? cropTypeId, [FromQuery] bool includeInactive, CancellationToken cancellationToken) =>
         Ok(await cropPlanningService.SearchCropVarietiesAsync(query, cropTypeId, cancellationToken, includeInactive));
@@ -82,6 +90,14 @@ public sealed class CropPlanningController(ICropPlanningService cropPlanningServ
     [Authorize(Roles = nameof(ApplicationRole.Admin))]
     public async Task<ActionResult<CropVarietyResponse>> UpdateCropVariety(Guid id, CropVarietyRequest request, CancellationToken cancellationToken) =>
         Ok(await cropPlanningService.UpdateCropVarietyAsync(id, request, cancellationToken));
+
+    [HttpDelete("crop-varieties/{id:guid}")]
+    [Authorize(Roles = nameof(ApplicationRole.Admin))]
+    public async Task<IActionResult> DeleteCropVariety(Guid id, CancellationToken cancellationToken)
+    {
+        await cropPlanningService.DeleteCropVarietyAsync(id, cancellationToken);
+        return NoContent();
+    }
 
     [HttpGet("crop-reference-profiles")]
     [Authorize(Roles = nameof(ApplicationRole.Admin))]
