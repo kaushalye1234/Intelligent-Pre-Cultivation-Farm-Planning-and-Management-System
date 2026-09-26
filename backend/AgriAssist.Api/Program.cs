@@ -270,8 +270,6 @@ using (var scope = app.Services.CreateScope())
     {
         await dbContext.Database.EnsureCreatedAsync();
     }
-
-    await SeedData.SeedAsync(dbContext);
 }
 
 // Local development and the documented HTTP profile run on port 5087. Redirect
