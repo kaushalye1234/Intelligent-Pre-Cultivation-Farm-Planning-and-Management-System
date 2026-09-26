@@ -71,7 +71,7 @@ export function AboutPage() {
         <div className="public-container public-hero-narrow">
           <p className="public-eyebrow"><span aria-hidden="true" />About AgriAssist</p>
           <h1 id="about-title">
-            One platform for planning, field operations, resources <span>and approvals.</span>
+            AgriAssist connects planning, field operations, resources <span>and approvals.</span>
           </h1>
           <p className="public-lead">
             AgriAssist is an intelligent pre-cultivation farm planning and management system. It brings crop planning,
