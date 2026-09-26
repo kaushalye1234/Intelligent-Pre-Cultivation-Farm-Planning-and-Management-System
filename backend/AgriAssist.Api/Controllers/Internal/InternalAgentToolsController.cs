@@ -5,8 +5,12 @@ using System.Text;
 using System.Text.Json;
 using AgriAssist.Api.Data;
 using AgriAssist.Api.Dtos.CropPlanning;
+using AgriAssist.Api.Dtos.Resources;
+using AgriAssist.Api.ExternalServices.Weather;
 using AgriAssist.Api.Models.Inspections;
 using AgriAssist.Api.Models.Shared;
+using AgriAssist.Api.Services.Resources;
+using AgriAssist.Api.Services.Shared;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -16,7 +20,9 @@ namespace AgriAssist.Api.Controllers.Internal;
 [Route("api/internal/agent-tools")]
 public sealed class InternalAgentToolsController(
     AppDbContext dbContext,
-    IConfiguration configuration) : ControllerBase
+    IConfiguration configuration,
+    ICropResourceRequirementService requirementService,
+    IWeatherResourceToolService weatherResourceTools) : ControllerBase
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -326,6 +332,130 @@ public sealed class InternalAgentToolsController(
                     .ToListAsync(cancellationToken);
             },
             cancellationToken);
+
+    // Member 3 WeatherResourceAgent tools. All are read-only and require the workflow context.
+    [HttpGet("crop-resource-requirements/{cropPlanRequestId:guid}")]
+    public async Task<ActionResult<AgentToolResponse<CropResourceRequirementsResult>>> GetCropResourceRequirements(
+        Guid cropPlanRequestId,
+        [FromQuery] Guid? workflowId,
+        [FromQuery] Guid? agentStepId,
+        CancellationToken cancellationToken) =>
+        await RunToolAsync(
+            WeatherResourceToolNames.GetCropResourceRequirements,
+            workflowId,
+            agentStepId,
+            new { cropPlanRequestId, workflowId, agentStepId },
+            async () =>
+            {
+                await RequireWorkflowScopeAsync(workflowId, cropPlanRequestId, cancellationToken);
+                return await AsToolErrorAsync(() => requirementService.GetRequirementsAsync(cropPlanRequestId, cancellationToken));
+            },
+            cancellationToken);
+
+    [HttpGet("resource-availability")]
+    public async Task<ActionResult<AgentToolResponse<IReadOnlyList<StockSnapshot>>>> GetResourceAvailability(
+        [FromQuery] Guid[]? resourceIds,
+        [FromQuery] Guid? workflowId,
+        [FromQuery] Guid? agentStepId,
+        CancellationToken cancellationToken) =>
+        await RunToolAsync(
+            WeatherResourceToolNames.GetResourceAvailability,
+            workflowId,
+            agentStepId,
+            new { resourceIds = resourceIds ?? [], workflowId, agentStepId },
+            async () =>
+            {
+                await RequireWorkflowAsync(workflowId, cancellationToken);
+                return await weatherResourceTools.GetResourceAvailabilityAsync(RequireResourceIds(resourceIds), cancellationToken);
+            },
+            cancellationToken);
+
+    [HttpGet("existing-reservations")]
+    public async Task<ActionResult<AgentToolResponse<IReadOnlyList<ReservationSnapshot>>>> GetExistingReservations(
+        [FromQuery] Guid[]? resourceIds,
+        [FromQuery] Guid? workflowId,
+        [FromQuery] Guid? agentStepId,
+        CancellationToken cancellationToken) =>
+        await RunToolAsync(
+            WeatherResourceToolNames.GetExistingReservations,
+            workflowId,
+            agentStepId,
+            new { resourceIds = resourceIds ?? [], workflowId, agentStepId },
+            async () =>
+            {
+                await RequireWorkflowAsync(workflowId, cancellationToken);
+                return await weatherResourceTools.GetExistingReservationsAsync(RequireResourceIds(resourceIds), cancellationToken);
+            },
+            cancellationToken);
+
+    [HttpGet("low-stock-status")]
+    public async Task<ActionResult<AgentToolResponse<IReadOnlyList<StockSnapshot>>>> GetLowStockStatus(
+        [FromQuery] Guid? workflowId,
+        [FromQuery] Guid? agentStepId,
+        CancellationToken cancellationToken) =>
+        await RunToolAsync(
+            WeatherResourceToolNames.GetLowStockStatus,
+            workflowId,
+            agentStepId,
+            new { workflowId, agentStepId },
+            async () =>
+            {
+                await RequireWorkflowAsync(workflowId, cancellationToken);
+                return await weatherResourceTools.GetLowStockStatusAsync(cancellationToken);
+            },
+            cancellationToken);
+
+    [HttpGet("weather-forecast")]
+    public async Task<ActionResult<AgentToolResponse<WeatherForecastResponse>>> GetWeatherForecast(
+        [FromQuery] Guid? workflowId,
+        [FromQuery] Guid? agentStepId,
+        CancellationToken cancellationToken) =>
+        await RunToolAsync(
+            WeatherResourceToolNames.GetWeatherForecast,
+            workflowId,
+            agentStepId,
+            new { workflowId, agentStepId },
+            async () =>
+            {
+                await RequireWorkflowAsync(workflowId, cancellationToken);
+                return await AsToolErrorAsync(() => weatherResourceTools.GetWeatherForecastAsync(workflowId!.Value, cancellationToken));
+            },
+            cancellationToken);
+
+    private async Task RequireWorkflowScopeAsync(Guid? workflowId, Guid cropPlanRequestId, CancellationToken cancellationToken)
+    {
+        if (!workflowId.HasValue) throw Safe(HttpStatusCode.Forbidden, "Workflow context is required.");
+        await EnsureWorkflowScopeAsync(workflowId, cropPlanRequestId, cancellationToken);
+    }
+
+    private async Task RequireWorkflowAsync(Guid? workflowId, CancellationToken cancellationToken)
+    {
+        if (!workflowId.HasValue || !await dbContext.AgentWorkflows.AsNoTracking().AnyAsync(item => item.Id == workflowId.Value && !item.IsDeleted, cancellationToken))
+        {
+            throw Safe(HttpStatusCode.Forbidden, "Workflow context is required.");
+        }
+    }
+
+    private static IReadOnlyCollection<Guid> RequireResourceIds(Guid[]? resourceIds)
+    {
+        var ids = (resourceIds ?? []).Where(id => id != Guid.Empty).Distinct().ToArray();
+        if (ids.Length > WeatherResourceToolService.MaxRequestedResources)
+            throw Safe(HttpStatusCode.BadRequest, $"At most {WeatherResourceToolService.MaxRequestedResources} resources may be requested.");
+        return ids;
+    }
+
+    private static async Task<T> AsToolErrorAsync<T>(Func<Task<T>> action)
+    {
+        try
+        {
+            return await action();
+        }
+        catch (ApiException exception)
+        {
+            throw Safe(exception.StatusCode, exception.Message);
+        }
+    }
+
     private async Task<ActionResult<AgentToolResponse<T>>> RunToolAsync<T>(
         string toolName,
         Guid? workflowId,

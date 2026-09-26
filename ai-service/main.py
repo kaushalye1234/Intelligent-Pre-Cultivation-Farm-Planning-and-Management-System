@@ -15,6 +15,7 @@ from schemas.scheduling_validation import SchedulingValidationInput, SchedulingV
 from tools.backend_tool_client import BackendToolClient
 from tools.crop_planning_tools import CropPlanningTools
 from tools.inspection_tools import InspectionTools
+from tools.weather_resource_tools import WeatherResourceTools
 
 app = FastAPI(title="AgriAssist AI Service", version="0.1.0")
 
@@ -76,8 +77,9 @@ async def run_weather_resource_analysis(
     request: WeatherResourceInput,
     settings: Settings = Depends(get_settings),
 ) -> WeatherResourceOutput:
-    # ASP.NET sends the forecast and inventory snapshot in the request, so this agent needs no backend tool calls.
+    # The agent gathers verified requirements, field, inventory, reservations and weather through read-only backend tools.
     agent = WeatherResourceAgent(
+        tools=WeatherResourceTools(BackendToolClient(settings)),
         llm_provider=create_provider(settings),
         provider_timeout_seconds=settings.provider_timeout_seconds,
     )

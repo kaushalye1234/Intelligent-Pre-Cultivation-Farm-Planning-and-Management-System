@@ -92,8 +92,22 @@ public sealed class CropReferenceProfileRequestValidator : IRequestValidator<Cro
                 continue;
             }
             try { using var _ = System.Text.Json.JsonDocument.Parse(rule.StructuredValueJson); }
-            catch (System.Text.Json.JsonException) { errors.Add("Rule value must be valid JSON."); }
+            catch (System.Text.Json.JsonException) { errors.Add("Rule value must be valid JSON."); continue; }
+
+            // Member 3 reads these to calculate crop resource requirements, so the shape is checked on entry.
+            if (string.Equals(rule.RuleType?.Trim(), AgriAssist.Api.Services.Resources.CropResourceRequirementRule.RuleType, StringComparison.OrdinalIgnoreCase)
+                && !AgriAssist.Api.Services.Resources.CropResourceRequirementRule.TryParse(rule.StructuredValueJson, out _, out var requirementError))
+            {
+                errors.Add($"Resource requirement rule '{rule.RuleKey}': {requirementError}");
+            }
         }
+        var duplicateRequirement = (request.Rules ?? [])
+            .Where(rule => string.Equals(rule.RuleType?.Trim(), AgriAssist.Api.Services.Resources.CropResourceRequirementRule.RuleType, StringComparison.OrdinalIgnoreCase))
+            .Select(rule => AgriAssist.Api.Services.Resources.CropResourceRequirementRule.TryParse(rule.StructuredValueJson, out var parsed, out _) ? parsed : null)
+            .Where(parsed => parsed is not null)
+            .GroupBy(parsed => parsed!.ResourceId?.ToString() ?? parsed!.ResourceName.ToLowerInvariant())
+            .Any(group => group.Count() > 1);
+        if (duplicateRequirement) errors.Add("Each resource may have only one resource requirement rule per reference profile.");
         return errors;
     }
 }

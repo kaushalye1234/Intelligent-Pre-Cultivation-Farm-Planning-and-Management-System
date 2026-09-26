@@ -4,43 +4,40 @@ using AgriAssist.Api.Dtos.CropPlanning;
 using AgriAssist.Api.Dtos.Resources;
 using AgriAssist.Api.ExternalServices.AgenticAI;
 using AgriAssist.Api.ExternalServices.Weather;
-using AgriAssist.Api.Models.CropPlanning;
-using AgriAssist.Api.Models.Resources;
 using AgriAssist.Api.Models.Shared;
 using AgriAssist.Api.Services.CropPlanning;
 using AgriAssist.Api.Services.Resources;
 using AgriAssist.Api.Services.Shared;
 using AgriAssist.Api.Validators.CropPlanning;
 using Microsoft.EntityFrameworkCore;
+using static AgriAssist.Api.Tests.WeatherResourceTestData;
 
 namespace AgriAssist.Api.Tests;
 
 public sealed class WeatherResourceWorkflowTests
 {
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
     [Fact]
     public async Task Run_stores_output_and_hands_off_to_member4()
     {
         await using var db = NewDbContext();
-        var data = await SeedAsync(db, fieldAnalysisDone: true);
-        WeatherResourceInput? sentInput = null;
-        var service = NewService(db, new FakeAiClient(input => { sentInput = input; return Echo(input, "Medium"); }));
+        var data = await SeedAsync(db);
+        var agent = new ToolCallingAgent(db);
 
-        var result = await service.RunAsync(data.RequestId, CancellationToken.None);
+        var result = await NewService(db, agent).RunAsync(data.RequestId, CancellationToken.None);
 
         Assert.Equal("Analyzed", result.Status);
         Assert.Equal("Medium", result.WeatherRisk);
-        Assert.NotNull(sentInput);
+        Assert.Equal(ResourceRequirementStatus.Insufficient, result.RequirementStatus);
+        var sentInput = agent.Input!;
         Assert.Equal("Kurunegala", sentInput.Location);
+        Assert.Equal(data.FieldId, sentInput.FieldId);
         Assert.Equal("High", sentInput.FieldPriority);
-        Assert.Equal(6, sentInput.Stocks.Single().AvailableQuantity);
         Assert.NotNull(sentInput.Member2FieldAnalysisContext);
         Assert.Equal("SuitableWithConditions", sentInput.Member2FieldAnalysisContext.FieldSuitability);
-        Assert.Contains("Adequate", sentInput.Member2FieldAnalysisContext.WaterAssessment);
-        Assert.Contains("Poor", sentInput.Member2FieldAnalysisContext.DrainageAssessment);
-        Assert.Equal("RequiresPreparation", sentInput.Member2FieldAnalysisContext.PlantingReadiness);
         Assert.Equal([PrePlantingRisk.PoorDrainage], sentInput.Member2FieldAnalysisContext.IdentifiedRisks);
-        Assert.NotEmpty(sentInput.Member2FieldAnalysisContext.FieldPreparationRequirements);
-        var inputJson = JsonSerializer.Serialize(sentInput, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var inputJson = JsonSerializer.Serialize(sentInput, Json);
         Assert.DoesNotContain("officerNotes", inputJson, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("evidenceInspectionIds", inputJson, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("openIssues", inputJson, StringComparison.OrdinalIgnoreCase);
@@ -50,9 +47,44 @@ public sealed class WeatherResourceWorkflowTests
         Assert.Equal("SchedulingValidationAgent", workflow.CurrentStep);
         Assert.Equal(AgentStepStatus.Completed, workflow.Steps.Single(step => step.AgentName == "WeatherResourceAgent").Status);
 
-        var stored = await service.GetResultAsync(data.RequestId, CancellationToken.None);
-        Assert.Equal("Medium", stored.WeatherRisk);
+        // Member 4 reads this stored output: 50 kg required (100 kg/acre x 0.5 acre), 30 kg available after 40 kg reserved.
+        var stored = await NewService(db, agent).GetResultAsync(data.RequestId, CancellationToken.None);
+        var requirement = Assert.Single(stored.ResourceRequirements!);
+        Assert.Equal((50m, 30m, 40m, 20m), (requirement.RequiredQuantity!.Value, requirement.AvailableQuantity!.Value, requirement.ReservedQuantity!.Value, requirement.ShortageQuantity!.Value));
+        Assert.Equal(ResourceRequirementStatus.Insufficient, requirement.RequirementStatus);
         Assert.Equal(data.StockId, stored.ResourceChecks.Single().InventoryStockId);
+        Assert.Equal(50m, stored.ResourceChecks.Single().Requested);
+        Assert.Equal("SAMPLE source (test fixture)", stored.RequirementSource!.SourceName);
+    }
+
+    [Fact]
+    public async Task Run_reports_sufficient_when_verified_requirement_is_covered()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedAsync(db, onHand: 60, reserved: 0);
+
+        var result = await NewService(db, new ToolCallingAgent(db)).RunAsync(data.RequestId, CancellationToken.None);
+
+        Assert.Equal(ResourceRequirementStatus.Sufficient, result.RequirementStatus);
+        Assert.Equal("Analyzed", result.Status);
+    }
+
+    [Fact]
+    public async Task Run_marks_requirements_unknown_when_no_verified_rule_exists()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedAsync(db, ruleJson: null);
+
+        var result = await NewService(db, new ToolCallingAgent(db)).RunAsync(data.RequestId, CancellationToken.None);
+
+        Assert.Equal("Analyzed", result.Status);
+        Assert.Equal(ResourceRequirementStatus.Unknown, result.RequirementStatus);
+        var stored = await NewService(db, new ToolCallingAgent(db)).GetResultAsync(data.RequestId, CancellationToken.None);
+        var check = Assert.Single(stored.ResourceChecks);
+        Assert.Null(check.Requested);
+        Assert.Null(check.Sufficient);
+        Assert.Equal(ResourceRequirementStatus.Unknown, check.RequirementStatus);
+        Assert.All(stored.ResourceRequirements!, item => Assert.Null(item.RequiredQuantity));
     }
 
     [Fact]
@@ -60,9 +92,8 @@ public sealed class WeatherResourceWorkflowTests
     {
         await using var db = NewDbContext();
         var data = await SeedAsync(db, fieldAnalysisDone: false);
-        var service = NewService(db, new FakeAiClient(input => Echo(input, "Low")));
 
-        var exception = await Assert.ThrowsAsync<ApiException>(() => service.RunAsync(data.RequestId, CancellationToken.None));
+        var exception = await Assert.ThrowsAsync<ApiException>(() => NewService(db, new ToolCallingAgent(db)).RunAsync(data.RequestId, CancellationToken.None));
 
         Assert.Equal("FIELD_ANALYSIS_NOT_COMPLETED", exception.Code);
     }
@@ -71,15 +102,10 @@ public sealed class WeatherResourceWorkflowTests
     public async Task Run_rejects_invented_stock_figures()
     {
         await using var db = NewDbContext();
-        var data = await SeedAsync(db, fieldAnalysisDone: true);
-        var service = NewService(db, new FakeAiClient(input =>
-        {
-            var output = Echo(input, "Low");
-            var check = output.ResourceChecks.Single();
-            return output with { ResourceChecks = [check with { AvailableQuantity = 500 }] };
-        }));
+        var data = await SeedAsync(db);
+        var agent = new ToolCallingAgent(db, output => output with { ResourceChecks = [output.ResourceChecks.Single() with { AvailableQuantity = 500 }] });
 
-        var result = await service.RunAsync(data.RequestId, CancellationToken.None);
+        var result = await NewService(db, agent).RunAsync(data.RequestId, CancellationToken.None);
 
         Assert.Equal("SafeFailure", result.Status);
         var workflow = await db.AgentWorkflows.Include(item => item.Steps).SingleAsync();
@@ -88,11 +114,61 @@ public sealed class WeatherResourceWorkflowTests
     }
 
     [Fact]
+    public async Task Run_rejects_a_requirement_that_no_verified_rule_supports()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedAsync(db, ruleJson: null);
+        var agent = new ToolCallingAgent(db, output => output with
+        {
+            ResourceRequirements = [new ResourceRequirementAssessment(null, data.ResourceId, "Urea", "kg", 80, 30, 40, 50, false, ResourceRequirementStatus.Insufficient, "Probably 80 kg.", null)],
+            RequirementStatus = ResourceRequirementStatus.Insufficient
+        });
+
+        var result = await NewService(db, agent).RunAsync(data.RequestId, CancellationToken.None);
+
+        Assert.Equal("SafeFailure", result.Status);
+        var errors = await db.AgentValidationResults.Select(item => item.ErrorsJson).SingleAsync();
+        Assert.Contains("no verified rule supports it", errors);
+    }
+
+    [Fact]
+    public async Task Run_rejects_a_dropped_shortage_or_altered_requirement_figures()
+    {
+        foreach (var tamper in new Func<WeatherResourceOutput, WeatherResourceOutput>[]
+                 {
+                     output => output with { ResourceRequirements = [], RequirementStatus = ResourceRequirementStatus.Sufficient, RequiresHumanReview = false },
+                     output => output with { ResourceRequirements = [output.ResourceRequirements!.Single() with { RequiredQuantity = 25, ShortageQuantity = 0, Sufficient = true, RequirementStatus = ResourceRequirementStatus.Sufficient }] },
+                     output => output with { ResourceRequirements = [output.ResourceRequirements!.Single() with { AvailableQuantity = 70, ShortageQuantity = 0 }] }
+                 })
+        {
+            await using var db = NewDbContext();
+            var data = await SeedAsync(db);
+
+            var result = await NewService(db, new ToolCallingAgent(db, tamper)).RunAsync(data.RequestId, CancellationToken.None);
+
+            Assert.Equal("SafeFailure", result.Status);
+        }
+    }
+
+    [Fact]
+    public async Task Run_rejects_resource_figures_that_were_not_retrieved_through_tools()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedAsync(db);
+
+        var result = await NewService(db, new ToolCallingAgent(db, callTools: false)).RunAsync(data.RequestId, CancellationToken.None);
+
+        Assert.Equal("SafeFailure", result.Status);
+        var errors = await db.AgentValidationResults.Select(item => item.ErrorsJson).SingleAsync();
+        Assert.Contains("GetResourceAvailability", errors);
+    }
+
+    [Fact]
     public async Task Run_records_safe_failure_when_ai_service_is_down()
     {
         await using var db = NewDbContext();
-        var data = await SeedAsync(db, fieldAnalysisDone: true);
-        var service = NewService(db, new FakeAiClient(_ => throw new HttpRequestException("No service.")));
+        var data = await SeedAsync(db);
+        var service = NewService(db, new ThrowingAiClient());
 
         var result = await service.RunAsync(data.RequestId, CancellationToken.None);
 
@@ -102,75 +178,34 @@ public sealed class WeatherResourceWorkflowTests
     }
 
     [Fact]
+    public async Task Analysis_never_mutates_inventory_or_creates_reservations()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedAsync(db);
+        var reservationsBefore = await db.ResourceReservations.CountAsync();
+        var transactionsBefore = await db.StockTransactions.CountAsync();
+
+        await NewService(db, new ToolCallingAgent(db)).RunAsync(data.RequestId, CancellationToken.None);
+
+        var stock = await db.InventoryStocks.AsNoTracking().SingleAsync();
+        Assert.Equal((70m, 40m), (stock.QuantityOnHand, stock.ReservedQuantity));
+        Assert.Equal(reservationsBefore, await db.ResourceReservations.CountAsync());
+        Assert.Equal(transactionsBefore, await db.StockTransactions.CountAsync());
+        Assert.Empty(await db.FarmTasks.ToListAsync());
+        Assert.Empty(await db.IrrigationSchedules.ToListAsync());
+    }
+
+    [Fact]
     public void Validate_rejects_weather_risk_without_forecast()
     {
-        var input = new WeatherResourceInput(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "Nowhere", new DateOnly(2026, 10, 1), new DateOnly(2027, 1, 1), "Low", "", WeatherForecastResponse.Unavailable("Nowhere", "down"), []);
-        var output = new WeatherResourceOutput(input.WorkflowId, "Analyzed", true, [], "High", "Invented storm.", [], []);
+        var workflowId = Guid.NewGuid();
+        var evidence = new WeatherResourceToolEvidence(null, [], [], true, WeatherForecastResponse.Unavailable("Nowhere", "down"));
+        var output = new WeatherResourceOutput(workflowId, "Analyzed", true, [], "High", "Invented storm.", [], [], [], ResourceRequirementStatus.Unknown);
 
-        var errors = WeatherResourceWorkflowService.Validate(output, input);
+        var errors = WeatherResourceWorkflowService.Validate(output, evidence, workflowId);
 
         Assert.Contains(errors, error => error.Contains("without forecast data"));
     }
-
-    [Fact]
-    public async Task Run_marks_requirements_unknown_because_crop_planning_provides_no_quantities()
-    {
-        await using var db = NewDbContext();
-        var data = await SeedAsync(db, fieldAnalysisDone: true);
-        WeatherResourceInput? sentInput = null;
-        var service = NewService(db, new FakeAiClient(input => { sentInput = input; return Echo(input, "Low"); }));
-
-        var result = await service.RunAsync(data.RequestId, CancellationToken.None);
-
-        Assert.Equal("Analyzed", result.Status);
-        Assert.NotNull(sentInput);
-        Assert.Empty(sentInput!.ResourceRequirements!);
-        var stored = await service.GetResultAsync(data.RequestId, CancellationToken.None);
-        var check = Assert.Single(stored.ResourceChecks);
-        Assert.Null(check.Requested);
-        Assert.Null(check.Sufficient);
-        Assert.Equal(ResourceRequirementStatus.Unknown, check.RequirementStatus);
-    }
-
-    [Fact]
-    public void Validate_accepts_requirement_figures_that_follow_from_the_input()
-    {
-        var (input, stock) = InputWithStock(requestedQuantity: 8m);
-        var sufficient = OutputWith(input, new ResourceCheckResponse(stock.InventoryStockId, stock.ResourceId, stock.ResourceName, stock.Unit, 10m, false, 8m, true, ResourceRequirementStatus.Sufficient));
-        var insufficientInput = input with { ResourceRequirements = [new ResourceRequirement(stock.ResourceId, 12m)] };
-        var insufficient = OutputWith(insufficientInput, new ResourceCheckResponse(stock.InventoryStockId, stock.ResourceId, stock.ResourceName, stock.Unit, 10m, false, 12m, false, ResourceRequirementStatus.Insufficient));
-
-        Assert.Empty(WeatherResourceWorkflowService.Validate(sufficient, input));
-        Assert.Empty(WeatherResourceWorkflowService.Validate(insufficient, insufficientInput));
-    }
-
-    [Fact]
-    public void Validate_rejects_invented_or_inconsistent_requirements()
-    {
-        var (input, stock) = InputWithStock(requestedQuantity: null);
-        var invented = OutputWith(input, new ResourceCheckResponse(stock.InventoryStockId, stock.ResourceId, stock.ResourceName, stock.Unit, 10m, false, 5m, true, ResourceRequirementStatus.Sufficient));
-        Assert.Contains(WeatherResourceWorkflowService.Validate(invented, input), error => error.Contains("invented a requirement"));
-
-        var withRequirement = input with { ResourceRequirements = [new ResourceRequirement(stock.ResourceId, 12m)] };
-        var wrongQuantity = OutputWith(withRequirement, new ResourceCheckResponse(stock.InventoryStockId, stock.ResourceId, stock.ResourceName, stock.Unit, 10m, false, 5m, true, ResourceRequirementStatus.Sufficient));
-        var wrongSufficiency = OutputWith(withRequirement, new ResourceCheckResponse(stock.InventoryStockId, stock.ResourceId, stock.ResourceName, stock.Unit, 10m, false, 12m, true, ResourceRequirementStatus.Sufficient));
-        var droppedRequirement = OutputWith(withRequirement, new ResourceCheckResponse(stock.InventoryStockId, stock.ResourceId, stock.ResourceName, stock.Unit, 10m, false));
-        Assert.Contains(WeatherResourceWorkflowService.Validate(wrongQuantity, withRequirement), error => error.Contains("requirement figures"));
-        Assert.Contains(WeatherResourceWorkflowService.Validate(wrongSufficiency, withRequirement), error => error.Contains("requirement figures"));
-        Assert.Contains(WeatherResourceWorkflowService.Validate(droppedRequirement, withRequirement), error => error.Contains("requirement figures"));
-    }
-
-    private static (WeatherResourceInput Input, StockSnapshot Stock) InputWithStock(decimal? requestedQuantity)
-    {
-        var stock = new StockSnapshot(Guid.NewGuid(), Guid.NewGuid(), "Paddy Seed", "kg", 10m, 0m, 10m, 2m);
-        var requirements = requestedQuantity is null ? [] : new[] { new ResourceRequirement(stock.ResourceId, requestedQuantity.Value) };
-        var forecast = new WeatherForecastResponse("Kurunegala", true, "ok", [new WeatherDayResponse(new DateOnly(2026, 9, 15), 23m, 31m, 2m, 5m, "clear")]);
-        var input = new WeatherResourceInput(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "Kurunegala", new DateOnly(2026, 10, 1), new DateOnly(2027, 1, 1), "Low", "", forecast, [stock], requirements);
-        return (input, stock);
-    }
-
-    private static WeatherResourceOutput OutputWith(WeatherResourceInput input, ResourceCheckResponse check) =>
-        new(input.WorkflowId, "Analyzed", false, [], "Low", "Summary.", [check], []);
 
     [Fact]
     public void Weather_parser_groups_three_hour_forecasts_into_days()
@@ -194,20 +229,6 @@ public sealed class WeatherResourceWorkflowTests
         Assert.Equal(0m, days[1].RainMm);
     }
 
-    private static WeatherResourceOutput Echo(WeatherResourceInput input, string risk) =>
-        new(
-            input.WorkflowId,
-            "Analyzed",
-            false,
-            [],
-            risk,
-            "Summary from stored forecast.",
-            input.Stocks.Select(stock => new ResourceCheckResponse(stock.InventoryStockId, stock.ResourceId, stock.ResourceName, stock.Unit, stock.AvailableQuantity, stock.AvailableQuantity <= stock.LowStockThreshold)).ToList(),
-            ["Review stock before planting."]);
-
-    private static AppDbContext NewDbContext() =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
-
     private static WeatherResourceWorkflowService NewService(AppDbContext db, IWeatherResourceAIClient aiClient)
     {
         var officer = new StubCurrentUser(ApplicationRole.ResourceOfficer);
@@ -220,67 +241,7 @@ public sealed class WeatherResourceWorkflowTests
             new CropCycleRequestValidator(),
             new CropPlanRequestCreateValidator(),
             new CropPlanRequestUpdateValidator());
-        return new WeatherResourceWorkflowService(db, officer, cropPlanning, new StubWeatherService(), aiClient);
-    }
-
-    private static async Task<(Guid RequestId, Guid StockId)> SeedAsync(AppDbContext db, bool fieldAnalysisDone)
-    {
-        var farmer = new AppUser { FullName = "Farmer", Email = "farmer.m3@example.test", PasswordHash = "hash", Role = ApplicationRole.Farmer, IsActive = true };
-        var farm = new Farm { Name = "North Farm", Location = "Kurunegala", TotalArea = 10, OwnerUser = farmer };
-        var field = new Field { Name = "Field A", Area = 2, SoilType = "Loam", Farm = farm, IsActive = true };
-        var cropType = new CropType { Name = "Rice", IsActive = true };
-        var request = new CropPlanRequest
-        {
-            Farm = farm,
-            Field = field,
-            CropType = cropType,
-            RequestedByUser = farmer,
-            PreferredStartDate = new DateOnly(2026, 10, 1),
-            PreferredEndDate = new DateOnly(2027, 1, 1),
-            Budget = 12000,
-            Objective = "Plan the next rice season safely.",
-            Status = CropPlanRequestStatus.PreliminaryGenerated
-        };
-        var workflow = new AgentWorkflow
-        {
-            CropPlanRequest = request,
-            InitiatedByUser = farmer,
-            Objective = request.Objective,
-            Status = AgentWorkflowStatus.Pending,
-            CurrentStep = fieldAnalysisDone ? "WeatherResourceAgent" : "CropFieldAnalysisAgent"
-        };
-        var fieldAnalysis = new FieldAnalysisOutput(
-            workflow.Id,
-            "Analyzed",
-            true,
-            ["Field preparation requires Resource Officer awareness."],
-            new FieldAnalysisFieldConditionResponse("Submitted pre-planting evidence requires drainage preparation.", [Guid.NewGuid()]),
-            [new FieldAnalysisOpenIssueResponse(Guid.NewGuid(), "High", "Open", Guid.NewGuid())],
-            "High",
-            "SuitableWithConditions",
-            "Soil type Loamy; condition Moderate; moisture Moist.",
-            "Water availability Adequate; main source Canal; irrigation Available; reliability Reliable.",
-            "Drainage condition Poor; waterlogging risk Moderate.",
-            ["Clear the recorded drainage channels before planting."],
-            "RequiresPreparation",
-            [PrePlantingRisk.PoorDrainage],
-            ["Address the recorded drainage concern before planting."]);
-        workflow.Steps =
-        [
-            new AgentStep { AgentName = "CropFieldAnalysisAgent", StepName = "FieldAnalysis", Sequence = 2, Status = fieldAnalysisDone ? AgentStepStatus.Completed : AgentStepStatus.Pending, OutputJson = JsonSerializer.Serialize(fieldAnalysis, new JsonSerializerOptions(JsonSerializerDefaults.Web)) },
-            new AgentStep { AgentName = "WeatherResourceAgent", StepName = "WeatherResourceAnalysis", Sequence = 3 },
-            new AgentStep { AgentName = "SchedulingValidationAgent", StepName = "Scheduling", Sequence = 4 }
-        ];
-        var stock = new InventoryStock
-        {
-            Resource = new Resource { Name = "Paddy Seed", Unit = "kg", ResourceCategory = new ResourceCategory { Name = "Seed" } },
-            QuantityOnHand = 10,
-            ReservedQuantity = 4,
-            LowStockThreshold = 8
-        };
-        db.AddRange(farmer, farm, field, cropType, request, workflow, stock);
-        await db.SaveChangesAsync();
-        return (request.Id, stock.Id);
+        return new WeatherResourceWorkflowService(db, officer, cropPlanning, aiClient);
     }
 
     private sealed class StubCurrentUser(ApplicationRole role) : ICurrentUserService
@@ -296,9 +257,75 @@ public sealed class WeatherResourceWorkflowTests
             Task.FromResult(new WeatherForecastResponse(location, true, "stub", [new WeatherDayResponse(new DateOnly(2026, 9, 15), 23, 31, 12, 5, "moderate rain")]));
     }
 
-    private sealed class FakeAiClient(Func<WeatherResourceInput, WeatherResourceOutput> respond) : IWeatherResourceAIClient
+    private sealed class ThrowingAiClient : IWeatherResourceAIClient
     {
         public Task<WeatherResourceOutput> RunWeatherResourceAnalysisAsync(WeatherResourceInput input, CancellationToken cancellationToken) =>
-            Task.FromResult(respond(input));
+            throw new HttpRequestException("No service.");
+    }
+
+    /// <summary>
+    /// Behaves like the Python agent: calls the real read-only tool services, records each call the way
+    /// InternalAgentToolsController does, and returns the output those tool results justify (optionally tampered).
+    /// </summary>
+    private sealed class ToolCallingAgent(AppDbContext db, Func<WeatherResourceOutput, WeatherResourceOutput>? tamper = null, bool callTools = true) : IWeatherResourceAIClient
+    {
+        public WeatherResourceInput? Input { get; private set; }
+
+        public async Task<WeatherResourceOutput> RunWeatherResourceAnalysisAsync(WeatherResourceInput input, CancellationToken cancellationToken)
+        {
+            Input = input;
+            var requirements = await new CropResourceRequirementService(db, TestConfiguration()).GetRequirementsAsync(input.CropPlanRequestId, cancellationToken);
+            var tools = new WeatherResourceToolService(db, new StubWeatherService());
+            var ids = requirements.Requirements
+                .Where(rule => rule.Status == RequirementCalculationStatus.Calculated && rule.ResourceMatch == ResourceMatchStatus.Matched)
+                .Select(rule => rule.ResourceId!.Value).ToArray();
+            var stocks = await tools.GetResourceAvailabilityAsync(ids, cancellationToken);
+            var weather = await tools.GetWeatherForecastAsync(input.WorkflowId, cancellationToken);
+            if (callTools)
+            {
+                await RecordAsync(input, WeatherResourceToolNames.GetCropResourceRequirements, new { cropPlanRequestId = input.CropPlanRequestId, workflowId = input.WorkflowId, agentStepId = input.AgentStepId }, requirements);
+                await RecordAsync(input, WeatherResourceToolNames.GetResourceAvailability, new { resourceIds = ids, workflowId = input.WorkflowId, agentStepId = input.AgentStepId }, stocks);
+                await RecordAsync(input, WeatherResourceToolNames.GetWeatherForecast, new { workflowId = input.WorkflowId, agentStepId = input.AgentStepId }, weather);
+            }
+
+            var byResource = stocks.ToDictionary(stock => stock.ResourceId);
+            var assessments = requirements.Requirements.Select(rule => WeatherResourceWorkflowService.ExpectedAssessment(rule, byResource, ids)!).ToList();
+            var overall = WeatherResourceWorkflowService.OverallStatus(requirements, assessments);
+            if (requirements.Requirements.Count == 0)
+                assessments.Add(new ResourceRequirementAssessment(null, null, requirements.CropName, null, null, null, null, null, null, ResourceRequirementStatus.Unknown, null, requirements.Reason));
+            var comparable = requirements.Requirements
+                .Where(rule => rule.Status == RequirementCalculationStatus.Calculated && rule.ResourceMatch == ResourceMatchStatus.Matched)
+                .ToDictionary(rule => rule.ResourceId!.Value);
+            var checks = stocks.Select(stock =>
+            {
+                var check = new ResourceCheckResponse(stock.InventoryStockId, stock.ResourceId, stock.ResourceName, stock.Unit, stock.AvailableQuantity, stock.AvailableQuantity <= stock.LowStockThreshold);
+                return comparable.TryGetValue(stock.ResourceId, out var rule)
+                    ? check with
+                    {
+                        Requested = rule.RequiredQuantity,
+                        Sufficient = stock.AvailableQuantity >= rule.RequiredQuantity,
+                        RequirementStatus = stock.AvailableQuantity >= rule.RequiredQuantity ? ResourceRequirementStatus.Sufficient : ResourceRequirementStatus.Insufficient
+                    }
+                    : check;
+            }).ToList();
+
+            var output = new WeatherResourceOutput(input.WorkflowId, "Analyzed", true, [], "Medium", "Summary from the forecast tool.", checks,
+                ["Review stock before planting."], assessments, overall, requirements.Source, "Tool-based assessment.",
+                [WeatherResourceToolNames.GetCropResourceRequirements, WeatherResourceToolNames.GetResourceAvailability, WeatherResourceToolNames.GetWeatherForecast]);
+            return tamper?.Invoke(output) ?? output;
+        }
+
+        private async Task RecordAsync(WeatherResourceInput input, string toolName, object toolInput, object toolOutput)
+        {
+            db.AgentToolExecutions.Add(new AgentToolExecution
+            {
+                AgentStepId = input.AgentStepId,
+                ToolName = toolName,
+                InputJson = JsonSerializer.Serialize(toolInput, Json),
+                OutputJson = JsonSerializer.Serialize(toolOutput, Json),
+                Status = AgentToolExecutionStatus.Completed
+            });
+            await db.SaveChangesAsync();
+        }
     }
 }

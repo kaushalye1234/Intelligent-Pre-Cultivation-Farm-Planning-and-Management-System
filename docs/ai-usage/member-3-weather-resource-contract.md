@@ -3,7 +3,8 @@
 Member 3 owns resources, inventory, reservations, the weather forecast, and the
 `WeatherResourceAgent` step of the crop planning workflow. It adds **no database schema changes**:
 everything is built on the existing `Resource`, `InventoryStock`, `StockTransaction`,
-`ResourceReservation` and `AgentWorkflow` tables.
+`ResourceReservation`, `AgentWorkflow`, `AgentToolExecution` and verified `CropReferenceProfile` /
+`CropRuleReference` tables.
 
 ## Workflow position
 
@@ -25,15 +26,22 @@ On success the step is `Completed`, the workflow is `Pending` and `CurrentStep` 
 
 ## How the step works
 
-1. ASP.NET reads Member 2's safe completed handoff (`GetMember3HandoffAsync`), the farm location, the weather
-   forecast (`IWeatherService`) and a snapshot of up to 100 active inventory rows.
-2. It sends all of that to the AI service at `POST /workflows/crop-planning/weather-resource`.
-   The agent needs no backend tool calls.
-3. The agent computes the weather risk and low-stock flags with fixed rules. If an LLM is
-   configured it may only rewrite the summary and recommendation text.
-4. ASP.NET validates the output before saving it: the workflow ID must match, only stock IDs from
-   the snapshot may appear, available quantities must equal the snapshot, and a weather risk other
-   than `Unknown` is rejected when no forecast was available.
+1. ASP.NET reads Member 2's safe completed handoff (`GetMember3HandoffAsync`) and sends the crop plan context
+   (`workflowId`, `agentStepId`, `cropPlanRequestId`, `fieldId`, `location`, dates, `fieldPriority`,
+   `fieldAnalysisSummary`, `member2FieldAnalysisContext`) to the AI service at
+   `POST /workflows/crop-planning/weather-resource`.
+2. The agent gathers its evidence through read-only internal agent tools (see "Agent tools"). Every call carries
+   `workflowId` and `agentStepId`; the backend scopes it to the workflow and records it as an `AgentToolExecution`.
+3. The agent reasons over the tool results with fixed rules: weather risk, low stock, and required vs. available
+   quantity for each verified requirement. No LLM supplies any quantity, rate, stock figure or forecast value.
+4. ASP.NET validates the output against the tool results **it recorded for this step** before saving it:
+   stock figures and low-stock flags must equal the `GetResourceAvailability` rows, requirement quantities must
+   equal the `GetCropResourceRequirements` result, every calculated requirement must be reported exactly once,
+   shortage/sufficiency/status must follow arithmetically, a weather risk other than `Unknown` is rejected when no
+   forecast was retrieved, and anything short of confirmed `Sufficient` must require human review. Any violation
+   turns the result into `SafeFailure`.
+
+Member 3 never reserves, releases or changes stock, and never approves anything.
 
 `WeatherResourceInput` preserves the legacy `fieldPriority` and `fieldAnalysisSummary` fields and adds optional read-only `member2FieldAnalysisContext`:
 
@@ -61,45 +69,81 @@ or more) is `High`; moderate rain (10 mm/day or 30 mm total), 34 C or more, or 1
 
 ## Output read by Member 4
 
+The top-level `status` stays `Analyzed | SafeFailure` (`SchedulingValidationAgent` requires `Analyzed`). The fields
+below `recommendations` are additive; older stored outputs without them still deserialize.
+
 ```json
 {
   "workflowId": "guid",
   "status": "Analyzed | SafeFailure",
   "requiresHumanReview": true,
-  "warnings": ["..."],
+  "warnings": ["Urea: 50 kg required (100 kg/acre x 0.5 acre = 50 kg); 30 kg available after reservations; shortage 20 kg."],
   "weatherRisk": "Low | Medium | High | Unknown",
-  "weatherSummary": "Forecast for Kurunegala from 2026-09-15 to 2026-09-19: Medium weather risk (...)",
+  "weatherSummary": "Forecast for Kurunegala from 2026-09-27 to 2026-09-28: Medium weather risk (...)",
   "resourceChecks": [
     {
-      "inventoryStockId": "guid", "resourceId": "guid", "resourceName": "Paddy Seed", "unit": "kg",
-      "availableQuantity": 6, "isLowStock": true,
-      "requested": null, "sufficient": null, "requirementStatus": "ResourceRequirementUnknown"
+      "inventoryStockId": "guid", "resourceId": "guid", "resourceName": "Urea", "unit": "kg",
+      "availableQuantity": 30, "isLowStock": false,
+      "requested": 50, "sufficient": false, "requirementStatus": "Insufficient"
     }
   ],
-  "recommendations": ["Restock Paddy Seed: only 6 kg available."]
+  "recommendations": ["Obtain at least 20 kg more Urea, or revise the crop plan, before scheduling."],
+  "resourceRequirements": [
+    {
+      "ruleId": "guid", "resourceId": "guid", "resourceName": "Urea", "unit": "kg",
+      "requiredQuantity": 50, "availableQuantity": 30, "reservedQuantity": 40, "shortageQuantity": 20,
+      "sufficient": false, "requirementStatus": "Insufficient",
+      "basis": "100 kg/acre x 0.5 acre = 50 kg",
+      "reason": "40 kg of 70 kg on hand is already reserved (1 active reservation(s) totalling 40 kg); availability is after reservations."
+    }
+  ],
+  "requirementStatus": "Sufficient | Insufficient | ResourceRequirementUnknown | Incomplete",
+  "requirementSource": { "cropReferenceProfileId": "guid", "sourceName": "...", "sourceUrl": "...", "sourceVersion": "...", "verifiedAt": "...", "region": null, "varietyName": null },
+  "reason": "Required resource quantity exceeds currently available inventory: Urea (shortage 20 kg). Weather risk is Medium.",
+  "toolsUsed": ["GetCropResourceRequirements", "GetFieldDetails", "GetResourceAvailability", "GetExistingReservations", "GetLowStockStatus", "GetWeatherForecast"]
 }
 ```
 
-### Requested quantity, sufficiency and `ResourceRequirementUnknown`
+(Values above are the SAMPLE worked example, not agronomic advice.)
 
-Each resource check carries three requirement fields:
+### Verified resource requirements
 
-| Field | Meaning |
+Requirement rates come **only** from verified crop reference data. They are never estimated, predicted or
+produced by an LLM. A rate is a `CropRuleReference` with `RuleType` `ResourceRequirement` on an active
+`CropReferenceProfile` (the same verified, source-attributed profiles Member 1 uses). Its `StructuredValueJson` is:
+
+```json
+{"resourceName": "Urea", "quantityPerArea": 100, "resourceUnit": "kg", "areaUnit": "acre"}
+```
+
+* `resourceName` matches an active inventory resource by name (case-insensitive); `resourceId` may be given instead to pin one.
+* `quantityPerArea` > 0; `resourceUnit` must equal the inventory resource's `unit` to be compared; `areaUnit` is `acre` or `hectare`.
+* The Admin enters these through the existing crop reference profile screen (Admin > Crop management > reference
+  profile > Structured rules), with the source name, URL, version and verification date. The profile validator
+  rejects malformed `ResourceRequirement` values and two rules for the same resource.
+
+`GetCropResourceRequirements` selects the profile for the crop plan's crop type (active, not deleted, verified in the
+past, containing requirement rules), preferring a variety match, then a region matching the farm location, then the
+newest verification. It then calculates, deterministically in the backend:
+
+```
+requiredQuantity = quantityPerArea x fieldArea   (converted with 1 acre = 0.40468564224 ha when units differ)
+```
+
+`Field.Area` is interpreted in the unit set by `Resources:FieldAreaUnit` (`acre` in `appsettings.json`).
+
+### Requirement statuses
+
+| `requirementStatus` | Meaning |
 | --- | --- |
-| `requested` | Quantity crop planning says the plan needs, or `null` when none was stated |
-| `sufficient` | `availableQuantity >= requested`, or `null` when `requested` is `null` |
-| `requirementStatus` | `Sufficient`, `Insufficient` or `ResourceRequirementUnknown` |
+| `Sufficient` | `availableQuantity` (on hand minus reserved) >= `requiredQuantity` |
+| `Insufficient` | available < required; `shortageQuantity` = required - available. A resource missing from inventory counts as 0 available |
+| `ResourceRequirementUnknown` | No verified rule, no field, field area not recorded, area unit not configured, invalid or duplicate rule. `requiredQuantity` is `null`; nothing is guessed |
+| `InventoryNotComparable` | Requirement known but the rule unit differs from the inventory unit, or several resources match the name |
+| `Incomplete` | Overall only: some requirements assessed, others unknown or not comparable |
 
-Requirements enter through the optional `resourceRequirements` input list (`resourceId`, `requestedQuantity`).
-**Crop planning (Member 1) does not currently provide required quantities**, so ASP.NET sends an empty list and
-every check is `ResourceRequirementUnknown` with `requested` and `sufficient` set to `null`. The agent never
-estimates a requirement. `ResourceRequirementUnknown` is a per-check status only; the top-level `status` stays
-`Analyzed | SafeFailure` because `SchedulingValidationAgent` requires `Analyzed`. An `Insufficient` check, or a
-requirement for a resource with no stock row, sets `requiresHumanReview`.
-
-ASP.NET rejects (and converts to `SafeFailure`) any output whose requirement figures are not derivable from the
-input: a check with `requested` but no supplied requirement, a `requested` that differs from the supplied one,
-or a `sufficient` / `requirementStatus` that does not follow from the snapshot.
+Anything other than an overall `Sufficient` sets `requiresHumanReview`. `resourceChecks[].requested/sufficient/requirementStatus`
+carry the same figures per stock row for older consumers.
 
 Member 3 never reserves stock. The quantities are a snapshot, so Member 4 must reserve through
 `POST /api/resources/reservations`, which re-checks availability and returns `409` with
@@ -150,31 +194,28 @@ PostgreSQL tests in `ResourceInventoryPostgreSqlIntegrationTests` (set `AGRIASSI
 ```ini
 Weather__BaseUrl=https://api.openweathermap.org/data/2.5
 Weather__ApiKey=<OpenWeatherMap key>
+Resources__FieldAreaUnit=acre        # unit of Field.Area; default in appsettings.json
+AI__ToolToken=<shared token>         # ASP.NET side of the internal agent tools
+# ai-service: BACKEND_TOOL_BASE_URL=<ASP.NET base URL>, BACKEND_TOOL_TOKEN=<same token>
 ```
 
-If the key is missing or the provider fails, the forecast comes back with `isAvailable: false` and
-the agent reports `weatherRisk: "Unknown"`.
+If the weather key is missing or the provider fails, the forecast comes back with `isAvailable: false` and
+the agent reports `weatherRisk: "Unknown"`. If `Resources:FieldAreaUnit` is missing or not `acre`/`hectare`, every
+requirement is `ResourceRequirementUnknown`. If the tool token is not configured, the agent returns `SafeFailure`.
 
-## Agent tools: decision
+## Agent tools
 
-The specification's six named tools (`GetWeatherForecast`, `GetResourceAvailability`, `GetResourceDetails`,
-`GetExistingReservations`, `GetFieldLocation`, `GetLowStockStatus`) are **not implemented as callable tools**.
-The repository contains no document requiring them for Member 3 (only the Member 4 plan names
-`GetResourceAvailability` and `GetExistingReservations`, for the scheduling agent), and this step was deliberately
-built around one pre-assembled payload so the agent needs no backend tool calls (see "How the step works").
-Adding tool endpoints would grow the shared internal tool surface while the agent would still have nothing extra to fetch.
+All tools are read-only `GET` handlers under `/api/internal/agent-tools`, authenticated with `AI:ToolToken`, scoped
+to the workflow (`workflowId` is required), and logged as `AgentToolExecution` rows on the Member 3 step.
 
-The same evidence is provided, read-only, through the input that ASP.NET assembles under the caller's authorization:
+| Tool | Route | Returns |
+| --- | --- | --- |
+| `GetCropResourceRequirements` | `crop-resource-requirements/{cropPlanRequestId}` | Crop, variety, field area and unit, source profile, and each verified rule with `requiredQuantity` calculated by the backend (or `null` with a reason) |
+| `GetFieldDetails` | `fields/{fieldId}` (existing Member 2 tool) | Field name, area, soil type |
+| `GetResourceAvailability` | `resource-availability?resourceIds=...` | Stock rows for the requested resources plus the rest of the inventory, up to 100 rows: on hand, reserved, available, low-stock threshold |
+| `GetExistingReservations` | `existing-reservations?resourceIds=...` | Active reservation rows (quantity, purpose, created at) |
+| `GetLowStockStatus` | `low-stock-status` | Rows at or below their low-stock threshold |
+| `GetWeatherForecast` | `weather-forecast` | Daily forecast for the crop plan's farm location (`isAvailable: false` when the provider fails, never invented) |
 
-| Tool | Where the data comes from today |
-| --- | --- |
-| `GetWeatherForecast` | `weather` (IWeatherService; `isAvailable: false` when the provider fails, never invented) |
-| `GetFieldLocation` | `location` (farm location of the crop plan request) |
-| `GetResourceAvailability` | `stocks[].availableQuantity`, `quantityOnHand`, `reservedQuantity` |
-| `GetLowStockStatus` | `stocks[].lowStockThreshold` and the derived `isLowStock` |
-| `GetResourceDetails` | `stocks[].resourceName` and `unit` only. **Gap:** category and supplier are not in the payload |
-| `GetExistingReservations` | Aggregate `reservedQuantity` only. **Gap:** individual reservations are not in the payload |
-
-If the team confirms the tools are required, add them as read-only `GET` handlers under
-`/api/internal/agent-tools` (token-authenticated, workflow-scoped, logged as `AgentToolExecution`) like the
-Member 1 and Member 2 tools, and keep the ASP.NET output validation unchanged.
+`GetResourceAvailability` is mandatory: if it fails the agent returns `SafeFailure`. Other tool failures are reported
+as warnings, and the affected part becomes `Unknown`. No tool can reserve, release, approve or write inventory.
