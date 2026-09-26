@@ -49,6 +49,7 @@ export function AdminCropManagement() {
   const [cropDialogOpen, setCropDialogOpen] = useState(false)
   const [varietyDialogOpen, setVarietyDialogOpen] = useState(false)
   const [error, setError] = useState('')
+  const [dialogError, setDialogError] = useState('')
   const [success, setSuccess] = useState('')
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -78,9 +79,10 @@ export function AdminCropManagement() {
     void initialize()
   }, [])
 
-  async function run(action: () => Promise<void>, message: string) {
+  async function run(action: () => Promise<void>, message: string, errorTarget: 'page' | 'dialog' = 'page') {
     setBusy(true)
     setError('')
+    setDialogError('')
     setSuccess('')
     try {
       await action()
@@ -88,7 +90,9 @@ export function AdminCropManagement() {
       setSuccess(message)
       return true
     } catch (cause) {
-      setError(getErrorMessage(cause))
+      const message = getErrorMessage(cause)
+      if (errorTarget === 'dialog') setDialogError(message)
+      else setError(message)
       return false
     } finally {
       setBusy(false)
@@ -97,32 +101,40 @@ export function AdminCropManagement() {
 
   function openAddCrop() {
     setCropForm(emptyCropForm())
+    setDialogError('')
     setCropDialogOpen(true)
   }
 
   function openEditCrop(crop: CropType) {
     setCropForm({ id: crop.id, name: crop.name, description: crop.description ?? '', isActive: crop.isActive })
+    setDialogError('')
     setCropDialogOpen(true)
   }
 
   function openAddVariety() {
     setVarietyForm(emptyVarietyForm())
+    setDialogError('')
     setVarietyDialogOpen(true)
   }
 
   function openEditVariety(variety: CropVariety) {
     setVarietyForm({ id: variety.id, cropTypeId: variety.cropTypeId, name: variety.name, isActive: variety.isActive })
+    setDialogError('')
     setVarietyDialogOpen(true)
   }
 
   async function saveCrop(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (!cropForm.name.trim()) {
+      setDialogError('Crop name is required.')
+      return
+    }
     const editing = Boolean(cropForm.id)
     const saved = await run(async () => {
       const body = { name: cropForm.name.trim(), description: cropForm.description.trim() || null, isActive: cropForm.isActive }
       if (editing) await api.put(`/crop-planning/crop-types/${cropForm.id}`, body)
       else await api.post('/crop-planning/crop-types', body)
-    }, editing ? 'Crop updated.' : 'Crop created.')
+    }, editing ? 'Crop updated.' : 'Crop created.', 'dialog')
     if (saved) {
       setCropDialogOpen(false)
       setCropForm(emptyCropForm())
@@ -131,16 +143,42 @@ export function AdminCropManagement() {
 
   async function saveVariety(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (!varietyForm.cropTypeId || !varietyForm.name.trim()) {
+      setDialogError('Crop and variety name are required.')
+      return
+    }
     const editing = Boolean(varietyForm.id)
     const saved = await run(async () => {
       const body = { cropTypeId: varietyForm.cropTypeId, name: varietyForm.name.trim(), isActive: varietyForm.isActive }
       if (editing) await api.put(`/crop-planning/crop-varieties/${varietyForm.id}`, body)
       else await api.post('/crop-planning/crop-varieties', body)
-    }, editing ? 'Variety updated.' : 'Variety created.')
+    }, editing ? 'Variety updated.' : 'Variety created.', 'dialog')
     if (saved) {
       setVarietyDialogOpen(false)
       setVarietyForm(emptyVarietyForm())
     }
+  }
+
+  async function setCropActive(crop: CropType) {
+    const isActive = !crop.isActive
+    await run(async () => {
+      await api.put(`/crop-planning/crop-types/${crop.id}`, {
+        name: crop.name,
+        description: crop.description ?? null,
+        isActive,
+      })
+    }, `Crop ${isActive ? 'reactivated' : 'deactivated'}.`)
+  }
+
+  async function setVarietyActive(variety: CropVariety) {
+    const isActive = !variety.isActive
+    await run(async () => {
+      await api.put(`/crop-planning/crop-varieties/${variety.id}`, {
+        cropTypeId: variety.cropTypeId,
+        name: variety.name,
+        isActive,
+      })
+    }, `Variety ${isActive ? 'reactivated' : 'deactivated'}.`)
   }
 
   async function saveReference(event: FormEvent<HTMLFormElement>) {
@@ -223,7 +261,7 @@ export function AdminCropManagement() {
             <DataTable rows={filteredCrops} emptyTitle="No crops found" emptyMessage="Try another search or status filter." getRowKey={(crop) => crop.id} columns={[
               { header: 'Crop', render: (crop) => <PrimaryCell title={crop.name} detail={crop.description || 'No reference notes'} /> },
               { header: 'State', render: (crop) => <StatusPill label={crop.isActive ? 'Active' : 'Inactive'} tone={crop.isActive ? 'good' : 'bad'} /> },
-              { header: 'Actions', className: 'crop-admin-actions-column', render: (crop) => <div className="crop-admin-actions"><Button variant="secondary" icon={<Pencil size={15} />} onClick={() => openEditCrop(crop)}>Edit</Button><Button variant="ghost" icon={<Power size={15} />} onClick={() => openEditCrop({ ...crop, isActive: !crop.isActive })}>{crop.isActive ? 'Deactivate' : 'Reactivate'}</Button></div> },
+              { header: 'Actions', className: 'crop-admin-actions-column', render: (crop) => <div className="crop-admin-actions"><Button variant="secondary" icon={<Pencil size={15} />} disabled={busy} onClick={() => openEditCrop(crop)}>Edit</Button><Button variant="ghost" icon={<Power size={15} />} disabled={busy} onClick={() => void setCropActive(crop)}>{crop.isActive ? 'Deactivate' : 'Reactivate'}</Button></div> },
             ]} />
           )}
         </section>
@@ -240,7 +278,7 @@ export function AdminCropManagement() {
             <DataTable rows={filteredVarieties} emptyTitle="No varieties found" emptyMessage="Try another search or status filter." getRowKey={(variety) => variety.id} columns={[
               { header: 'Variety', render: (variety) => <PrimaryCell title={variety.name} detail={cropName(variety.cropTypeId)} /> },
               { header: 'State', render: (variety) => <StatusPill label={variety.isActive ? 'Active' : 'Inactive'} tone={variety.isActive ? 'good' : 'bad'} /> },
-              { header: 'Actions', className: 'crop-admin-actions-column', render: (variety) => <div className="crop-admin-actions"><Button variant="secondary" icon={<Pencil size={15} />} onClick={() => openEditVariety(variety)}>Edit</Button><Button variant="ghost" icon={<Power size={15} />} onClick={() => openEditVariety({ ...variety, isActive: !variety.isActive })}>{variety.isActive ? 'Deactivate' : 'Reactivate'}</Button></div> },
+              { header: 'Actions', className: 'crop-admin-actions-column', render: (variety) => <div className="crop-admin-actions"><Button variant="secondary" icon={<Pencil size={15} />} disabled={busy} onClick={() => openEditVariety(variety)}>Edit</Button><Button variant="ghost" icon={<Power size={15} />} disabled={busy} onClick={() => void setVarietyActive(variety)}>{variety.isActive ? 'Deactivate' : 'Reactivate'}</Button></div> },
             ]} />
           )}
         </section>
@@ -305,8 +343,8 @@ export function AdminCropManagement() {
         </section>
       ) : null}
 
-      <CropDialog open={cropDialogOpen} form={cropForm} busy={busy} onChange={setCropForm} onClose={() => setCropDialogOpen(false)} onSubmit={saveCrop} />
-      <VarietyDialog open={varietyDialogOpen} form={varietyForm} cropOptions={varietyCropOptions} busy={busy} onChange={setVarietyForm} onClose={() => setVarietyDialogOpen(false)} onSubmit={saveVariety} />
+      <CropDialog open={cropDialogOpen} form={cropForm} error={dialogError} busy={busy} onChange={setCropForm} onClose={() => setCropDialogOpen(false)} onSubmit={saveCrop} />
+      <VarietyDialog open={varietyDialogOpen} form={varietyForm} cropOptions={varietyCropOptions} error={dialogError} busy={busy} onChange={setVarietyForm} onClose={() => setVarietyDialogOpen(false)} onSubmit={saveVariety} />
     </div>
   )
 }
@@ -322,8 +360,9 @@ function PrimaryCell({ title, detail }: { title: string; detail: string }) {
   return <div className="crop-admin-primary-cell"><strong>{title}</strong><span>{detail}</span></div>
 }
 
-function CropDialog({ open, form, busy, onChange, onClose, onSubmit }: { open: boolean; form: ReturnType<typeof emptyCropForm>; busy: boolean; onChange: (value: ReturnType<typeof emptyCropForm>) => void; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+function CropDialog({ open, form, error, busy, onChange, onClose, onSubmit }: { open: boolean; form: ReturnType<typeof emptyCropForm>; error: string; busy: boolean; onChange: (value: ReturnType<typeof emptyCropForm>) => void; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
   return <Modal open={open} title={form.id ? 'Edit crop' : 'Add crop'} description={form.id ? 'Update the catalog name, notes, or farmer visibility.' : 'Create a crop for the planning catalog.'} onClose={onClose} footer={<><Button variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button><Button type="submit" form="crop-admin-crop-form" disabled={busy}>{busy ? 'Saving…' : form.id ? 'Save changes' : 'Add crop'}</Button></>}>
+    {error ? <Notice tone="error">{error}</Notice> : null}
     <form id="crop-admin-crop-form" className="form-grid" onSubmit={onSubmit}>
       <TextInput label="Crop name" value={form.name} required onChange={(name) => onChange({ ...form, name })} />
       <TextAreaInput label="Notes" value={form.description} rows={3} onChange={(description) => onChange({ ...form, description })} />
@@ -332,8 +371,9 @@ function CropDialog({ open, form, busy, onChange, onClose, onSubmit }: { open: b
   </Modal>
 }
 
-function VarietyDialog({ open, form, cropOptions, busy, onChange, onClose, onSubmit }: { open: boolean; form: ReturnType<typeof emptyVarietyForm>; cropOptions: { value: string; label: string }[]; busy: boolean; onChange: (value: ReturnType<typeof emptyVarietyForm>) => void; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+function VarietyDialog({ open, form, cropOptions, error, busy, onChange, onClose, onSubmit }: { open: boolean; form: ReturnType<typeof emptyVarietyForm>; cropOptions: { value: string; label: string }[]; error: string; busy: boolean; onChange: (value: ReturnType<typeof emptyVarietyForm>) => void; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
   return <Modal open={open} title={form.id ? 'Edit variety' : 'Add variety'} description={form.id ? 'Update the variety name or farmer visibility.' : 'Add a variety beneath an active crop.'} onClose={onClose} footer={<><Button variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button><Button type="submit" form="crop-admin-variety-form" disabled={busy}>{busy ? 'Saving…' : form.id ? 'Save changes' : 'Add variety'}</Button></>}>
+    {error ? <Notice tone="error">{error}</Notice> : null}
     <form id="crop-admin-variety-form" className="form-grid" onSubmit={onSubmit}>
       <SelectInput label="Crop" value={form.cropTypeId} options={cropOptions} required disabled={Boolean(form.id)} onChange={(cropTypeId) => onChange({ ...form, cropTypeId })} />
       <TextInput label="Variety name" value={form.name} required onChange={(name) => onChange({ ...form, name })} />

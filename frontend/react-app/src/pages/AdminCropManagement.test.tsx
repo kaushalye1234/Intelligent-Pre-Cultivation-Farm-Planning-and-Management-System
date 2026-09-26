@@ -45,4 +45,44 @@ describe('Admin crop management', () => {
       cropTypeId: 'crop-1', name: 'Bg 352', isActive: true,
     }))
   })
+
+  it('edits crops and changes active state directly from the table', async () => {
+    vi.spyOn(api, 'get').mockImplementation((url: string) => {
+      if (url.includes('/crop-types')) return Promise.resolve(paged([{ id: 'crop-1', name: 'Rice', description: 'Original notes', isActive: true }]))
+      return Promise.resolve(paged([]))
+    })
+    const put = vi.spyOn(api, 'put').mockResolvedValue({ data: {} })
+
+    render(<AdminCropManagement />)
+    await screen.findByText('Original notes')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Deactivate' }))
+    await waitFor(() => expect(put).toHaveBeenCalledWith('/crop-planning/crop-types/crop-1', {
+      name: 'Rice', description: 'Original notes', isActive: false,
+    }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    const dialog = screen.getByRole('dialog', { name: 'Edit crop' })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: /^Crop name/ }), { target: { value: 'Paddy rice' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() => expect(put).toHaveBeenCalledWith('/crop-planning/crop-types/crop-1', {
+      name: 'Paddy rice', description: 'Original notes', isActive: true,
+    }))
+  })
+
+  it('keeps an edit dialog open and shows a save error in context', async () => {
+    vi.spyOn(api, 'get').mockImplementation((url: string) => {
+      if (url.includes('/crop-types')) return Promise.resolve(paged([{ id: 'crop-1', name: 'Rice', description: '', isActive: true }]))
+      return Promise.resolve(paged([]))
+    })
+    vi.spyOn(api, 'put').mockRejectedValue(new Error('Crop type already exists.'))
+
+    render(<AdminCropManagement />)
+    await screen.findByText('Rice')
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Edit crop' })).getByRole('button', { name: 'Save changes' }))
+
+    expect(await within(screen.getByRole('dialog', { name: 'Edit crop' })).findByRole('alert')).toHaveTextContent('Crop type already exists.')
+  })
 })
