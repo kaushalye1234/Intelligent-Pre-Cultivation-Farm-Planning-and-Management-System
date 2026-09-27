@@ -128,7 +128,81 @@ function mockLoads(assessment: PrePlantingAssessment | null, result?: FieldAnaly
   })
 }
 
+function axiosError(status: number, message: string) {
+  return Object.assign(new Error(message), {
+    isAxiosError: true,
+    response: { status, data: { message } },
+  })
+}
+
 describe('PrePlantingAssessmentPanel', () => {
+  it('renders a valid linked assessment payload', async () => {
+    mockLoads(savedAssessment)
+
+    render(<PrePlantingAssessmentPanel review={review} role={Roles.FieldOfficer} onWorkflowChanged={vi.fn()} />)
+
+    expect(await screen.findByDisplayValue('Moist loam.')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Canal')).toBeInTheDocument()
+  })
+
+  it('does not crash when optional assessment fields and images are null', async () => {
+    mockLoads({
+      ...savedAssessment,
+      soilNotes: null,
+      waterConcerns: null,
+      drainageNotes: null,
+      generalFieldNotes: null,
+      identifiedRisks: null,
+      riskNotes: null,
+      officerNotes: null,
+      images: null,
+    } as unknown as PrePlantingAssessment)
+
+    render(<PrePlantingAssessmentPanel review={review} role={Roles.FieldOfficer} onWorkflowChanged={vi.fn()} />)
+
+    expect(await screen.findByRole('button', { name: /save draft/i })).toBeInTheDocument()
+    expect(screen.getByLabelText(/risk assessment/i)).toHaveValue('unassessed')
+  })
+
+  it('treats an assessment 404 as not created yet', async () => {
+    vi.spyOn(api, 'get').mockImplementation(async (url) => {
+      if (url === '/crop-plans/plan-1/pre-planting-context') return { data: context } as never
+      if (url === '/crop-plans/plan-1/pre-planting-assessment') throw axiosError(404, 'Assessment not found.')
+      throw new Error('Unexpected GET ' + url)
+    })
+
+    render(<PrePlantingAssessmentPanel review={review} role={Roles.FieldOfficer} onWorkflowChanged={vi.fn()} />)
+
+    expect(await screen.findByRole('button', { name: /save draft/i })).toBeInTheDocument()
+    expect(screen.queryByText('Assessment not found.')).not.toBeInTheDocument()
+  })
+
+  it('shows a readable error for an assessment 500 while keeping the panel rendered', async () => {
+    vi.spyOn(api, 'get').mockImplementation(async (url) => {
+      if (url === '/crop-plans/plan-1/pre-planting-context') return { data: context } as never
+      if (url === '/crop-plans/plan-1/pre-planting-assessment') throw axiosError(500, 'Assessment service unavailable.')
+      throw new Error('Unexpected GET ' + url)
+    })
+
+    render(<PrePlantingAssessmentPanel review={review} role={Roles.FieldOfficer} onWorkflowChanged={vi.fn()} />)
+
+    expect(await screen.findByText('Assessment service unavailable.')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /pre-planting field assessment/i })).toBeInTheDocument()
+  })
+
+  it('shows a readable error for a malformed assessment payload', async () => {
+    vi.spyOn(api, 'get').mockImplementation(async (url) => {
+      if (url === '/crop-plans/plan-1/pre-planting-context') return { data: context } as never
+      if (url === '/crop-plans/plan-1/pre-planting-assessment') return { data: { unexpected: 'payload' } } as never
+      throw new Error('Unexpected GET ' + url)
+    })
+
+    render(<PrePlantingAssessmentPanel review={review} role={Roles.FieldOfficer} onWorkflowChanged={vi.fn()} />)
+
+    expect(await screen.findByText(/assessment response was invalid/i)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /pre-planting field assessment/i })).toBeInTheDocument()
+  })
+
   it('shows exact crop-plan context and saves an incomplete draft with unassessed risks as null', async () => {
     mockLoads(null)
     const put = vi.spyOn(api, 'put').mockResolvedValue({
@@ -230,6 +304,28 @@ describe('PrePlantingAssessmentPanel', () => {
     expect(post).toHaveBeenCalledWith('/crop-plans/plan-1/run-field-analysis')
   })
 
+  it('normalizes null optional field-analysis collections and nested field condition', async () => {
+    const completedReview = {
+      ...review,
+      workflow: { ...review.workflow, currentStep: 'WeatherResourceAgent' },
+      steps: review.steps.map((step) => ({ ...step, status: 3 })),
+    }
+    mockLoads(submittedAssessment, {
+      ...fieldResult,
+      warnings: null,
+      fieldCondition: null,
+      openIssues: null,
+      fieldPreparationRequirements: null,
+      identifiedRisks: null,
+      recommendedPrePlantingActions: null,
+    } as unknown as FieldAnalysisResult)
+
+    render(<PrePlantingAssessmentPanel review={completedReview} role={Roles.AgriculturalOfficer} onWorkflowChanged={vi.fn()} />)
+
+    expect(await screen.findByText('No field-condition summary was returned.')).toBeInTheDocument()
+    expect(screen.getAllByText('None recorded.')).toHaveLength(2)
+  })
+
   it('shows completed structured output read-only to Agricultural Officer and Admin', async () => {
     mockLoads(submittedAssessment, fieldResult)
     const completedReview = {
@@ -237,7 +333,7 @@ describe('PrePlantingAssessmentPanel', () => {
       workflow: { ...review.workflow, currentStep: 'WeatherResourceAgent' },
       steps: review.steps.map((step) => ({ ...step, status: 3 })),
     }
-    render(<PrePlantingAssessmentPanel review={completedReview} role={Roles.AgriculturalOfficer} onWorkflowChanged={vi.fn()} />)
+    const { rerender } = render(<PrePlantingAssessmentPanel review={completedReview} role={Roles.AgriculturalOfficer} onWorkflowChanged={vi.fn()} />)
 
     expect(await screen.findByText('The field is suitable for planting.')).toBeInTheDocument()
     expect(screen.getByText('SuitableWithConditions')).toBeInTheDocument()
@@ -245,6 +341,10 @@ describe('PrePlantingAssessmentPanel', () => {
     expect(screen.getByText('Complete final harrowing.')).toBeInTheDocument()
     expect(screen.getByText('Recheck the field before sowing.')).toBeInTheDocument()
     expect(screen.getAllByText('None identified')).toHaveLength(2)
+    expect(screen.queryByRole('button', { name: /save draft|submit assessment|run field analysis/i })).not.toBeInTheDocument()
+
+    rerender(<PrePlantingAssessmentPanel review={completedReview} role={Roles.Admin} onWorkflowChanged={vi.fn()} />)
+    expect(screen.getByText('The field is suitable for planting.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /save draft|submit assessment|run field analysis/i })).not.toBeInTheDocument()
   })
 
