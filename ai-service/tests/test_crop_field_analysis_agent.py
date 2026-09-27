@@ -1,11 +1,13 @@
 import asyncio
+import json
 from uuid import UUID
 
 import pytest
+from pydantic import ValidationError
 
 from agents.crop_field_analysis_agent import CropFieldAnalysisAgent
 from providers.base_llm_provider import BaseLLMProvider, LLMResponse
-from schemas.field_analysis import FieldAnalysisInput
+from schemas.field_analysis import CropFieldAnalysisOutput, FieldAnalysisInput
 from tools.backend_tool_client import ToolClientError
 
 WORKFLOW_ID = UUID("11111111-1111-1111-1111-111111111111")
@@ -157,14 +159,24 @@ def provider_output(*, issue_id=ISSUE_ID, priority="High"):
     )
 
 
+def provider_payload(**updates):
+    payload = json.loads(provider_output())
+    payload.update(updates)
+    return payload
+
+
 class FakeProvider(BaseLLMProvider):
     provider_name = "fake"
 
     def __init__(self, text: str, delay: float = 0) -> None:
         self.text = text
         self.delay = delay
+        self.prompt: str | None = None
+        self.response_schema: dict | None = None
 
-    async def generate_json(self, prompt: str) -> LLMResponse:
+    async def generate_json(self, prompt: str, response_schema: dict | None = None) -> LLMResponse:
+        self.prompt = prompt
+        self.response_schema = response_schema
         if self.delay:
             await asyncio.sleep(self.delay)
         return LLMResponse(self.text)
@@ -179,6 +191,129 @@ async def test_golden_case_preserves_evidence_ids():
     assert result.status == "Analyzed"
     assert result.field_condition.evidence_inspection_ids == [INSPECTION_ID]
     assert result.open_issues[0].issue_id == ISSUE_ID
+
+
+@pytest.mark.asyncio
+async def test_provider_receives_exact_aliased_field_analysis_schema_and_contract_prompt():
+    provider = FakeProvider(provider_output())
+
+    result = await CropFieldAnalysisAgent(FakeTools(), provider).run(field_input())
+
+    assert result.status == "Analyzed"
+    assert provider.response_schema == CropFieldAnalysisOutput.model_json_schema(by_alias=True)
+    assert "fieldCondition" in provider.response_schema["required"]
+    assert provider.prompt is not None
+    assert 'status must be exactly "Analyzed"' in provider.prompt
+    assert 'soilAssessment, waterAssessment, and drainageAssessment must each be JSON strings' in provider.prompt
+    assert 'Do not return extra fields such as overallStatus' in provider.prompt
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("updates", "error_path"),
+    [
+        ({"status": "Completed"}, "status"),
+        ({"priority": "Normal"}, "priority"),
+        ({"soilAssessment": {"soilType": "Loamy"}}, "soilAssessment"),
+        ({"waterAssessment": {"waterAvailability": "Adequate"}}, "waterAssessment"),
+        ({"drainageAssessment": {"drainageCondition": "Good"}}, "drainageAssessment"),
+    ],
+)
+async def test_invalid_provider_contract_values_return_safe_failure_and_log_field_path(caplog, updates, error_path):
+    payload = provider_payload(**updates)
+
+    with caplog.at_level("WARNING", logger="agents.crop_field_analysis_agent"):
+        result = await CropFieldAnalysisAgent(FakeTools(), FakeProvider(json.dumps(payload))).run(field_input())
+
+    assert result.status == "SafeFailure"
+    assert result.requires_human_review is True
+    assert "LLM provider returned malformed field-analysis JSON." in result.warnings
+    assert error_path in caplog.text
+    assert "validation" in caplog.text.lower()
+
+
+def test_field_analysis_schema_rejects_missing_summary():
+    payload = provider_payload()
+    payload["fieldCondition"].pop("summary")
+
+    with pytest.raises(ValidationError) as exc_info:
+        CropFieldAnalysisOutput.model_validate(payload)
+
+    assert exc_info.value.errors()[0]["loc"] == ("fieldCondition", "summary")
+
+
+def test_field_analysis_schema_rejects_unknown_nested_fields():
+    payload = provider_payload()
+    payload["fieldCondition"]["overallStatus"] = "ClearAndPrepared"
+
+    with pytest.raises(ValidationError) as exc_info:
+        CropFieldAnalysisOutput.model_validate(payload)
+
+    assert any(error["loc"] == ("fieldCondition", "overallStatus") for error in exc_info.value.errors())
+
+
+@pytest.mark.asyncio
+async def test_valid_empty_arrays_remain_valid():
+    observations = observations_with(PlantingReadiness="Ready")
+    observations = [item for item in observations if item["observationType"] != "IdentifiedRisk"]
+    payload = provider_payload(
+        requiresHumanReview=False,
+        openIssues=[],
+        priority="Low",
+        fieldSuitability="Suitable",
+        fieldPreparationRequirements=[],
+        plantingReadiness="Ready",
+        identifiedRisks=[],
+        recommendedPrePlantingActions=[],
+    )
+
+    result = await CropFieldAnalysisAgent(
+        FakeTools(observations=observations, issues=False),
+        FakeProvider(json.dumps(payload)),
+    ).run(field_input())
+
+    assert result.status == "Analyzed"
+    assert result.open_issues == []
+    assert result.identified_risks == []
+    assert result.field_preparation_requirements == []
+    assert result.recommended_pre_planting_actions == []
+
+
+@pytest.mark.asyncio
+async def test_flooding_risk_requires_existing_evidence_derived_high_priority():
+    observations = observations_with(PlantingReadiness="Ready", IdentifiedRisk="FloodingRisk")
+    payload = provider_payload(
+        openIssues=[],
+        priority="High",
+        fieldSuitability="NotSuitable",
+        fieldPreparationRequirements=[],
+        plantingReadiness="Ready",
+        identifiedRisks=["FloodingRisk"],
+        recommendedPrePlantingActions=["Address the recorded flooding risk before planting."],
+    )
+    provider = FakeProvider(json.dumps(payload))
+
+    result = await CropFieldAnalysisAgent(
+        FakeTools(observations=observations, issues=False),
+        provider,
+    ).run(field_input())
+
+    assert result.status == "Analyzed"
+    assert result.priority == "High"
+    assert 'priority must be exactly "High"' in (provider.prompt or "")
+
+
+@pytest.mark.asyncio
+async def test_validation_diagnostics_do_not_log_raw_provider_content(caplog):
+    sensitive_marker = "private-officer-content-must-not-be-logged"
+    payload = provider_payload(soilAssessment={"notes": sensitive_marker})
+
+    with caplog.at_level("WARNING", logger="agents.crop_field_analysis_agent"):
+        result = await CropFieldAnalysisAgent(FakeTools(), FakeProvider(json.dumps(payload))).run(field_input())
+
+    assert result.status == "SafeFailure"
+    assert "soilAssessment" in caplog.text
+    assert sensitive_marker not in caplog.text
 
 
 @pytest.mark.asyncio
