@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import Any
 
 
 class LLMProviderError(RuntimeError):
@@ -19,5 +20,9 @@ class BaseLLMProvider(ABC):
     provider_name: str
 
     @abstractmethod
-    async def generate_json(self, prompt: str) -> LLMResponse:
+    async def generate_json(
+        self,
+        prompt: str,
+        response_schema: dict[str, Any] | None = None,
+    ) -> LLMResponse:
         raise NotImplementedError

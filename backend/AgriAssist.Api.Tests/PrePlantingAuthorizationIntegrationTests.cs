@@ -11,6 +11,7 @@ using AgriAssist.Api.Models.Inspections;
 using AgriAssist.Api.Models.Shared;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -112,6 +113,91 @@ public sealed class PrePlantingAuthorizationIntegrationTests
             $"/api/crop-plans/{data.CropPlanRequestId}/pre-planting-assessment/submit", null)).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await resourceOfficer.PostAsync(
             $"/api/crop-plans/{data.CropPlanRequestId}/run-field-analysis", null)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Field_officer_submits_valid_linked_assessment_over_http_without_advancing_workflow()
+    {
+        await using var factory = CreateFactory();
+        var data = await SeedAsync(factory);
+        await using (var setupScope = factory.Services.CreateAsyncScope())
+        {
+            var db = setupScope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var workflow = await db.AgentWorkflows
+                .Include(item => item.Steps)
+                .SingleAsync(item => item.CropPlanRequestId == data.CropPlanRequestId);
+            workflow.CurrentStep = "CropFieldAnalysisAgent";
+            workflow.Steps.Single(item => item.AgentName == "CropFieldAnalysisAgent").Status = AgentStepStatus.Pending;
+            await db.SaveChangesAsync();
+        }
+
+        using var fieldOfficer = await ClientForAsync(factory, data.FieldOfficerEmail);
+        var request = new PrePlantingAssessmentRequest
+        {
+            SoilType = PrePlantingSoilType.Loamy,
+            SoilCondition = PrePlantingSoilCondition.Moderate,
+            SoilMoisture = PrePlantingSoilMoisture.Moist,
+            SoilNotes = "Moist loam with moderate compaction.",
+            WaterAvailability = PrePlantingWaterAvailability.Adequate,
+            MainWaterSource = "Canal",
+            IrrigationAvailability = PrePlantingIrrigationAvailability.Available,
+            WaterReliability = PrePlantingWaterReliability.Reliable,
+            WaterConcerns = "Monitor canal allocation before sowing.",
+            DrainageCondition = PrePlantingDrainageCondition.Good,
+            WaterloggingRisk = PrePlantingWaterloggingRisk.Moderate,
+            DrainageNotes = "Drainage channels are clear; monitor the low area.",
+            GeneralFieldCondition = PrePlantingGeneralFieldCondition.ClearAndPrepared,
+            GeneralFieldNotes = "Field is cleared and level.",
+            PlantingReadiness = PrePlantingPlantingReadiness.Ready,
+            IdentifiedRisks = [PrePlantingRisk.FloodingRisk],
+            RiskNotes = "The low area may flood after heavy rain.",
+            OfficerNotes = "Ready for field analysis."
+        };
+
+        using var save = await fieldOfficer.PutAsJsonAsync(
+            $"/api/crop-plans/{data.CropPlanRequestId}/pre-planting-assessment",
+            request,
+            Json);
+        Assert.Equal(HttpStatusCode.OK, save.StatusCode);
+        var draft = await save.Content.ReadFromJsonAsync<PrePlantingAssessmentResponse>(Json);
+        Assert.NotNull(draft);
+        Assert.Equal(InspectionStatus.InProgress, draft.Status);
+        Assert.Equal([PrePlantingRisk.FloodingRisk], draft.IdentifiedRisks);
+
+        using var submit = await fieldOfficer.PostAsync(
+            $"/api/crop-plans/{data.CropPlanRequestId}/pre-planting-assessment/submit",
+            null);
+        Assert.Equal(HttpStatusCode.OK, submit.StatusCode);
+        var completed = await submit.Content.ReadFromJsonAsync<PrePlantingAssessmentResponse>(Json);
+        Assert.NotNull(completed);
+        Assert.Equal(data.PrePlantingInspectionId, completed.InspectionId);
+        Assert.Equal(InspectionStatus.Completed, completed.Status);
+        Assert.NotNull(completed.CompletedAt);
+        Assert.Equal([PrePlantingRisk.FloodingRisk], completed.IdentifiedRisks);
+
+        using var repeatedSubmit = await fieldOfficer.PostAsync(
+            $"/api/crop-plans/{data.CropPlanRequestId}/pre-planting-assessment/submit",
+            null);
+        Assert.Equal(HttpStatusCode.OK, repeatedSubmit.StatusCode);
+        var repeated = await repeatedSubmit.Content.ReadFromJsonAsync<PrePlantingAssessmentResponse>(Json);
+        Assert.NotNull(repeated);
+        Assert.Equal(completed.InspectionId, repeated.InspectionId);
+        Assert.Equal(completed.CompletedAt, repeated.CompletedAt);
+
+        await using var verifyScope = factory.Services.CreateAsyncScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var assessments = await verifyDb.FieldInspections
+            .Where(item =>
+                item.CropPlanRequestId == data.CropPlanRequestId
+                && item.Purpose == InspectionPurpose.PrePlanting
+                && !item.IsDeleted)
+            .ToListAsync();
+        Assert.Single(assessments);
+        Assert.Equal(InspectionStatus.Completed, assessments[0].Status);
+        Assert.Equal("CropFieldAnalysisAgent", await verifyDb.AgentWorkflows
+            .Where(item => item.CropPlanRequestId == data.CropPlanRequestId)
+            .Select(item => item.CurrentStep)
+            .SingleAsync());
     }
 
     private static async Task<SeededAuthorizationData> SeedAsync(WebApplicationFactory<Program> factory)
@@ -238,6 +324,7 @@ public sealed class PrePlantingAuthorizationIntegrationTests
 
         return new SeededAuthorizationData(
             farmer.Email,
+            fieldOfficer.Email,
             resourceOfficer.Email,
             agriculturalOfficer.Email,
             admin.Email,
@@ -292,6 +379,7 @@ public sealed class PrePlantingAuthorizationIntegrationTests
 
     private sealed record SeededAuthorizationData(
         string FarmerEmail,
+        string FieldOfficerEmail,
         string ResourceOfficerEmail,
         string AgriculturalOfficerEmail,
         string AdminEmail,

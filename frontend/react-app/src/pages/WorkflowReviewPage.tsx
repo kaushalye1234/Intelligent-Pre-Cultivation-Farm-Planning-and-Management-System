@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import type { FormEvent } from 'react'
+import { Component, useCallback, useEffect, useState } from 'react'
+import type { FormEvent, ReactNode } from 'react'
 import { ArrowLeft, Check, Play, RotateCcw, X } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api, getErrorMessage } from '../api/client'
@@ -14,6 +14,26 @@ import type { WorkflowReview } from '../types'
 import { PrePlantingAssessmentPanel } from './PrePlantingAssessmentPanel'
 
 type DecisionKind = 'approve' | 'reject' | 'request-revision'
+
+class PrePlantingAssessmentErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+
+  render() {
+    if (this.state.failed) {
+      return (
+        <section className="preplant-panel" aria-label="Pre-planting assessment error">
+          <ErrorState message="The pre-planting assessment could not be displayed. Review the remaining workflow evidence or try again." />
+        </section>
+      )
+    }
+
+    return this.props.children
+  }
+}
 
 const workflowStatus: Record<number, string> = {
   1: 'Not Started',
@@ -147,11 +167,13 @@ export function WorkflowReviewPage() {
         </div>
       </section>
 
-      <PrePlantingAssessmentPanel
-        review={review}
-        role={user?.role}
-        onWorkflowChanged={loadReview}
-      />
+      <PrePlantingAssessmentErrorBoundary key={`${review.workflow.cropPlanRequestId}:${review.workflow.version}`}>
+        <PrePlantingAssessmentPanel
+          review={review}
+          role={user?.role}
+          onWorkflowChanged={loadReview}
+        />
+      </PrePlantingAssessmentErrorBoundary>
 
       <section className="work-section">
         <h2>Agent evidence</h2>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import axios from 'axios'
 import { Camera, CheckCircle2, Save, Send, Sparkles, Upload } from 'lucide-react'
 import { api, getErrorMessage } from '../api/client'
 import { SelectInput, TextAreaInput, TextInput } from '../components/FormControls'
@@ -67,15 +68,15 @@ const seasonLabels: Record<number, string> = {
   3: 'Off season',
 }
 
-const soilTypeOptions = options<PrePlantingSoilType>(['Sandy', 'Clay', 'Loamy', 'Silty', 'Mixed', 'Unknown', 'Other'])
-const soilConditionOptions = options<PrePlantingSoilCondition>(['Good', 'Moderate', 'Poor', 'Compacted', 'Eroded', 'Unknown', 'Other'])
-const soilMoistureOptions = options<PrePlantingSoilMoisture>(['Dry', 'Moist', 'Wet', 'Waterlogged', 'Unknown'])
-const waterAvailabilityOptions = options<PrePlantingWaterAvailability>(['Adequate', 'Limited', 'Unavailable', 'Seasonal', 'Unknown'])
-const irrigationOptions = options<PrePlantingIrrigationAvailability>(['Available', 'Limited', 'Unavailable', 'NotRequired', 'Unknown'])
-const waterReliabilityOptions = options<PrePlantingWaterReliability>(['Reliable', 'Intermittent', 'Seasonal', 'Unreliable', 'Unknown'])
-const drainageOptions = options<PrePlantingDrainageCondition>(['Good', 'Moderate', 'Poor', 'Unknown'])
-const waterloggingOptions = options<PrePlantingWaterloggingRisk>(['NoneObserved', 'Low', 'Moderate', 'High', 'Unknown'])
-const fieldConditionOptions = options<PrePlantingGeneralFieldCondition>([
+const soilTypeValues: PrePlantingSoilType[] = ['Sandy', 'Clay', 'Loamy', 'Silty', 'Mixed', 'Unknown', 'Other']
+const soilConditionValues: PrePlantingSoilCondition[] = ['Good', 'Moderate', 'Poor', 'Compacted', 'Eroded', 'Unknown', 'Other']
+const soilMoistureValues: PrePlantingSoilMoisture[] = ['Dry', 'Moist', 'Wet', 'Waterlogged', 'Unknown']
+const waterAvailabilityValues: PrePlantingWaterAvailability[] = ['Adequate', 'Limited', 'Unavailable', 'Seasonal', 'Unknown']
+const irrigationValues: PrePlantingIrrigationAvailability[] = ['Available', 'Limited', 'Unavailable', 'NotRequired', 'Unknown']
+const waterReliabilityValues: PrePlantingWaterReliability[] = ['Reliable', 'Intermittent', 'Seasonal', 'Unreliable', 'Unknown']
+const drainageValues: PrePlantingDrainageCondition[] = ['Good', 'Moderate', 'Poor', 'Unknown']
+const waterloggingValues: PrePlantingWaterloggingRisk[] = ['NoneObserved', 'Low', 'Moderate', 'High', 'Unknown']
+const fieldConditionValues: PrePlantingGeneralFieldCondition[] = [
   'ClearAndPrepared',
   'RequiresLandPreparation',
   'UnevenField',
@@ -84,14 +85,14 @@ const fieldConditionOptions = options<PrePlantingGeneralFieldCondition>([
   'ErosionPresent',
   'AccessLimitation',
   'Other',
-])
-const readinessOptions = options<PrePlantingPlantingReadiness>([
+]
+const readinessValues: PrePlantingPlantingReadiness[] = [
   'Ready',
   'ReadyWithMinorPreparation',
   'RequiresPreparation',
   'NotReady',
   'RequiresFurtherAssessment',
-])
+]
 const riskOptions: PrePlantingRisk[] = [
   'WaterShortageRisk',
   'FloodingRisk',
@@ -102,6 +103,17 @@ const riskOptions: PrePlantingRisk[] = [
   'LandPreparationRequired',
   'Other',
 ]
+
+const soilTypeOptions = options(soilTypeValues)
+const soilConditionOptions = options(soilConditionValues)
+const soilMoistureOptions = options(soilMoistureValues)
+const waterAvailabilityOptions = options(waterAvailabilityValues)
+const irrigationOptions = options(irrigationValues)
+const waterReliabilityOptions = options(waterReliabilityValues)
+const drainageOptions = options(drainageValues)
+const waterloggingOptions = options(waterloggingValues)
+const fieldConditionOptions = options(fieldConditionValues)
+const readinessOptions = options(readinessValues)
 
 export function PrePlantingAssessmentPanel({
   review,
@@ -126,8 +138,10 @@ export function PrePlantingAssessmentPanel({
   const [result, setResult] = useState<FieldAnalysisResult | null>(null)
   const [files, setFiles] = useState<File[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [assessmentLoadFailed, setAssessmentLoadFailed] = useState(false)
   const [action, setAction] = useState<ActionState>(null)
   const [error, setError] = useState('')
+  const [warning, setWarning] = useState('')
   const [success, setSuccess] = useState('')
   const formRef = useRef<HTMLFormElement>(null)
 
@@ -139,24 +153,62 @@ export function PrePlantingAssessmentPanel({
 
     setIsLoading(true)
     setError('')
-    try {
-      const resultRequest = fieldStepStatus === 3 || fieldStepStatus === 4
-        ? api.get<FieldAnalysisResult>('/crop-plans/' + requestId + '/field-analysis-result')
-        : Promise.resolve(null)
-      const [contextResponse, assessmentResponse, resultResponse] = await Promise.all([
-        api.get<PrePlantingContext>('/crop-plans/' + requestId + '/pre-planting-context'),
-        api.get<PrePlantingAssessment | null>('/crop-plans/' + requestId + '/pre-planting-assessment'),
-        resultRequest,
-      ])
-      setContext(contextResponse.data)
-      setAssessment(assessmentResponse.data)
-      setResult(resultResponse?.data ?? null)
-      if (assessmentResponse.data) applySavedAssessment(assessmentResponse.data, setForm, setRiskState, setSelectedRisks)
-    } catch (err) {
-      setError(getErrorMessage(err))
-    } finally {
-      setIsLoading(false)
+    setWarning('')
+    setAssessmentLoadFailed(false)
+    const resultRequest = fieldStepStatus === 3 || fieldStepStatus === 4
+      ? api.get<unknown>('/crop-plans/' + requestId + '/field-analysis-result')
+      : Promise.resolve(null)
+    const [contextOutcome, assessmentOutcome, resultOutcome] = await Promise.allSettled([
+      api.get<PrePlantingContext>('/crop-plans/' + requestId + '/pre-planting-context'),
+      api.get<unknown>('/crop-plans/' + requestId + '/pre-planting-assessment'),
+      resultRequest,
+    ])
+    const errors: string[] = []
+
+    if (contextOutcome.status === 'fulfilled') {
+      setContext(contextOutcome.value.data)
+    } else {
+      setContext(null)
+      errors.push(getErrorMessage(contextOutcome.reason))
     }
+
+    if (assessmentOutcome.status === 'fulfilled') {
+      try {
+        const nextAssessment = normalizeAssessmentResponse(assessmentOutcome.value, requestId)
+        setAssessment(nextAssessment)
+        if (nextAssessment) {
+          applySavedAssessment(nextAssessment, setForm, setRiskState, setSelectedRisks)
+        } else {
+          resetAssessmentForm(setForm, setRiskState, setSelectedRisks)
+        }
+      } catch (err) {
+        setAssessment(null)
+        setAssessmentLoadFailed(true)
+        errors.push(getErrorMessage(err))
+      }
+    } else if (isNotFound(assessmentOutcome.reason)) {
+      setAssessment(null)
+      resetAssessmentForm(setForm, setRiskState, setSelectedRisks)
+    } else {
+      setAssessment(null)
+      setAssessmentLoadFailed(true)
+      errors.push(getErrorMessage(assessmentOutcome.reason))
+    }
+
+    if (resultOutcome.status === 'fulfilled') {
+      try {
+        setResult(resultOutcome.value ? normalizeFieldAnalysisResult(resultOutcome.value.data) : null)
+      } catch (err) {
+        setResult(null)
+        errors.push(getErrorMessage(err))
+      }
+    } else {
+      setResult(null)
+      errors.push(getErrorMessage(resultOutcome.reason))
+    }
+
+    setError([...new Set(errors)].join(' '))
+    setIsLoading(false)
   }, [fieldStepStatus, hasFieldStep, mayViewRawAssessment, requestId])
 
   useEffect(() => {
@@ -200,12 +252,15 @@ export function PrePlantingAssessmentPanel({
   }
 
   async function saveAssessment() {
-    const response = await api.put<PrePlantingAssessment>(
-      '/crop-plans/' + requestId + '/pre-planting-assessment',
+    const linkedRequestId = requestId
+    if (!linkedRequestId) throw new Error('This workflow is not linked to a crop plan request.')
+    const response = await api.put<unknown>(
+      '/crop-plans/' + linkedRequestId + '/pre-planting-assessment',
       requestBody(),
     )
-    setAssessment(response.data)
-    return response.data
+    const saved = requireAssessment(normalizeLinkedAssessment(response.data, linkedRequestId))
+    setAssessment(saved)
+    return saved
   }
 
   async function uploadSelectedFiles(inspectionId: string) {
@@ -222,6 +277,7 @@ export function PrePlantingAssessmentPanel({
   async function saveDraft() {
     setAction('save')
     setError('')
+    setWarning('')
     setSuccess('')
     try {
       await saveAssessment()
@@ -237,6 +293,7 @@ export function PrePlantingAssessmentPanel({
     if (!assessment || files.length === 0) return
     setAction('upload')
     setError('')
+    setWarning('')
     setSuccess('')
     try {
       await uploadSelectedFiles(assessment.inspectionId)
@@ -249,6 +306,11 @@ export function PrePlantingAssessmentPanel({
   }
 
   async function submitAssessment() {
+    const linkedRequestId = requestId
+    if (!linkedRequestId) {
+      setError('This workflow is not linked to a crop plan request.')
+      return
+    }
     if (!formRef.current?.reportValidity()) return
     if (riskState === 'unassessed') {
       setError('Assess structured risks before submitting, even when none are identified.')
@@ -261,15 +323,27 @@ export function PrePlantingAssessmentPanel({
 
     setAction('submit')
     setError('')
+    setWarning('')
     setSuccess('')
     try {
       const saved = await saveAssessment()
-      if (files.length > 0) await uploadSelectedFiles(saved.inspectionId)
-      const response = await api.post<PrePlantingAssessment>(
-        '/crop-plans/' + requestId + '/pre-planting-assessment/submit',
+      let optionalEvidenceError = ''
+      if (files.length > 0) {
+        try {
+          await uploadSelectedFiles(saved.inspectionId)
+        } catch (err) {
+          optionalEvidenceError = getErrorMessage(err)
+        }
+      }
+      const response = await api.post<unknown>(
+        '/crop-plans/' + linkedRequestId + '/pre-planting-assessment/submit',
       )
-      setAssessment(response.data)
+      setAssessment(requireAssessment(normalizeLinkedAssessment(response.data, linkedRequestId)))
+      setFiles([])
       setSuccess('Pre-planting assessment submitted. Field analysis is now available.')
+      if (optionalEvidenceError) {
+        setWarning('Optional evidence upload failed: ' + optionalEvidenceError + ' The assessment was submitted without that evidence.')
+      }
     } catch (err) {
       setError(getErrorMessage(err))
     } finally {
@@ -280,6 +354,7 @@ export function PrePlantingAssessmentPanel({
   async function runFieldAnalysis() {
     setAction('run')
     setError('')
+    setWarning('')
     setSuccess('')
     try {
       await api.post('/crop-plans/' + requestId + '/run-field-analysis')
@@ -308,10 +383,11 @@ export function PrePlantingAssessmentPanel({
 
       {context ? <ContextSummary context={context} /> : null}
       {success ? <Notice tone="success">{success}</Notice> : null}
+      {warning ? <Notice tone="warning">{warning}</Notice> : null}
       {error ? <ErrorState message={error} /> : null}
       {fieldAnalysisRunning ? <Notice tone="info">Field analysis is running. The submitted assessment remains read-only.</Notice> : null}
 
-      {canEdit ? (
+      {assessmentLoadFailed ? null : canEdit ? (
         <form ref={formRef} className="preplant-form" onSubmit={(event) => event.preventDefault()}>
           <AssessmentSection title="Soil profile" description="Record present soil properties, not crop symptoms.">
             <SelectInput label="Soil type" value={form.soilType ?? ''} options={soilTypeOptions} required disabled={busy} onChange={(value) => updateField('soilType', (value || null) as PrePlantingSoilType | null)} />
@@ -397,9 +473,9 @@ export function PrePlantingAssessmentPanel({
         <Notice tone="info">Waiting for the owning Field Officer to save the linked pre-planting assessment.</Notice>
       )}
 
-      {assessment?.images.length ? (
+      {assessment?.images?.length ? (
         <div className="preplant-images" aria-label="Assessment evidence">
-          {assessment.images.map((image) => <a key={image.id} href={image.url} target="_blank" rel="noreferrer">View evidence</a>)}
+          {(assessment.images ?? []).map((image) => <a key={image.id} href={image.url} target="_blank" rel="noreferrer">View evidence</a>)}
         </div>
       ) : null}
 
@@ -472,7 +548,7 @@ function FieldAnalysisResultPanel({ result }: { result: FieldAnalysisResult }) {
         <h3 id="field-result-title">Field analysis result</h3>
         <StatusPill label={result.status} tone={result.status === 'Analyzed' ? 'good' : 'bad'} />
       </div>
-      <p>{result.fieldCondition.summary || 'No field-condition summary was returned.'}</p>
+      <p>{result.fieldCondition?.summary || 'No field-condition summary was returned.'}</p>
       <dl>
         <AssessmentItem label="Priority" value={result.priority} />
         <AssessmentItem label="Field suitability" value={result.fieldSuitability} />
@@ -485,7 +561,7 @@ function FieldAnalysisResultPanel({ result }: { result: FieldAnalysisResult }) {
       </dl>
       <ResultList title="Field preparation requirements" items={result.fieldPreparationRequirements} />
       <ResultList title="Recommended pre-planting actions" items={result.recommendedPrePlantingActions} />
-      {result.warnings.map((warning) => <Notice key={warning} tone="warning">{warning}</Notice>)}
+      {(result.warnings ?? []).map((warning) => <Notice key={warning} tone="warning">{warning}</Notice>)}
     </section>
   )
 }
@@ -505,6 +581,202 @@ function AssessmentItem({ label, value }: { label: string; value?: string | stri
     ? value.length === 0 ? 'None identified' : value.map(humanize).join(', ')
     : value ?? 'Not recorded'
   return <div><dt>{label}</dt><dd>{display}</dd></div>
+}
+
+function normalizeAssessment(value: unknown): PrePlantingAssessment | null {
+  if (value === null) return null
+  if (!isRecord(value)) throw invalidAssessmentResponse()
+
+  return {
+    inspectionId: requiredString(value.inspectionId, invalidAssessmentResponse),
+    cropPlanRequestId: requiredString(value.cropPlanRequestId, invalidAssessmentResponse),
+    fieldId: requiredString(value.fieldId, invalidAssessmentResponse),
+    inspectorUserId: requiredString(value.inspectorUserId, invalidAssessmentResponse),
+    status: requiredNumber(value.status, invalidAssessmentResponse),
+    scheduledAt: requiredString(value.scheduledAt, invalidAssessmentResponse),
+    completedAt: nullableString(value.completedAt, invalidAssessmentResponse),
+    soilType: nullableEnum(value.soilType, soilTypeValues),
+    soilCondition: nullableEnum(value.soilCondition, soilConditionValues),
+    soilMoisture: nullableEnum(value.soilMoisture, soilMoistureValues),
+    soilNotes: nullableString(value.soilNotes, invalidAssessmentResponse),
+    waterAvailability: nullableEnum(value.waterAvailability, waterAvailabilityValues),
+    mainWaterSource: nullableString(value.mainWaterSource, invalidAssessmentResponse),
+    irrigationAvailability: nullableEnum(value.irrigationAvailability, irrigationValues),
+    waterReliability: nullableEnum(value.waterReliability, waterReliabilityValues),
+    waterConcerns: nullableString(value.waterConcerns, invalidAssessmentResponse),
+    drainageCondition: nullableEnum(value.drainageCondition, drainageValues),
+    waterloggingRisk: nullableEnum(value.waterloggingRisk, waterloggingValues),
+    drainageNotes: nullableString(value.drainageNotes, invalidAssessmentResponse),
+    generalFieldCondition: nullableEnum(value.generalFieldCondition, fieldConditionValues),
+    generalFieldNotes: nullableString(value.generalFieldNotes, invalidAssessmentResponse),
+    plantingReadiness: nullableEnum(value.plantingReadiness, readinessValues),
+    identifiedRisks: normalizeIdentifiedRisks(value.identifiedRisks),
+    riskNotes: nullableString(value.riskNotes, invalidAssessmentResponse),
+    risksAndConcerns: nullableString(value.risksAndConcerns, invalidAssessmentResponse),
+    officerNotes: nullableString(value.officerNotes, invalidAssessmentResponse),
+    images: normalizeAssessmentImages(value.images),
+  }
+}
+
+function normalizeFieldAnalysisResult(value: unknown): FieldAnalysisResult {
+  if (!isRecord(value)) throw invalidFieldAnalysisResponse()
+  const fieldCondition = value.fieldCondition
+  const normalizedFieldCondition = fieldCondition == null
+    ? { summary: '', evidenceInspectionIds: [] }
+    : isRecord(fieldCondition)
+      ? {
+          summary: optionalString(fieldCondition.summary, invalidFieldAnalysisResponse) ?? '',
+          evidenceInspectionIds: stringArray(fieldCondition.evidenceInspectionIds, invalidFieldAnalysisResponse),
+        }
+      : (() => { throw invalidFieldAnalysisResponse() })()
+
+  return {
+    workflowId: requiredString(value.workflowId, invalidFieldAnalysisResponse),
+    status: requiredString(value.status, invalidFieldAnalysisResponse),
+    requiresHumanReview: optionalBoolean(value.requiresHumanReview, invalidFieldAnalysisResponse) ?? false,
+    warnings: stringArray(value.warnings, invalidFieldAnalysisResponse),
+    fieldCondition: normalizedFieldCondition,
+    openIssues: normalizeOpenIssues(value.openIssues),
+    priority: optionalString(value.priority, invalidFieldAnalysisResponse) ?? 'Unknown',
+    fieldSuitability: optionalString(value.fieldSuitability, invalidFieldAnalysisResponse) as FieldAnalysisResult['fieldSuitability'],
+    soilAssessment: optionalString(value.soilAssessment, invalidFieldAnalysisResponse),
+    waterAssessment: optionalString(value.waterAssessment, invalidFieldAnalysisResponse),
+    drainageAssessment: optionalString(value.drainageAssessment, invalidFieldAnalysisResponse),
+    fieldPreparationRequirements: stringArray(value.fieldPreparationRequirements, invalidFieldAnalysisResponse),
+    plantingReadiness: nullableEnum(value.plantingReadiness, [...readinessValues, 'Unknown'] as const, invalidFieldAnalysisResponse) ?? 'Unknown',
+    identifiedRisks: stringEnumArray(value.identifiedRisks, riskOptions, invalidFieldAnalysisResponse),
+    recommendedPrePlantingActions: stringArray(value.recommendedPrePlantingActions, invalidFieldAnalysisResponse),
+  }
+}
+
+function normalizeAssessmentImages(value: unknown): PrePlantingAssessment['images'] {
+  if (value == null) return []
+  if (!Array.isArray(value)) throw invalidAssessmentResponse()
+  return value.map((item) => {
+    if (!isRecord(item)) throw invalidAssessmentResponse()
+    return {
+      id: requiredString(item.id, invalidAssessmentResponse),
+      url: requiredString(item.url, invalidAssessmentResponse),
+      contentType: requiredString(item.contentType, invalidAssessmentResponse),
+      sizeBytes: requiredNumber(item.sizeBytes, invalidAssessmentResponse),
+    }
+  })
+}
+
+function normalizeIdentifiedRisks(value: unknown): PrePlantingRisk[] | null {
+  if (value == null) return null
+  return stringEnumArray(value, riskOptions, invalidAssessmentResponse)
+}
+
+function normalizeOpenIssues(value: unknown): FieldAnalysisResult['openIssues'] {
+  if (value == null) return []
+  if (!Array.isArray(value)) throw invalidFieldAnalysisResponse()
+  return value.map((item) => {
+    if (!isRecord(item)) throw invalidFieldAnalysisResponse()
+    return {
+      issueId: requiredString(item.issueId, invalidFieldAnalysisResponse),
+      severity: requiredString(item.severity, invalidFieldAnalysisResponse),
+      status: requiredString(item.status, invalidFieldAnalysisResponse),
+      evidenceInspectionId: optionalString(item.evidenceInspectionId, invalidFieldAnalysisResponse),
+    }
+  })
+}
+
+function stringEnumArray<T extends string>(value: unknown, allowed: readonly T[], error: () => Error): T[] {
+  const values = stringArray(value, error)
+  if (values.some((item) => !allowed.includes(item as T))) throw error()
+  return values as T[]
+}
+
+function stringArray(value: unknown, error: () => Error): string[] {
+  if (value == null) return []
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) throw error()
+  return value
+}
+
+function nullableEnum<T extends string>(value: unknown, allowed: readonly T[], error = invalidAssessmentResponse): T | null {
+  if (value == null) return null
+  if (typeof value !== 'string' || !allowed.includes(value as T)) throw error()
+  return value as T
+}
+
+function requiredString(value: unknown, error: () => Error): string {
+  if (typeof value !== 'string' || value.trim() === '') throw error()
+  return value
+}
+
+function optionalString(value: unknown, error: () => Error): string | undefined {
+  if (value == null) return undefined
+  if (typeof value !== 'string') throw error()
+  return value
+}
+
+function nullableString(value: unknown, error: () => Error): string | null {
+  return optionalString(value, error) ?? null
+}
+
+function requiredNumber(value: unknown, error: () => Error): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) throw error()
+  return value
+}
+
+function optionalBoolean(value: unknown, error: () => Error): boolean | undefined {
+  if (value == null) return undefined
+  if (typeof value !== 'boolean') throw error()
+  return value
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function requireAssessment(value: PrePlantingAssessment | null): PrePlantingAssessment {
+  if (!value) throw invalidAssessmentResponse()
+  return value
+}
+
+function normalizeLinkedAssessment(value: unknown, requestId: string): PrePlantingAssessment | null {
+  const assessment = normalizeAssessment(value)
+  if (assessment && assessment.cropPlanRequestId !== requestId) throw invalidAssessmentResponse()
+  return assessment
+}
+
+function normalizeAssessmentResponse(
+  response: { status?: number; data: unknown },
+  requestId: string,
+): PrePlantingAssessment | null {
+  if (
+    response.status === 204
+    || response.data === null
+    || response.data === undefined
+    || response.data === ''
+  ) {
+    return null
+  }
+
+  return normalizeLinkedAssessment(response.data, requestId)
+}
+
+function invalidAssessmentResponse() {
+  return new Error('The pre-planting assessment response was invalid.')
+}
+
+function invalidFieldAnalysisResponse() {
+  return new Error('The field analysis response was invalid.')
+}
+
+function isNotFound(error: unknown) {
+  return axios.isAxiosError(error) && error.response?.status === 404
+}
+
+function resetAssessmentForm(
+  setForm: (value: PrePlantingAssessmentInput) => void,
+  setRiskState: (value: RiskAssessmentState) => void,
+  setSelectedRisks: (value: PrePlantingRisk[]) => void,
+) {
+  setForm({ ...emptyAssessment })
+  setRiskState('unassessed')
+  setSelectedRisks([])
 }
 
 function applySavedAssessment(

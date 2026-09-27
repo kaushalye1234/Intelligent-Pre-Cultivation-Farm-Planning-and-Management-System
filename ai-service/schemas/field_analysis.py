@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import Field, field_validator
+from pydantic import ConfigDict, Field, field_validator
 
 from schemas.common import AgentEnvelope, CamelModel
 
@@ -27,11 +27,15 @@ class FieldAnalysisInput(CamelModel):
 
 
 class FieldCondition(CamelModel):
-    summary: str = ""
+    model_config = ConfigDict(extra="forbid")
+
+    summary: str
     evidence_inspection_ids: list[UUID] = Field(default_factory=list, alias="evidenceInspectionIds")
 
 
 class OpenIssueSummary(CamelModel):
+    model_config = ConfigDict(extra="forbid")
+
     issue_id: UUID = Field(alias="issueId")
     severity: str
     status: str
@@ -39,7 +43,10 @@ class OpenIssueSummary(CamelModel):
 
 
 class CropFieldAnalysisOutput(AgentEnvelope):
-    field_condition: FieldCondition = Field(default_factory=FieldCondition, alias="fieldCondition")
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["Analyzed", "SafeFailure"]
+    field_condition: FieldCondition = Field(alias="fieldCondition")
     open_issues: list[OpenIssueSummary] = Field(default_factory=list, alias="openIssues")
     priority: Literal["High", "Medium", "Low", "Unknown"]
     field_suitability: Literal[

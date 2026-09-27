@@ -16,6 +16,12 @@ const officer: UserProfile = {
   mustChangePassword: false,
 }
 
+const fieldOfficer: UserProfile = {
+  ...officer,
+  fullName: 'Field Officer',
+  role: 2,
+}
+
 const review: WorkflowReview = {
   workflow: {
     id: 'workflow-1',
@@ -41,6 +47,63 @@ const review: WorkflowReview = {
 afterEach(() => vi.restoreAllMocks())
 
 describe('WorkflowReviewPage', () => {
+  it('keeps Agent Evidence rendered when the assessment child throws', async () => {
+    const reviewWithEvidence: WorkflowReview = {
+      ...review,
+      workflow: { ...review.workflow, currentStep: 'CropFieldAnalysisAgent', status: 2 },
+      steps: [{
+        id: 'field-step-1',
+        agentName: 'CropFieldAnalysisAgent',
+        stepName: 'FieldAnalysis',
+        sequence: 2,
+        candidateRevision: 1,
+        status: 1,
+        input: {},
+        output: {},
+      }],
+    }
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    vi.spyOn(api, 'get').mockImplementation(async (url) => {
+      if (url === '/task-approval/workflows/workflow-1') return { data: reviewWithEvidence } as never
+      if (url === '/crop-plans/plan-1/pre-planting-context') {
+        return {
+          data: {
+            cropPlanRequestId: 'plan-1',
+            workflowId: 'workflow-1',
+            currentStep: 'CropFieldAnalysisAgent',
+            farmerId: 'farmer-1',
+            farmerName: { malformed: true },
+            farmId: 'farm-1',
+            farmName: 'North Farm',
+            farmLocation: 'Anuradhapura',
+            fieldId: 'field-1',
+            fieldName: 'Paddy Block A',
+            cropTypeId: 'crop-1',
+            cropName: 'Rice',
+            cropVarietyId: null,
+            cropVarietyName: null,
+            cultivationSeason: 1,
+            preferredStartDate: '2026-10-01',
+            preferredEndDate: '2027-01-01',
+          },
+        } as never
+      }
+      if (url === '/crop-plans/plan-1/pre-planting-assessment') return { data: null } as never
+      throw new Error('Unexpected GET ' + url)
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/task-approval/workflows/workflow-1']}>
+        <AuthContext.Provider value={{ user: fieldOfficer, token: 'token', isAuthenticated: true, isLoading: false, passwordChangeUser: null, hasPasswordChangeSession: false, login: vi.fn(), changeTemporaryPassword: vi.fn(), logout: vi.fn() }}>
+          <Routes><Route path="/task-approval/workflows/:id" element={<WorkflowReviewPage />} /></Routes>
+        </AuthContext.Provider>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText(/pre-planting assessment could not be displayed/i)).toBeInTheDocument()
+    expect(screen.getByText(/2\. FieldAnalysis/)).toBeInTheDocument()
+  })
+
   it('submits the reviewed candidate revision and workflow version', async () => {
     vi.spyOn(api, 'get').mockImplementation(async (url) => {
       if (url === '/task-approval/workflows/workflow-1') return { data: review } as never
