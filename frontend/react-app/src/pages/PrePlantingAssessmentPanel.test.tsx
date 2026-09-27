@@ -164,6 +164,25 @@ describe('PrePlantingAssessmentPanel', () => {
     expect(screen.getByLabelText(/risk assessment/i)).toHaveValue('unassessed')
   })
 
+  it.each([
+    ['an HTTP 204 response', { status: 204, data: '' }],
+    ['a null response body', { status: 200, data: null }],
+    ['an undefined response body', { status: 200, data: undefined }],
+    ['an empty response body', { status: 200, data: '' }],
+  ])('treats %s as not created yet', async (_label, assessmentResponse) => {
+    vi.spyOn(api, 'get').mockImplementation(async (url) => {
+      if (url === '/crop-plans/plan-1/pre-planting-context') return { data: context } as never
+      if (url === '/crop-plans/plan-1/pre-planting-assessment') return assessmentResponse as never
+      throw new Error('Unexpected GET ' + url)
+    })
+
+    render(<PrePlantingAssessmentPanel review={review} role={Roles.FieldOfficer} onWorkflowChanged={vi.fn()} />)
+
+    expect(await screen.findByRole('button', { name: /save draft/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /submit assessment/i })).toBeInTheDocument()
+    expect(screen.queryByText(/assessment response was invalid/i)).not.toBeInTheDocument()
+  })
+
   it('treats an assessment 404 as not created yet', async () => {
     vi.spyOn(api, 'get').mockImplementation(async (url) => {
       if (url === '/crop-plans/plan-1/pre-planting-context') return { data: context } as never

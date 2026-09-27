@@ -49,3 +49,15 @@
 3. Run `npm run build`.
 4. Run `git diff --check` and scan for conflict markers.
 5. Commit only the scoped implementation and test files locally as `fix: contain pre-planting review failures`. Do not push.
+
+### Task 5: Accept the endpoint's empty 204 representation
+
+**Files:**
+- Modify: `frontend/react-app/src/pages/PrePlantingAssessmentPanel.test.tsx`
+- Modify: `frontend/react-app/src/pages/PrePlantingAssessmentPanel.tsx`
+
+1. Add a failing regression test whose assessment request resolves with HTTP 204 and an empty response body.
+2. Assert the Field Officer sees the new-assessment form, including `Save draft` and `Submit assessment`, with no invalid-response error.
+3. Treat only HTTP 204, `null`, `undefined`, and an empty response body as no assessment; continue validating every non-empty payload through `normalizeLinkedAssessment`.
+4. Re-run the focused panel tests, full React tests, lint, production build, and `git diff --check`.
+5. Commit the regression fix locally only after all required verification passes. Do not change the backend contract or push.

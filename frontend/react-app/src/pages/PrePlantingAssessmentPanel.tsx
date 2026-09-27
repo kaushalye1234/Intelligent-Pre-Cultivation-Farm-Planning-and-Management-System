@@ -172,7 +172,7 @@ export function PrePlantingAssessmentPanel({
 
     if (assessmentOutcome.status === 'fulfilled') {
       try {
-        const nextAssessment = normalizeLinkedAssessment(assessmentOutcome.value.data, requestId)
+        const nextAssessment = normalizeAssessmentResponse(assessmentOutcome.value, requestId)
         setAssessment(nextAssessment)
         if (nextAssessment) {
           applySavedAssessment(nextAssessment, setForm, setRiskState, setSelectedRisks)
@@ -721,6 +721,22 @@ function normalizeLinkedAssessment(value: unknown, requestId: string): PrePlanti
   const assessment = normalizeAssessment(value)
   if (assessment && assessment.cropPlanRequestId !== requestId) throw invalidAssessmentResponse()
   return assessment
+}
+
+function normalizeAssessmentResponse(
+  response: { status?: number; data: unknown },
+  requestId: string,
+): PrePlantingAssessment | null {
+  if (
+    response.status === 204
+    || response.data === null
+    || response.data === undefined
+    || response.data === ''
+  ) {
+    return null
+  }
+
+  return normalizeLinkedAssessment(response.data, requestId)
 }
 
 function invalidAssessmentResponse() {
