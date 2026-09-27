@@ -141,6 +141,7 @@ export function PrePlantingAssessmentPanel({
   const [assessmentLoadFailed, setAssessmentLoadFailed] = useState(false)
   const [action, setAction] = useState<ActionState>(null)
   const [error, setError] = useState('')
+  const [warning, setWarning] = useState('')
   const [success, setSuccess] = useState('')
   const formRef = useRef<HTMLFormElement>(null)
 
@@ -152,6 +153,7 @@ export function PrePlantingAssessmentPanel({
 
     setIsLoading(true)
     setError('')
+    setWarning('')
     setAssessmentLoadFailed(false)
     const resultRequest = fieldStepStatus === 3 || fieldStepStatus === 4
       ? api.get<unknown>('/crop-plans/' + requestId + '/field-analysis-result')
@@ -275,6 +277,7 @@ export function PrePlantingAssessmentPanel({
   async function saveDraft() {
     setAction('save')
     setError('')
+    setWarning('')
     setSuccess('')
     try {
       await saveAssessment()
@@ -290,6 +293,7 @@ export function PrePlantingAssessmentPanel({
     if (!assessment || files.length === 0) return
     setAction('upload')
     setError('')
+    setWarning('')
     setSuccess('')
     try {
       await uploadSelectedFiles(assessment.inspectionId)
@@ -319,15 +323,27 @@ export function PrePlantingAssessmentPanel({
 
     setAction('submit')
     setError('')
+    setWarning('')
     setSuccess('')
     try {
       const saved = await saveAssessment()
-      if (files.length > 0) await uploadSelectedFiles(saved.inspectionId)
+      let optionalEvidenceError = ''
+      if (files.length > 0) {
+        try {
+          await uploadSelectedFiles(saved.inspectionId)
+        } catch (err) {
+          optionalEvidenceError = getErrorMessage(err)
+        }
+      }
       const response = await api.post<unknown>(
         '/crop-plans/' + linkedRequestId + '/pre-planting-assessment/submit',
       )
       setAssessment(requireAssessment(normalizeLinkedAssessment(response.data, linkedRequestId)))
+      setFiles([])
       setSuccess('Pre-planting assessment submitted. Field analysis is now available.')
+      if (optionalEvidenceError) {
+        setWarning('Optional evidence upload failed: ' + optionalEvidenceError + ' The assessment was submitted without that evidence.')
+      }
     } catch (err) {
       setError(getErrorMessage(err))
     } finally {
@@ -338,6 +354,7 @@ export function PrePlantingAssessmentPanel({
   async function runFieldAnalysis() {
     setAction('run')
     setError('')
+    setWarning('')
     setSuccess('')
     try {
       await api.post('/crop-plans/' + requestId + '/run-field-analysis')
@@ -366,6 +383,7 @@ export function PrePlantingAssessmentPanel({
 
       {context ? <ContextSummary context={context} /> : null}
       {success ? <Notice tone="success">{success}</Notice> : null}
+      {warning ? <Notice tone="warning">{warning}</Notice> : null}
       {error ? <ErrorState message={error} /> : null}
       {fieldAnalysisRunning ? <Notice tone="info">Field analysis is running. The submitted assessment remains read-only.</Notice> : null}
 

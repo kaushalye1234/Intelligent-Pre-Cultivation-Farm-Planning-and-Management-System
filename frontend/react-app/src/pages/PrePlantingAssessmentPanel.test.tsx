@@ -257,6 +257,20 @@ describe('PrePlantingAssessmentPanel', () => {
     expect(put).toHaveBeenCalledWith('/crop-plans/plan-1/pre-planting-assessment', expect.objectContaining({ identifiedRisks: [] }))
   })
 
+  it('does not submit while structured risks remain unassessed', async () => {
+    mockLoads({ ...savedAssessment, identifiedRisks: null })
+    const put = vi.spyOn(api, 'put')
+    const post = vi.spyOn(api, 'post')
+    const user = userEvent.setup()
+    render(<PrePlantingAssessmentPanel review={review} role={Roles.FieldOfficer} onWorkflowChanged={vi.fn()} />)
+
+    await user.click(await screen.findByRole('button', { name: /submit assessment/i }))
+
+    expect(screen.getByText(/assess structured risks before submitting/i)).toBeInTheDocument()
+    expect(put).not.toHaveBeenCalled()
+    expect(post).not.toHaveBeenCalled()
+  })
+
   it('keeps save, evidence upload, submit, and AI run as separate actions', async () => {
     mockLoads(null)
     const put = vi.spyOn(api, 'put').mockResolvedValue({ data: savedAssessment } as never)
@@ -283,6 +297,67 @@ describe('PrePlantingAssessmentPanel', () => {
     await user.click(screen.getByRole('button', { name: /^run field analysis$/i }))
     await waitFor(() => expect(post).toHaveBeenCalledWith('/crop-plans/plan-1/run-field-analysis'))
     expect(onWorkflowChanged).toHaveBeenCalledOnce()
+  })
+
+  it('submits successfully when an optional image upload fails and does not retry the failed file', async () => {
+    mockLoads(null)
+    const put = vi.spyOn(api, 'put').mockResolvedValue({ data: savedAssessment } as never)
+    const post = vi.spyOn(api, 'post').mockImplementation(async (url) => {
+      if (url === '/inspections/inspection-1/images') throw axiosError(502, 'Image upload failed.')
+      if (url === '/crop-plans/plan-1/pre-planting-assessment/submit') return { data: submittedAssessment } as never
+      if (url === '/crop-plans/plan-1/run-field-analysis') return { data: {} } as never
+      throw new Error('Unexpected POST ' + url)
+    })
+    const user = userEvent.setup()
+    render(<PrePlantingAssessmentPanel review={review} role={Roles.FieldOfficer} onWorkflowChanged={vi.fn()} />)
+
+    await fillRequiredAssessment(user)
+    await user.upload(screen.getByLabelText(/photos \/ evidence/i), new File(['field'], 'field.jpg', { type: 'image/jpeg' }))
+    await user.click(screen.getByRole('button', { name: /submit assessment/i }))
+
+    expect(await screen.findByText('Pre-planting assessment submitted. Field analysis is now available.')).toBeInTheDocument()
+    expect(screen.getByText(/optional evidence upload failed.*image upload failed/i)).toBeInTheDocument()
+    expect(put).toHaveBeenCalledOnce()
+    expect(post).toHaveBeenCalledWith('/crop-plans/plan-1/pre-planting-assessment/submit')
+    expect(post.mock.calls.filter(([url]) => url === '/inspections/inspection-1/images')).toHaveLength(1)
+    expect(screen.queryByLabelText(/photos \/ evidence/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /save draft|submit assessment/i })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /^run field analysis$/i }))
+    expect(post.mock.calls.filter(([url]) => url === '/inspections/inspection-1/images')).toHaveLength(1)
+  })
+
+  it('submits successfully without selected image evidence', async () => {
+    mockLoads(savedAssessment)
+    const put = vi.spyOn(api, 'put').mockResolvedValue({ data: savedAssessment } as never)
+    const post = vi.spyOn(api, 'post').mockResolvedValue({ data: submittedAssessment } as never)
+    const user = userEvent.setup()
+    render(<PrePlantingAssessmentPanel review={review} role={Roles.FieldOfficer} onWorkflowChanged={vi.fn()} />)
+
+    await user.click(await screen.findByRole('button', { name: /submit assessment/i }))
+
+    expect(await screen.findByText('Pre-planting assessment submitted. Field analysis is now available.')).toBeInTheDocument()
+    expect(put).toHaveBeenCalledOnce()
+    expect(post).toHaveBeenCalledTimes(1)
+    expect(post).toHaveBeenCalledWith('/crop-plans/plan-1/pre-planting-assessment/submit')
+    expect(screen.getByRole('button', { name: /^run field analysis$/i })).toBeInTheDocument()
+  })
+
+  it('keeps a saved draft editable when dedicated submission validation fails', async () => {
+    mockLoads(savedAssessment)
+    const put = vi.spyOn(api, 'put').mockResolvedValue({ data: savedAssessment } as never)
+    vi.spyOn(api, 'post').mockRejectedValue(axiosError(400, 'Drainage notes are required before submission.'))
+    const user = userEvent.setup()
+    render(<PrePlantingAssessmentPanel review={review} role={Roles.FieldOfficer} onWorkflowChanged={vi.fn()} />)
+
+    await user.click(await screen.findByRole('button', { name: /submit assessment/i }))
+
+    expect(await screen.findByText('Drainage notes are required before submission.')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Moist loam.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /save draft/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /submit assessment/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /run field analysis/i })).not.toBeInTheDocument()
+    expect(put).toHaveBeenCalledOnce()
   })
 
   it('uploads selected evidence separately once a draft exists', async () => {
