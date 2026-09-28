@@ -1803,3 +1803,79 @@
     display: none;
   }
 }
+
+/* Resource Officer Weather/Resource work queue */
+.work-queue-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.work-queue-cell {
+  display: grid;
+  gap: 2px;
+}
+
+.work-queue-review {
+  display: grid;
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+.work-queue-review-heading {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.work-queue-review-heading h3,
+.work-queue-list h4 {
+  margin: 0;
+}
+
+.work-queue-review p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.work-queue-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.work-queue-details > div {
+  padding: var(--space-3);
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.work-queue-details dt {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.work-queue-details dd {
+  margin: var(--space-1) 0 0;
+  overflow-wrap: anywhere;
+}
+
+.work-queue-list ul {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-5);
+}
+
+.work-queue-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.work-queue-result {
+  display: grid;
+  gap: var(--space-3);
+}

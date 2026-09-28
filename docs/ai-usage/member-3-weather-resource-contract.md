@@ -19,10 +19,54 @@ When Member 2 completes, the workflow's `CurrentStep` is `WeatherResourceAgent`.
 | POST | `/api/crop-plans/{id}/run-weather-resource-analysis` | Admin, AgriculturalOfficer, ResourceOfficer |
 | GET | `/api/crop-plans/{id}/weather-resource-result` | Anyone who can see the crop plan request |
 | GET | `/api/crop-plans/{id}/member-3-handoff` | FieldOfficer, ResourceOfficer, AgriculturalOfficer, Admin; exact completed Member 2 workflow only |
+| GET | `/api/crop-plans/weather-resource-work-queue` | ResourceOfficer only |
 
 On success the step is `Completed`, the workflow is `Pending` and `CurrentStep` is
 `SchedulingValidationAgent`. On failure the step is `Failed` and the workflow ends as `SafeFailure`
 (same behaviour as Member 2).
+
+## Resource Officer work queue
+
+Completing Member 2 field analysis makes a crop plan discoverable; nothing runs Member 3 automatically. The
+Resource Officer dashboard lists the plans waiting for this step and lets the officer review and run it.
+
+`GET /api/crop-plans/weather-resource-work-queue` returns `PagedResult<WeatherResourceWorkItemResponse>`.
+
+- **Authorization:** `ResourceOfficer` only. Farmers and Field Officers get `403`. Agricultural Officers and
+  Admins get no new queue access; their existing run and handoff permissions are unchanged.
+- **Query parameters:** `page` (default 1), `pageSize` (default 20, maximum 100), `search`, `sortBy` and
+  `sortDirection` (`asc` or `desc`), normalised by `PagedQuery`. `sortBy` accepts `readyAt` (the default),
+  `preferredStartDate`, `farmName` and `cropName`; any other value falls back to `readyAt`. `workflowId` breaks ties
+  so paging is stable. `search` matches the objective, farm name or location, field name, crop name and variety.
+- **Membership rule:** a crop plan is listed only when its **latest** non-deleted workflow (by `CreatedAt`, then `Id`,
+  the same order used by `RunAsync`) has `CurrentStep == "WeatherResourceAgent"` and a `WeatherResourceAnalysis`
+  step, and the crop plan request is not deleted. Older workflows are ignored. Membership never comes from crop
+  plan status, `FarmTask` rows, dashboard counts or client input. The queue is a read-only projection: it creates no
+  task, assignment or other record, and it needs no schema change.
+- **Running steps:** a step that is `Running` stays listed with `stepStatus: 2` so the UI can show it as in progress
+  and disable Run. A second run still returns `409 WEATHER_RESOURCE_ALREADY_RUNNING`.
+- **Safe boundary:** each row holds plan metadata only: workflow, request and step IDs, objective, farm, field,
+  crop and variety names, preferred dates, candidate revision, workflow version, step status, `readyAt` (when Member 2
+  field analysis completed, or a workflow timestamp for legacy data), `startedAt` and the step's safe error code and
+  message. It never includes farmer contact data, staff or risk notes, observations, images, evidence or crop-issue
+  IDs, `AgentStep` input or output JSON, or approval decisions.
+
+Operator flow:
+
+1. The officer selects **Review**. The dashboard reads the existing `member-3-handoff`, the safe structured
+   Member 2 summary. The Resource Officer never sees raw pre-planting data or edit controls.
+2. The officer selects **Run Weather/Resource Analysis**. The dashboard calls the existing
+   `run-weather-resource-analysis` endpoint with no request body. The backend reloads and re-validates the current
+   workflow, so a stale queue row cannot skip the current-step checks.
+3. A result of `Analyzed` completes Member 3 and moves `CurrentStep` to `SchedulingValidationAgent`, and the plan
+   leaves the queue. Scheduling stays `Pending` for Member 4, and final tasks, irrigation schedules and reservations
+   still need Member 4 and explicit human approval. A `SafeFailure` result is shown as a contained failure, not as a
+   success.
+
+Member 3 stays inventory read-only throughout. Resource Officers get no Task Approval access.
+
+The dashboard's `pendingTasks` figure keeps its Member 4 meaning: `FarmTask` rows in `PendingApproval`. It is not
+the Weather/Resource queue count. The queue panel shows its own `totalCount`.
 
 ## How the step works
 

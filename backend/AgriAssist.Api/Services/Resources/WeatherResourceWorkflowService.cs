@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json;
 using AgriAssist.Api.Data;
 using AgriAssist.Api.Dtos.Resources;
+using AgriAssist.Api.Dtos.Shared;
 using AgriAssist.Api.ExternalServices.AgenticAI;
 using AgriAssist.Api.ExternalServices.Weather;
 using AgriAssist.Api.Models.Shared;
@@ -15,6 +16,7 @@ public interface IWeatherResourceWorkflowService
 {
     Task<WeatherResourceRunResponse> RunAsync(Guid cropPlanRequestId, CancellationToken cancellationToken);
     Task<WeatherResourceOutput> GetResultAsync(Guid cropPlanRequestId, CancellationToken cancellationToken);
+    Task<PagedResult<WeatherResourceWorkItemResponse>> GetWorkQueueAsync(PagedQuery query, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -32,6 +34,8 @@ public sealed class WeatherResourceWorkflowService(
     public const string AgentName = "WeatherResourceAgent";
     public const string StepName = "WeatherResourceAnalysis";
     public const string NextAgentName = "SchedulingValidationAgent";
+    private const string FieldAnalysisAgentName = "CropFieldAnalysisAgent";
+    private const string FieldAnalysisStepName = "FieldAnalysis";
     private const decimal QuantityTolerance = 0.0005m;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly string[] AllowedStatuses = ["Analyzed", "SafeFailure"];
@@ -149,6 +153,95 @@ public sealed class WeatherResourceWorkflowService(
         await cropPlanningService.GetWorkflowStatusAsync(cropPlanRequestId, cancellationToken);
         var workflow = await LoadWorkflowAsync(cropPlanRequestId, includeFarm: false, cancellationToken);
         return ReadOutput(FindStep(workflow).OutputJson, workflow.Id);
+    }
+
+    /// <summary>
+    /// Read-only Resource Officer queue: crop plans whose latest workflow is waiting at WeatherResourceAgent.
+    /// Membership is derived from the workflow alone (never from tasks, dashboard counts or client input), and
+    /// a Running step stays listed so the UI can show it as in progress. Running the analysis still goes
+    /// through RunAsync, which re-validates the current workflow.
+    /// </summary>
+    public async Task<PagedResult<WeatherResourceWorkItemResponse>> GetWorkQueueAsync(PagedQuery query, CancellationToken cancellationToken)
+    {
+        query.Normalize();
+        var rows = dbContext.AgentWorkflows.AsNoTracking()
+            .Where(workflow => !workflow.IsDeleted
+                && workflow.CropPlanRequestId != null
+                && workflow.CurrentStep == AgentName
+                && workflow.CropPlanRequest != null
+                && !workflow.CropPlanRequest.IsDeleted
+                // Latest workflow for the request, using the same CreatedAt/Id convention as LoadWorkflowAsync.
+                && workflow.Id == dbContext.AgentWorkflows
+                    .Where(latest => latest.CropPlanRequestId == workflow.CropPlanRequestId && !latest.IsDeleted)
+                    .OrderByDescending(latest => latest.CreatedAt)
+                    .ThenByDescending(latest => latest.Id)
+                    .Select(latest => latest.Id)
+                    .FirstOrDefault())
+            .Select(workflow => new
+            {
+                Workflow = workflow,
+                Request = workflow.CropPlanRequest!,
+                Step = workflow.Steps
+                    .Where(step => step.AgentName == AgentName && step.StepName == StepName)
+                    .OrderBy(step => step.Sequence)
+                    .FirstOrDefault(),
+                ReadyAt = workflow.Steps
+                    .Where(step => step.AgentName == FieldAnalysisAgentName && step.StepName == FieldAnalysisStepName)
+                    .OrderBy(step => step.Sequence)
+                    .Select(step => step.CompletedAt)
+                    .FirstOrDefault() ?? workflow.UpdatedAt
+            })
+            .Where(row => row.Step != null);
+
+        if (!string.IsNullOrWhiteSpace(query.Search))
+        {
+            var search = query.Search.Trim().ToLower();
+            rows = rows.Where(row =>
+                row.Request.Objective.ToLower().Contains(search)
+                || row.Request.Farm!.Name.ToLower().Contains(search)
+                || row.Request.Farm!.Location.ToLower().Contains(search)
+                || (row.Request.Field != null && row.Request.Field.Name.ToLower().Contains(search))
+                || row.Request.CropType!.Name.ToLower().Contains(search)
+                || (row.Request.CropVariety != null && row.Request.CropVariety.Name.ToLower().Contains(search)));
+        }
+
+        var descending = query.SortDirection == "desc";
+        var sorted = query.SortBy?.Trim().ToLowerInvariant() switch
+        {
+            "preferredstartdate" => descending ? rows.OrderByDescending(row => row.Request.PreferredStartDate) : rows.OrderBy(row => row.Request.PreferredStartDate),
+            "farmname" => descending ? rows.OrderByDescending(row => row.Request.Farm!.Name) : rows.OrderBy(row => row.Request.Farm!.Name),
+            "cropname" => descending ? rows.OrderByDescending(row => row.Request.CropType!.Name) : rows.OrderBy(row => row.Request.CropType!.Name),
+            _ => descending ? rows.OrderByDescending(row => row.ReadyAt) : rows.OrderBy(row => row.ReadyAt)
+        };
+
+        var totalCount = await rows.CountAsync(cancellationToken);
+        var items = await sorted
+            .ThenBy(row => row.Workflow.Id)
+            .Skip((query.Page - 1) * query.PageSize)
+            .Take(query.PageSize)
+            .Select(row => new WeatherResourceWorkItemResponse(
+                row.Workflow.Id,
+                row.Request.Id,
+                row.Step!.Id,
+                row.Request.Objective,
+                row.Request.Farm!.Name,
+                row.Request.Farm!.Location,
+                row.Request.FieldId,
+                row.Request.Field == null ? null : row.Request.Field.Name,
+                row.Request.CropType!.Name,
+                row.Request.CropVariety == null ? null : row.Request.CropVariety.Name,
+                row.Request.PreferredStartDate,
+                row.Request.PreferredEndDate,
+                row.Workflow.CandidateRevision,
+                row.Workflow.Version,
+                row.Step!.Status,
+                row.ReadyAt,
+                row.Step!.StartedAt,
+                row.Step!.ErrorCode,
+                row.Step!.ErrorMessageSafe))
+            .ToListAsync(cancellationToken);
+
+        return new PagedResult<WeatherResourceWorkItemResponse>(items, query.Page, query.PageSize, totalCount);
     }
 
     /// <summary>

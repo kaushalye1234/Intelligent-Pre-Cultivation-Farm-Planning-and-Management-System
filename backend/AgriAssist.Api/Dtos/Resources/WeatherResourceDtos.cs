@@ -1,5 +1,6 @@
 using AgriAssist.Api.ExternalServices.Weather;
 using AgriAssist.Api.Dtos.CropPlanning;
+using AgriAssist.Api.Models.Shared;
 
 namespace AgriAssist.Api.Dtos.Resources;
 
@@ -193,6 +194,32 @@ public sealed record WeatherResourceRunResponse(
     bool RequiresHumanReview,
     IReadOnlyList<string> Warnings,
     string RequirementStatus = ResourceRequirementStatus.Unknown);
+
+/// <summary>
+/// One Resource Officer work-queue row: a crop plan whose latest workflow is waiting at WeatherResourceAgent.
+/// Safe plan metadata only; the Member 2 context is read separately through the Member 3 handoff.
+/// ReadyAt is when Member 2 field analysis completed (a workflow timestamp for legacy data).
+/// </summary>
+public sealed record WeatherResourceWorkItemResponse(
+    Guid WorkflowId,
+    Guid CropPlanRequestId,
+    Guid WeatherResourceStepId,
+    string Objective,
+    string FarmName,
+    string FarmLocation,
+    Guid? FieldId,
+    string? FieldName,
+    string CropName,
+    string? CropVarietyName,
+    DateOnly PreferredStartDate,
+    DateOnly PreferredEndDate,
+    int CandidateRevision,
+    int WorkflowVersion,
+    AgentStepStatus StepStatus,
+    DateTime ReadyAt,
+    DateTime? StartedAt,
+    string? ErrorCode,
+    string? ErrorMessageSafe);
 
 /// <summary>What the backend itself returned to the agent's tool calls for one step; used to validate the output.</summary>
 public sealed record WeatherResourceToolEvidence(

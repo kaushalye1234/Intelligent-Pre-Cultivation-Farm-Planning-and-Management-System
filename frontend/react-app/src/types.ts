@@ -489,4 +489,62 @@ export type CropPlanningWorkflowStart = {
   warnings: string[]
 }
 
+// Resource Officer queue row: a crop plan whose latest workflow is waiting at WeatherResourceAgent.
+export type WeatherResourceWorkItem = {
+  workflowId: string
+  cropPlanRequestId: string
+  weatherResourceStepId: string
+  objective: string | null
+  farmName: string | null
+  farmLocation: string | null
+  fieldId: string | null
+  fieldName: string | null
+  cropName: string | null
+  cropVarietyName: string | null
+  preferredStartDate: string
+  preferredEndDate: string
+  candidateRevision: number
+  workflowVersion: number
+  // AgentStepStatus: 1 Pending, 2 Running, 3 Completed, 4 Failed, 5 Skipped
+  stepStatus: number
+  readyAt: string
+  startedAt: string | null
+  errorCode: string | null
+  errorMessageSafe: string | null
+}
+
+// Safe Member 2 context handed to Member 3; excludes notes, observations, images and evidence IDs.
+export type Member3Handoff = {
+  workflowId: string
+  cropPlanRequestId: string
+  fieldId: string | null
+  cropCycleId: string | null
+  fieldLocationContext: string | null
+  preferredStartDate: string
+  preferredEndDate: string
+  fieldAnalysisSummary: string | null
+  priority: string | null
+  warnings: string[] | null
+  requiresHumanReview: boolean
+  fieldSuitability: string | null
+  soilAssessment: string | null
+  waterAssessment: string | null
+  drainageAssessment: string | null
+  fieldPreparationRequirements: string[] | null
+  plantingReadiness: string | null
+  identifiedRisks: PrePlantingRisk[] | null
+  recommendedPrePlantingActions: string[] | null
+}
+
+export type WeatherResourceRunResult = {
+  workflowId: string
+  cropPlanRequestId: string
+  weatherResourceStepId: string
+  status: 'Analyzed' | 'SafeFailure'
+  weatherRisk: 'Low' | 'Medium' | 'High' | 'Unknown'
+  requiresHumanReview: boolean
+  warnings: string[] | null
+  requirementStatus: string
+}
+
 
