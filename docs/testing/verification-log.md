@@ -132,3 +132,17 @@ Verified on 2026-09-14 with:
 - `flutter test` in `mobile/flutter_app` with 6 passing tests
 
 The AI-service test run used a local `ai-service/.venv` created from `requirements.txt`. Cloudinary image upload is implemented through ASP.NET and covered with fake success/failure tests; real Cloudinary credentials were not used.
+
+## Member 4 evidence-linked scheduling, 2026-09-30
+
+Verified on `member4/explainable-scheduling` using a disposable PostgreSQL 16 container on loopback port 55433 and database `agriassist_member4_test`:
+
+- `dotnet restore` and Release `dotnet build --no-restore`: exit 0, no build warnings or errors.
+- Full Release backend xUnit suite with `AGRIASSIST_TEST_POSTGRES_CONNECTION_STRING` set to that disposable database: **195 passed, 0 skipped, 0 failed**. This includes one-winner competing approvals, forced reservation-insert rollback, exact persistence of a three-decimal approved quantity, and safe rejection of a malformed persisted stock ID.
+- EF migration `Member4ResourceQuantityPrecision` applied successfully. The Member 4 PostgreSQL smoke script found 11 migrations and five required tables; rollback-to-savepoint and row-lock probes passed.
+- Python 3.12 source compile: exit 0. Full AI-service pytest suite: **86 passed**, with one dependency deprecation warning. Two HTTP ASGI-route cases exercised authenticated FastAPI requests for ready and blocked scheduling outputs, including source links and no reservation under high weather risk. The graph and agent use deterministic fixtures; no live LLM or weather-provider response is claimed.
+- `npm ci`, React lint, production build, and full Vitest suite: exit 0; **93 passed**. Lint retained existing non-blocking React hook/Fast Refresh warnings, and Vite reported a chunk-size warning.
+- `flutter pub get`, `flutter analyze`, and the full Flutter suite: exit 0; analysis found no issues and **42 tests passed**.
+- `git diff --check`: exit 0. No source conflict markers were found by the repository scan.
+
+The version-2 tests cover a ready proposal with zero irrigation rules, blocked review, deactivated-profile approval rejection, source/reason rendering, and farmer blocked messaging. The FastAPI HTTP route is now exercised in-process, but an end-to-end HTTP run through the live AI service, ASP.NET API, and React officer page with one ready and one blocked workflow has not yet been recorded. Remote CI is also pending until this branch is pushed and a PR is created.

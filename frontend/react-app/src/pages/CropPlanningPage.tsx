@@ -23,6 +23,7 @@ const workflowStatusLabel: Record<number, string> = {
   4: 'Completed',
   5: 'Failed',
   6: 'Cancelled',
+  12: 'Candidate blocked',
 }
 
 function getCropPlanTone(status: number) {
@@ -34,7 +35,7 @@ function getCropPlanTone(status: number) {
 
 function getWorkflowTone(status?: number) {
   if (status === 4) return 'good'
-  if (status === 5 || status === 6) return 'bad'
+  if (status === 5 || status === 6 || status === 12) return 'bad'
   if (status === 3) return 'info'
   return 'warn'
 }

@@ -7,6 +7,28 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 void main() {
+  testWidgets('blocked proposal explains that no farm work is approved', (tester) async {
+    tester.view.physicalSize = const Size(900, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    const workflow = CropPlanningWorkflowStatus(
+      workflowId: 'wf-blocked', cropPlanRequestId: 'plan-blocked',
+      status: 12, currentStep: 'Candidate blocked', warnings: [], steps: [],
+    );
+    final state = AppState()..planWorkflows = const {'plan-blocked': workflow};
+    await tester.pumpWidget(ChangeNotifierProvider.value(
+      value: state,
+      child: const MaterialApp(home: PlanningProgressScreen(planId: 'plan-blocked')),
+    ));
+
+    expect(workflow.statusLabel, 'Candidate blocked');
+    await tester.scrollUntilVisible(find.text('No farm work approved yet'), 300);
+    expect(find.text('No farm work approved yet'), findsOneWidget);
+    expect(find.textContaining('No tasks, irrigation, or resource reservations have been approved'), findsOneWidget);
+    expect(find.text('Human approval required'), findsNothing);
+  });
+
   testWidgets(
     'planning progress shows reported stages and required officer approval',
     (tester) async {

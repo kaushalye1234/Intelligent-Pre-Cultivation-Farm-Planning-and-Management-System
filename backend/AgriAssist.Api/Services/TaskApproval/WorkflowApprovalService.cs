@@ -110,10 +110,12 @@ public sealed class WorkflowApprovalService(
 
         var (errors, warnings) = await ValidateCandidateAsync(workflow, output, cancellationToken);
         var ready = errors.Count == 0 && output.Status.Equals("CandidateReady", StringComparison.OrdinalIgnoreCase);
+        var blocked = output.Status.Equals("CandidateBlocked", StringComparison.OrdinalIgnoreCase)
+            && !output.RequiresHumanApproval;
         step.OutputJson = JsonSerializer.Serialize(output, JsonOptions);
         step.CompletedAt = DateTime.UtcNow;
         step.Status = ready ? AgentStepStatus.Completed : AgentStepStatus.Failed;
-        step.ErrorCode = ready ? null : output.Status.Equals("MissingDependency", StringComparison.OrdinalIgnoreCase)
+        step.ErrorCode = ready ? null : blocked ? "CANDIDATE_BLOCKED" : output.Status.Equals("MissingDependency", StringComparison.OrdinalIgnoreCase)
             ? "MISSING_DEPENDENCY"
             : "CANDIDATE_VALIDATION_FAILED";
         step.ErrorMessageSafe = ready ? null : errors.Concat(output.Warnings ?? []).FirstOrDefault();
@@ -132,6 +134,7 @@ public sealed class WorkflowApprovalService(
         });
 
         workflow.Status = ready ? AgentWorkflowStatus.PendingOfficerApproval
+            : blocked ? AgentWorkflowStatus.CandidateBlocked
             : output.Status.Equals("MissingDependency", StringComparison.OrdinalIgnoreCase)
                 ? AgentWorkflowStatus.MissingDependency
                 : AgentWorkflowStatus.Failed;
@@ -364,7 +367,8 @@ public sealed class WorkflowApprovalService(
             StepOutput("CropFieldAnalysisAgent"),
             StepOutput("WeatherResourceAgent"),
             tasks,
-            irrigation);
+            irrigation,
+            await SchedulingEvidenceBuilder.BuildAsync(dbContext, workflow, plan, cancellationToken));
     }
 
     private async Task<(List<string> Errors, List<string> Warnings)> ValidateCandidateAsync(
@@ -382,14 +386,18 @@ public sealed class WorkflowApprovalService(
         if (!output.RequiresHumanApproval) errors.Add("A ready scheduling candidate must require human approval.");
         if (output.CandidateTasks is null || output.CandidateTasks.Count is < 1 or > 50)
             errors.Add("Candidate must contain between 1 and 50 tasks.");
-        if (output.CandidateIrrigation is null || output.CandidateIrrigation.Count is < 1 or > 20)
-            errors.Add("Candidate must contain between 1 and 20 irrigation schedules.");
+        if (output.CandidateIrrigation is null || output.CandidateIrrigation.Count > 20 ||
+            (output.ContractVersion < 2 && output.CandidateIrrigation.Count == 0))
+            errors.Add("Candidate irrigation count is invalid.");
         if (output.CandidateReservations is null || output.CandidateReservations.Count > 50)
             errors.Add("Candidate may contain at most 50 resource reservations.");
         if (output.Constraints is null || output.Constraints.Any(item => string.IsNullOrWhiteSpace(item.Code) || string.IsNullOrWhiteSpace(item.Message)))
             errors.Add("Candidate constraints must have codes and messages.");
         if (errors.Count > 0 && (output.CandidateTasks is null || output.CandidateIrrigation is null || output.CandidateReservations is null))
             return (errors, warnings);
+
+        if (output.ContractVersion >= 2)
+            errors.AddRange(await ValidateVersionTwoAsync(workflow, output, cancellationToken));
 
         var start = DateTime.SpecifyKind(plan.PreferredStartDate.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
         var end = DateTime.SpecifyKind(plan.PreferredEndDate.ToDateTime(TimeOnly.MaxValue), DateTimeKind.Utc);
@@ -456,6 +464,181 @@ public sealed class WorkflowApprovalService(
         if (!computedCost.HasValue) warnings.Add("Authoritative cost data is incomplete; no cost was assumed.");
 
         return (errors.Distinct().ToList(), warnings.Distinct().ToList());
+    }
+
+    private async Task<IReadOnlyList<string>> ValidateVersionTwoAsync(
+        AgentWorkflow workflow,
+        SchedulingValidationOutput output,
+        CancellationToken cancellationToken)
+    {
+        var errors = new List<string>();
+        var plan = workflow.CropPlanRequest ?? throw NotFound("Crop plan request");
+        var fresh = await BuildInputAsync(workflow, plan, cancellationToken);
+        var evidence = fresh.Evidence;
+        if (evidence?.ProfileId is null || evidence.VerifiedAt is null || evidence.Stages.Count == 0)
+        {
+            errors.Add("A matching active verified crop profile with stages is required.");
+            return errors;
+        }
+
+        SchedulingValidationInput? submitted;
+        try { submitted = JsonSerializer.Deserialize<SchedulingValidationInput>(FindSchedulingStep(workflow).InputJson, JsonOptions); }
+        catch (JsonException) { submitted = null; }
+        var original = submitted?.Evidence;
+        if (original is null || JsonSerializer.Serialize(original, JsonOptions) != JsonSerializer.Serialize(evidence, JsonOptions))
+            errors.Add("Verified crop reference evidence changed after candidate generation.");
+        if (evidence.InvalidIrrigationRuleIds.Count > 0)
+            errors.Add("A persisted verified irrigation rule is invalid and cannot be ignored.");
+
+        var weather = fresh.WeatherResourceOutput;
+        if (weather.ValueKind != JsonValueKind.Object ||
+            !weather.TryGetProperty("weatherRisk", out var risk) || risk.ValueKind != JsonValueKind.String)
+            errors.Add("Persisted weather risk is unavailable.");
+        else if (risk.GetString() == "High")
+            errors.Add("High weather risk blocks approval.");
+        else if (risk.GetString() is not ("Low" or "Medium" or "Unknown"))
+            errors.Add("Persisted weather risk is invalid.");
+
+        if (weather.ValueKind != JsonValueKind.Object ||
+            !weather.TryGetProperty("requirementStatus", out var overall) ||
+            overall.ValueKind != JsonValueKind.String || overall.GetString() != "Sufficient")
+            errors.Add("Verified resource requirements are not sufficient.");
+        JsonElement requirements = default;
+        JsonElement checks = default;
+        if (weather.ValueKind != JsonValueKind.Object ||
+            !weather.TryGetProperty("resourceRequirements", out requirements) || requirements.ValueKind != JsonValueKind.Array ||
+            !weather.TryGetProperty("resourceChecks", out checks) || checks.ValueKind != JsonValueKind.Array)
+            errors.Add("Verified resource requirements and stock checks are unavailable.");
+
+        var preparationCount = fresh.FieldAnalysisOutput.ValueKind == JsonValueKind.Object &&
+            fresh.FieldAnalysisOutput.TryGetProperty("fieldPreparationRequirements", out var preparations) &&
+            preparations.ValueKind == JsonValueKind.Array ? preparations.GetArrayLength() : 0;
+        var taskList = output.CandidateTasks ?? [];
+        if (taskList.Count != preparationCount + evidence.Stages.Count)
+            errors.Add("Candidate tasks do not cover every verified preparation requirement and crop stage.");
+        if ((output.CandidateIrrigation?.Count ?? 0) != evidence.IrrigationRules.Count)
+            errors.Add("Candidate irrigation must match the verified irrigation rules exactly.");
+
+        bool SourceMatches(SchedulingSource? source, string kind, Guid id, bool profileSource,
+            DateTime? verifiedAt = null)
+        {
+            if (source is null || source.Kind != kind || source.Id != id ||
+                string.IsNullOrWhiteSpace(source.Label) || source.Label.Length > 180) return false;
+            return !profileSource || source.ProfileId == evidence.ProfileId &&
+                source.SourceVersion == evidence.SourceVersion && source.VerifiedAt == (verifiedAt ?? evidence.VerifiedAt);
+        }
+
+        void CheckItem(string? reason, IReadOnlyList<SchedulingSource>? sources)
+        {
+            if (string.IsNullOrWhiteSpace(reason) || reason.Length > 500 || sources is null || sources.Count is < 1 or > 4)
+                errors.Add("Every version-2 item needs a bounded reason and source.");
+        }
+
+        var firstDay = plan.PreferredStartDate > DateOnly.FromDateTime(DateTime.UtcNow)
+            ? plan.PreferredStartDate : DateOnly.FromDateTime(DateTime.UtcNow);
+        var plantingDay = firstDay.AddDays(preparationCount > 0 ? 1 : 0);
+        foreach (var task in taskList)
+            CheckItem(task.Reason, task.Sources);
+        var preparationTasks = taskList.Where(item => item.Sources is { Count: 1 } &&
+            item.Sources[0].Kind == "FieldAnalysis").ToArray();
+        if (preparationTasks.Length != preparationCount || preparationTasks.Any(item =>
+            !SourceMatches(item.Sources![0], "FieldAnalysis", evidence.FieldAnalysisStepId ?? Guid.Empty, false) ||
+            DateOnly.FromDateTime(item.DueAt) != firstDay || item.Title != "Review recorded field preparation requirement"))
+            errors.Add("Preparation tasks do not match persisted Member 2 evidence and timing.");
+
+        var stageDay = plantingDay;
+        var orderedStages = evidence.Stages.OrderBy(item => item.Sequence).ThenBy(item => item.Id).ToArray();
+        if (orderedStages.Select(item => item.Sequence).Distinct().Count() != orderedStages.Length)
+            errors.Add("Verified crop stages have duplicate sequence numbers.");
+        for (var index = 0; index < orderedStages.Length; index++)
+        {
+            if (index > 0)
+            {
+                var duration = orderedStages[index - 1].TypicalMinDays;
+                if (duration is null or < 0) { errors.Add("A verified crop stage duration is missing."); break; }
+                stageDay = stageDay.AddDays(duration.Value);
+            }
+            var stage = orderedStages[index];
+            var matches = taskList.Where(item => item.Sources is { Count: 1 } &&
+                SourceMatches(item.Sources[0], "CropStage", stage.Id, true)).ToArray();
+            if (matches.Length != 1 || DateOnly.FromDateTime(matches[0].DueAt) != stageDay ||
+                matches[0].Title != $"Review {stage.StageName[..Math.Min(120, stage.StageName.Length)]} stage")
+                errors.Add($"Candidate stage {stage.Id} lacks its verified source or derived date.");
+        }
+        if (taskList.Any(item => item.Sources is not { Count: 1 } ||
+            item.Sources[0].Kind is not ("FieldAnalysis" or "CropStage")))
+            errors.Add("Candidate task has an unsupported or ambiguous source.");
+
+        foreach (var schedule in output.CandidateIrrigation ?? [])
+        {
+            CheckItem(schedule.Reason, schedule.Sources);
+            if (schedule.Sources is not { Count: 1 }) { errors.Add("Irrigation source is ambiguous."); continue; }
+            var rules = evidence.IrrigationRules.Where(item =>
+                SourceMatches(schedule.Sources[0], "IrrigationRule", item.Id, true, item.VerifiedAt)).ToArray();
+            if (rules.Length != 1 || !TimeOnly.TryParseExact(rules[0].StartTimeUtc, "HH:mm", out var ruleTime) ||
+                schedule.DurationMinutes != rules[0].DurationMinutes ||
+                DateOnly.FromDateTime(schedule.ScheduledAt) != plantingDay.AddDays(rules[0].DayOffsetFromPlanting) ||
+                schedule.ScheduledAt.TimeOfDay < ruleTime.ToTimeSpan() ||
+                (schedule.ScheduledAt.TimeOfDay - ruleTime.ToTimeSpan()).TotalHours is < 0 or > 23 ||
+                (schedule.ScheduledAt.TimeOfDay - ruleTime.ToTimeSpan()).TotalMinutes % 60 != 0)
+                errors.Add("Irrigation candidate does not follow a verified rule and same-day slot.");
+        }
+
+        var reservationList = output.CandidateReservations ?? [];
+        if (requirements.ValueKind == JsonValueKind.Array && checks.ValueKind == JsonValueKind.Array)
+        {
+            if (reservationList.Count != requirements.GetArrayLength())
+                errors.Add("Reservations do not cover each verified Member 3 requirement exactly once.");
+            var seenStocks = new HashSet<Guid>();
+            var seenResources = new HashSet<(Guid, string)>();
+            foreach (var requirement in requirements.EnumerateArray())
+            {
+                if (requirement.ValueKind != JsonValueKind.Object ||
+                    !requirement.TryGetProperty("ruleId", out var ruleIdElement) || ruleIdElement.ValueKind != JsonValueKind.String || !Guid.TryParse(ruleIdElement.GetString(), out var ruleId) ||
+                    !requirement.TryGetProperty("resourceId", out var resourceIdElement) || resourceIdElement.ValueKind != JsonValueKind.String || !Guid.TryParse(resourceIdElement.GetString(), out var resourceId) ||
+                    !requirement.TryGetProperty("unit", out var unitElement) || unitElement.ValueKind != JsonValueKind.String ||
+                    !requirement.TryGetProperty("requiredQuantity", out var quantityElement) || quantityElement.ValueKind != JsonValueKind.Number || !quantityElement.TryGetDecimal(out var quantity) ||
+                    quantity <= 0 || decimal.Round(quantity, 3) != quantity ||
+                    !requirement.TryGetProperty("requirementStatus", out var statusElement) || statusElement.ValueKind != JsonValueKind.String || statusElement.GetString() != "Sufficient")
+                { errors.Add("A Member 3 requirement is incomplete or not sufficient."); continue; }
+                if (!seenResources.Add((resourceId, unitElement.GetString()!.ToUpperInvariant())))
+                    errors.Add("Duplicate Member 3 resource requirements cannot be reserved twice.");
+                if (!await dbContext.CropRuleReferences.AsNoTracking().AnyAsync(item =>
+                    item.Id == ruleId && item.CropReferenceProfileId == evidence.ProfileId &&
+                    item.RuleType == "ResourceRequirement" && !item.IsDeleted, cancellationToken))
+                    errors.Add("A Member 3 resource rule no longer belongs to the verified profile.");
+                var stockMatches = checks.EnumerateArray().Where(item => item.ValueKind == JsonValueKind.Object &&
+                    item.TryGetProperty("resourceId", out var id) && id.ValueKind == JsonValueKind.String && id.GetString() == resourceId.ToString() &&
+                    item.TryGetProperty("unit", out var unit) && unit.ValueKind == JsonValueKind.String &&
+                    string.Equals(unit.GetString(), unitElement.GetString(), StringComparison.OrdinalIgnoreCase)).ToArray();
+                if (stockMatches.Length != 1 || !stockMatches[0].TryGetProperty("inventoryStockId", out var stockIdElement) ||
+                    stockIdElement.ValueKind != JsonValueKind.String ||
+                    !Guid.TryParse(stockIdElement.GetString(), out var stockId) || !seenStocks.Add(stockId))
+                { errors.Add("Member 3 stock mapping is missing or ambiguous."); continue; }
+                var stockCheck = stockMatches[0];
+                if (!stockCheck.TryGetProperty("requested", out var requested) || requested.ValueKind != JsonValueKind.Number ||
+                    !requested.TryGetDecimal(out var checkedQuantity) || checkedQuantity != quantity ||
+                    !stockCheck.TryGetProperty("availableQuantity", out var available) || available.ValueKind != JsonValueKind.Number ||
+                    !available.TryGetDecimal(out var availableQuantity) || availableQuantity < quantity ||
+                    !stockCheck.TryGetProperty("sufficient", out var sufficient) || sufficient.ValueKind != JsonValueKind.True)
+                    errors.Add("Member 3 stock check does not confirm the required quantity and availability.");
+                var currentStock = await dbContext.InventoryStocks.AsNoTracking()
+                    .Include(item => item.Resource)
+                    .SingleOrDefaultAsync(item => item.Id == stockId && !item.IsDeleted, cancellationToken);
+                if (currentStock?.Resource is null || currentStock.Resource.IsDeleted || !currentStock.Resource.IsActive ||
+                    currentStock.ResourceId != resourceId ||
+                    !string.Equals(currentStock.Resource.Unit, unitElement.GetString(), StringComparison.OrdinalIgnoreCase))
+                    errors.Add("Current inventory no longer matches the verified resource and unit.");
+                var matching = reservationList.Where(item => item.InventoryStockId == stockId && item.Quantity == quantity &&
+                    item.EstimatedUnitCost is null && item.Sources is { Count: 1 } &&
+                    SourceMatches(item.Sources[0], "ResourceRequirement", ruleId, true)).ToArray();
+                if (matching.Length != 1) errors.Add("Reservation quantity or source differs from Member 3 evidence.");
+            }
+        }
+        foreach (var reservation in reservationList) CheckItem(reservation.Reason, reservation.Sources);
+        if (reservationList.Any(item => item.EstimatedUnitCost.HasValue) || output.EstimatedCost.HasValue)
+            errors.Add("Version-2 cost cannot be asserted without an authoritative price contract.");
+        return errors;
     }
 
     private async Task<WorkflowDecisionResponse?> FindReplayAsync(

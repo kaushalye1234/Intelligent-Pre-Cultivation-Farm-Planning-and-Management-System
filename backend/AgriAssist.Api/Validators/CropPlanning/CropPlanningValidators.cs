@@ -100,6 +100,11 @@ public sealed class CropReferenceProfileRequestValidator : IRequestValidator<Cro
             {
                 errors.Add($"Resource requirement rule '{rule.RuleKey}': {requirementError}");
             }
+            if (string.Equals(rule.RuleType?.Trim(), AgriAssist.Api.Services.TaskApproval.IrrigationScheduleReferenceRule.RuleType, StringComparison.OrdinalIgnoreCase)
+                && !AgriAssist.Api.Services.TaskApproval.IrrigationScheduleReferenceRule.TryParse(rule.StructuredValueJson, out _, out var irrigationError))
+            {
+                errors.Add($"Irrigation schedule rule '{rule.RuleKey}': {irrigationError}");
+            }
         }
         var duplicateRequirement = (request.Rules ?? [])
             .Where(rule => string.Equals(rule.RuleType?.Trim(), AgriAssist.Api.Services.Resources.CropResourceRequirementRule.RuleType, StringComparison.OrdinalIgnoreCase))
@@ -108,6 +113,19 @@ public sealed class CropReferenceProfileRequestValidator : IRequestValidator<Cro
             .GroupBy(parsed => parsed!.ResourceId?.ToString() ?? parsed!.ResourceName.ToLowerInvariant())
             .Any(group => group.Count() > 1);
         if (duplicateRequirement) errors.Add("Each resource may have only one resource requirement rule per reference profile.");
+        var irrigationRules = (request.Rules ?? [])
+            .Where(rule => string.Equals(rule.RuleType?.Trim(), AgriAssist.Api.Services.TaskApproval.IrrigationScheduleReferenceRule.RuleType, StringComparison.OrdinalIgnoreCase))
+            .Select(rule => new
+            {
+                rule.RuleKey,
+                Parsed = AgriAssist.Api.Services.TaskApproval.IrrigationScheduleReferenceRule.TryParse(rule.StructuredValueJson, out var parsed, out _) ? parsed : null
+            })
+            .Where(item => item.Parsed is not null)
+            .ToList();
+        if (irrigationRules.GroupBy(item => (item.Parsed!.DayOffsetFromPlanting, item.Parsed.StartTimeUtc)).Any(group => group.Count() > 1))
+            errors.Add("Duplicate irrigation slot in one reference profile.");
+        if (irrigationRules.GroupBy(item => item.RuleKey, StringComparer.OrdinalIgnoreCase).Any(group => group.Count() > 1))
+            errors.Add("Irrigation rule keys must be unique in one reference profile.");
         return errors;
     }
 }

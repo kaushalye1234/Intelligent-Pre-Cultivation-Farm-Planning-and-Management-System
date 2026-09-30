@@ -306,7 +306,7 @@ export function TaskApprovalPage() {
             <section className="work-section">
               <DataTable rows={workflows} emptyTitle="No scheduling workflows" emptyMessage="Run the crop planning agents to create a scheduling candidate for officer review." getRowKey={(row) => row.id} columns={[
                 { header: 'Objective', render: (row) => <div><strong>{row.objective}</strong><p className="muted-text">Revision {row.candidateRevision} · Version {row.version}</p></div> },
-                { header: 'State', render: (row) => <StatusPill label={row.currentStep || String(row.status)} tone={row.status === 4 ? 'good' : row.status === 5 || row.status === 9 ? 'bad' : row.status === 8 ? 'warn' : 'info'} /> },
+                { header: 'State', render: (row) => <StatusPill label={row.status === 12 ? 'Candidate blocked' : row.currentStep || String(row.status)} tone={row.status === 4 ? 'good' : [5, 9, 12].includes(row.status) ? 'bad' : row.status === 8 ? 'warn' : 'info'} /> },
                 { header: 'Created', render: (row) => formatDateTime(row.createdAt) },
                 { header: 'Actions', className: 'actions-cell', render: (row) => <div className="row-actions"><Button variant="ghost" onClick={() => navigate(`/task-approval/workflows/${row.id}`)}>Review</Button></div> },
               ]} />
