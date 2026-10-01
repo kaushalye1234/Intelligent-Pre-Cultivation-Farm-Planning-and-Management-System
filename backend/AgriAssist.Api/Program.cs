@@ -218,7 +218,7 @@ builder.Services.AddSwaggerGen(options =>
     {
         Title = "AgriAssist API",
         Version = "v1",
-        Description = "BASIC non-AI foundation for AgriAssist AI."
+        Description = "AgriAssist farm planning, inspections, resources, and human-reviewed AI workflow API."
     });
 
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme

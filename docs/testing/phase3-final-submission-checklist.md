@@ -2,23 +2,25 @@
 
 ## Verified
 
-- [x] Backend build and 44 xUnit tests
-- [x] AI service Docker health and 27 pytest tests
-- [x] React production build, lint, and 18 Vitest tests
+- [x] Backend Release suite: 197 xUnit tests against disposable PostgreSQL, 0 skipped
+- [x] AI service: 86 pytest tests
+- [x] React production build, lint, and 94 Vitest tests
 - [x] Real four-step workflow and candidate generation
 - [x] Concurrent approval: one HTTP 200 and one HTTP 409
 - [x] Farmer-scoped task, schedule, workflow, and decision visibility
 - [x] PostgreSQL migration, rollback, and row-lock smoke evidence
 - [x] API health latency sample recorded
-- [x] Flutter CI configured for separate widget test files; SDK, dependency, analysis, and individual test evidence recorded
+- [x] Flutter CI passed; 42 widget tests and analysis passed on PR #59
+- [x] Android debug APK built from merged `dev` commit `46c50b4`, verified with `apksigner`, installed and launched on an Android emulator on 2026-10-01
 
 ## Limitations to state in the submission
 
 - The local workflow used deterministic AI fallback because no LLM provider key was configured.
 - Weather, inspection, and inventory warnings remained human-review inputs in the disposable fixture.
-- The Flutter aggregate runner and Android Gradle task still stall in this Windows environment; CI now runs the widget files separately.
-- The Flutter debug APK Gradle task did not complete; no APK artifact is claimed.
-- No production deployment or load-test percentile claim is made.
+- The previous Windows Gradle attempts stalled; the 2026-10-01 clean-worktree build completed in 286.8 seconds. The debug APK uses the project's debug signing configuration and is not a production release package.
+- No production React/API/PostgreSQL deployment, public evaluator URL, or demonstration video is available for Group 04 yet.
+- The single consolidated group PDF still needs the other three members' own sections, AI logs and reflections, signed declarations, and a group AI declaration. Those must be supplied and reviewed by the students.
+- No external LLM-provider run or load-test percentile claim is made.
 
 ## Files to attach or link
 
@@ -27,4 +29,8 @@
 - `docs/database/er-diagram.md`
 - `docs/plans/member-4-phase3-final-integration.md`
 - `.github/workflows/ci.yml`
-- Swagger export or screenshots from the local API
+- [OpenAPI v1 export from the local Testing API](../api/agriassist-openapi-v1.json)
+- Local debug APK: `output/apk/agriassist-member4-dev-46c50b4-debug.apk` (generated file, excluded from Git)
+- Emulator launch screenshot: `output/screenshots/member4-apk-login-2026-10-01.png` (generated file, excluded from Git)
+- [Group 04 report assembly draft](../reports/group-04-consolidated-report-draft.md)
+- Local rendered review PDF: `output/pdf/SE3090_G04_consolidated_report_DRAFT.pdf` (generated file, excluded from Git)
