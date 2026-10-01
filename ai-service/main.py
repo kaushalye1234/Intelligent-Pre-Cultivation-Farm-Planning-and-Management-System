@@ -61,6 +61,7 @@ async def _run_crop_finding(
         CropFindingTools(settings),
         create_crop_finding_provider(settings),
         request_id=request_id,
+        operation_started_at=started,
     )
     logger.info(
         "CropFinding request started requestId=%s action=%s adminUserId=%s crop=%s variety=%s",
@@ -97,7 +98,8 @@ async def _run_crop_finding(
         logger.warning(
             "CropFinding provider failure requestId=%s action=%s adminUserId=%s operation=%s stage=%s attempt=%s "
             "exceptionClass=%s rootCauseClass=%s category=%s safeMessage=%s httpStatus=%s "
-            "openaiErrorCode=%s providerRequestId=%s",
+            "openaiErrorCode=%s providerRequestId=%s configuredTimeoutSeconds=%s effectiveTimeoutSeconds=%s "
+            "elapsedOperationMs=%s remainingBudgetSeconds=%s sourceCount=%s chunkCount=%s extractedCharacterCount=%s",
             exc.request_id or request_id,
             action,
             admin_user_id,
@@ -111,6 +113,13 @@ async def _run_crop_finding(
             exc.status_code,
             exc.error_code,
             exc.provider_request_id,
+            exc.configured_timeout_seconds,
+            exc.effective_timeout_seconds,
+            exc.elapsed_operation_ms,
+            exc.remaining_budget_seconds,
+            exc.source_count,
+            exc.chunk_count,
+            exc.extracted_character_count,
         )
         raise HTTPException(status_code=502, detail="CropFinding source discovery or analysis failed.") from exc
 

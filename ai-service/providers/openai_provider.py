@@ -65,6 +65,35 @@ class OpenAIProvider(BaseLLMProvider):
         text = await asyncio.wait_for(_generate(), timeout=self._timeout_seconds)
         return LLMResponse(text=text)
 
+    async def generate_crop_finding_json(
+        self,
+        prompt: str,
+        response_schema: dict[str, Any] | None,
+        timeout_seconds: float,
+    ) -> LLMResponse:
+        response_format: dict[str, Any] = {"type": "json_object"}
+        if response_schema is not None:
+            response_format = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "crop_finding_output",
+                    "strict": False,
+                    "schema": response_schema,
+                },
+            }
+
+        async def _generate() -> str:
+            client = self._client.with_options(timeout=timeout_seconds, max_retries=0)
+            response = await client.chat.completions.create(
+                model=self._model,
+                messages=[{"role": "user", "content": prompt}],
+                response_format=response_format,
+            )
+            return response.choices[0].message.content or ""
+
+        text = await asyncio.wait_for(_generate(), timeout=timeout_seconds)
+        return LLMResponse(text=text)
+
     async def search_web(
         self,
         prompt: str,

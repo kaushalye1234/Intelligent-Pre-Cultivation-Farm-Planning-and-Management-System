@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 
-from agents.crop_finding_agent import CropFindingAgent
+from agents.crop_finding_agent import CropFindingAgent, EvidenceBundle
 from config import Settings
 from providers.base_llm_provider import BaseLLMProvider, LLMProviderError, LLMResponse, WebSearchResponse, WebSearchSource
 from schemas.crop_finding import DiscoverReferencesInput, SuggestCropsInput, SuggestVarietiesInput
@@ -30,12 +30,13 @@ def document(stage: int, source_id: str, text: str) -> RetrievedDocument:
 
 
 class FakeTools:
-    def __init__(self, stage_documents):
+    def __init__(self, stage_documents, settings_overrides=None):
         self.settings = Settings(
             _env_file=None,
             AI_PROVIDER="openai",
             AI_MODEL="gpt-6-luna",
             OPENAI_API_KEY="test",
+            **(settings_overrides or {}),
         )
         self.source_policy = SourcePolicy.load_default()
         self.stage_documents = stage_documents
@@ -71,6 +72,7 @@ class ControlledProvider(BaseLLMProvider):
         self.generate_outcomes = list(generate_outcomes or [])
         self.search_stages = []
         self.generate_calls = 0
+        self.analysis_timeouts = []
 
     async def search_web(self, prompt, allowed_domains, max_results):
         stage = 1 if "doa.gov.lk" in allowed_domains else 2
@@ -88,6 +90,20 @@ class ControlledProvider(BaseLLMProvider):
         if isinstance(outcome, str):
             return LLMResponse(text=outcome)
         return LLMResponse(text=json.dumps(outcome))
+
+    async def generate_crop_finding_json(self, prompt, response_schema, timeout_seconds):
+        self.analysis_timeouts.append(timeout_seconds)
+        return await self.generate_json(prompt, response_schema=response_schema)
+
+
+def evidence_bundle() -> EvidenceBundle:
+    return EvidenceBundle(
+        text="SOURCE_ID: local\nCONTENT:\nSafe evidence text.",
+        source_count=1,
+        chunk_count=1,
+        extracted_character_count=19,
+        per_source_character_counts={"local": 19},
+    )
 
 
 @pytest.mark.asyncio
@@ -346,10 +362,11 @@ async def test_structured_analysis_timeout_is_distinct_from_web_search_timeout()
     assert error.category == "timeout"
     assert error.operation == "structured_analysis"
     assert error.stage == 1
-    assert str(error) == "OpenAI structured analysis exceeded the configured provider timeout."
+    assert str(error) == "OpenAI structured analysis exceeded the configured CropFinding timeout."
     assert provider.search_stages == [1]
     assert tools.retrieve_calls == [1]
     assert provider.generate_calls == 1
+    assert provider.analysis_timeouts == [45]
 
 
 @pytest.mark.asyncio
@@ -369,3 +386,254 @@ async def test_malformed_analysis_output_is_classified_without_retry():
     assert captured.value.operation == "structured_analysis"
     assert captured.value.attempt == 1
     assert provider.generate_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_structured_analysis_uses_configured_timeout_when_budget_is_sufficient():
+    provider = ControlledProvider(generate_outcomes=[{}])
+    agent = CropFindingAgent(
+        FakeTools({}),
+        provider,
+        request_id="request-budget-full",
+        operation_started_at=0,
+        monotonic_clock=lambda: 10,
+    )
+
+    await agent._generate_payload(
+        "PROMPT_SECRET",
+        {"type": "object"},
+        action="DiscoverReferences",
+        stage=1,
+        request_id="request-budget-full",
+        evidence=evidence_bundle(),
+    )
+
+    assert provider.analysis_timeouts == [45]
+
+
+@pytest.mark.asyncio
+async def test_structured_analysis_timeout_is_reduced_to_remaining_safe_budget():
+    provider = ControlledProvider(generate_outcomes=[{}])
+    agent = CropFindingAgent(
+        FakeTools({}),
+        provider,
+        request_id="request-budget-reduced",
+        operation_started_at=0,
+        monotonic_clock=lambda: 80,
+    )
+
+    await agent._generate_payload(
+        "prompt",
+        {"type": "object"},
+        action="DiscoverReferences",
+        stage=1,
+        request_id="request-budget-reduced",
+        evidence=evidence_bundle(),
+    )
+
+    assert provider.analysis_timeouts == [20]
+
+
+@pytest.mark.asyncio
+async def test_structured_analysis_does_not_start_without_safe_remaining_budget():
+    provider = ControlledProvider(generate_outcomes=[{}])
+    agent = CropFindingAgent(
+        FakeTools({}),
+        provider,
+        request_id="request-budget-exhausted",
+        operation_started_at=0,
+        monotonic_clock=lambda: 101,
+    )
+
+    with pytest.raises(LLMProviderError) as captured:
+        await agent._generate_payload(
+            "PROMPT_SECRET",
+            {"type": "object"},
+            action="DiscoverReferences",
+            stage=1,
+            request_id="request-budget-exhausted",
+            evidence=evidence_bundle(),
+        )
+
+    assert captured.value.category == "timeout"
+    assert captured.value.root_exception_class == "CropFindingOverallBudgetError"
+    assert captured.value.effective_timeout_seconds == 0
+    assert provider.generate_calls == 0
+    assert provider.analysis_timeouts == []
+
+
+@pytest.mark.parametrize(
+    ("category", "status_code", "root_exception_class"),
+    [
+        ("rate_limit", 429, "RateLimitError"),
+        ("server_error", 500, "InternalServerError"),
+        ("server_error", 503, "InternalServerError"),
+        ("connection", None, "APIConnectionError"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_retryable_structured_analysis_failure_receives_at_most_one_retry(
+    category,
+    status_code,
+    root_exception_class,
+):
+    failure = LLMProviderError(
+        "safe transient failure",
+        category=category,
+        operation="structured_analysis",
+        status_code=status_code,
+        error_code="transient_code",
+        provider_request_id="provider-request-analysis",
+        root_exception_class=root_exception_class,
+        retryable=True,
+    )
+    provider = ControlledProvider(generate_outcomes=[failure, {}])
+    agent = CropFindingAgent(FakeTools({}), provider, request_id="request-analysis-retry")
+
+    await agent._generate_payload(
+        "prompt",
+        {"type": "object"},
+        action="DiscoverReferences",
+        stage=2,
+        request_id="request-analysis-retry",
+        evidence=evidence_bundle(),
+    )
+
+    assert provider.generate_calls == 2
+    assert provider.analysis_timeouts == [45, 45]
+
+
+@pytest.mark.asyncio
+async def test_invalid_request_structured_analysis_is_not_retried_and_preserves_metadata():
+    failure = LLMProviderError(
+        "OpenAI rejected the CropFinding request.",
+        category="invalid_request",
+        operation="structured_analysis",
+        status_code=400,
+        error_code="unsupported_parameter",
+        provider_request_id="provider-request-400",
+        root_exception_class="BadRequestError",
+        retryable=False,
+    )
+    provider = ControlledProvider(generate_outcomes=[failure])
+    agent = CropFindingAgent(FakeTools({}), provider, request_id="request-analysis-invalid")
+
+    with pytest.raises(LLMProviderError) as captured:
+        await agent._generate_payload(
+            "prompt",
+            {"type": "object"},
+            action="DiscoverReferences",
+            stage=2,
+            request_id="request-analysis-invalid",
+            evidence=evidence_bundle(),
+        )
+
+    error = captured.value
+    assert error.stage == 2
+    assert error.attempt == 1
+    assert error.status_code == 400
+    assert error.error_code == "unsupported_parameter"
+    assert error.provider_request_id == "provider-request-400"
+    assert provider.generate_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_structured_analysis_classification_preserves_safe_provider_metadata():
+    class FakeStatusError(Exception):
+        def __init__(self):
+            super().__init__("RAW_PROVIDER_SECRET")
+            self.status_code = 503
+            self.code = "server_is_overloaded"
+            self.request_id = "provider-request-503"
+
+    provider = ControlledProvider(generate_outcomes=[FakeStatusError()])
+    tools = FakeTools({}, settings_overrides={"CROP_FINDING_RETRY_COUNT": 0})
+    agent = CropFindingAgent(tools, provider, request_id="request-analysis-metadata")
+
+    with pytest.raises(LLMProviderError) as captured:
+        await agent._generate_payload(
+            "prompt",
+            {"type": "object"},
+            action="DiscoverReferences",
+            stage=1,
+            request_id="request-analysis-metadata",
+            evidence=evidence_bundle(),
+        )
+
+    error = captured.value
+    assert error.category == "server_error"
+    assert error.status_code == 503
+    assert error.error_code == "server_is_overloaded"
+    assert error.provider_request_id == "provider-request-503"
+    assert error.root_exception_class == "FakeStatusError"
+    assert "RAW_PROVIDER_SECRET" not in str(error)
+
+
+@pytest.mark.asyncio
+async def test_structured_analysis_diagnostics_are_safe_and_include_payload_metadata(caplog):
+    caplog.set_level("WARNING", logger="agriassist.crop_finding")
+    provider = ControlledProvider(generate_outcomes=[TimeoutError("DOCUMENT_SECRET")])
+    agent = CropFindingAgent(FakeTools({}), provider, request_id="request-analysis-log")
+
+    with pytest.raises(LLMProviderError):
+        await agent._generate_payload(
+            "PROMPT_SECRET",
+            {"type": "object"},
+            action="DiscoverReferences",
+            stage=1,
+            request_id="request-analysis-log",
+            evidence=evidence_bundle(),
+        )
+
+    assert "configuredTimeoutSeconds=45" in caplog.text
+    assert "effectiveTimeoutSeconds=45" in caplog.text
+    assert "sourceCount=1" in caplog.text
+    assert "chunkCount=1" in caplog.text
+    assert "extractedCharacterCount=19" in caplog.text
+    assert "PROMPT_SECRET" not in caplog.text
+    assert "DOCUMENT_SECRET" not in caplog.text
+
+
+def test_reference_evidence_bundle_deduplicates_and_keeps_relevant_neighbor_provenance():
+    source = document(1, "local", "placeholder")
+    source.segments = [
+        ExtractedSegment(text="Unrelated opening content with no agricultural value.", section="Introduction"),
+        ExtractedSegment(text="Context immediately before the supported statement.", section="Growth"),
+        ExtractedSegment(text="MICH HY2 variety reaches maturity in 75 days.", section="Growth"),
+        ExtractedSegment(text="Context immediately after the supported statement.", section="Growth"),
+        ExtractedSegment(text="MICH HY2 variety reaches maturity in 75 days.", section="Growth"),
+        ExtractedSegment(text="Unrelated ending content with no agricultural value.", section="Contacts"),
+    ]
+    agent = CropFindingAgent(FakeTools({}), ControlledProvider())
+
+    bundle = agent._evidence_bundle(
+        [source],
+        focus_terms=["MICH HY2", "maturity", "growth stage"],
+    )
+
+    assert bundle.source_count == 1
+    assert bundle.chunk_count == 3
+    assert bundle.text.count("MICH HY2 variety reaches maturity in 75 days.") == 1
+    assert "Context immediately before" in bundle.text
+    assert "Context immediately after" in bundle.text
+    assert "Unrelated opening" not in bundle.text
+    assert "Unrelated ending" not in bundle.text
+    assert "section=Growth" in bundle.text
+
+
+def test_analysis_evidence_bundle_enforces_configurable_source_and_total_caps():
+    source_a = document(1, "source-a", "A" * 3_000)
+    source_b = document(1, "source-b", "B" * 3_000)
+    tools = FakeTools(
+        {},
+        settings_overrides={
+            "CROP_FINDING_ANALYSIS_MAX_CHARS_PER_SOURCE": 2_000,
+            "CROP_FINDING_ANALYSIS_MAX_TOTAL_CHARS": 5_000,
+        },
+    )
+    agent = CropFindingAgent(tools, ControlledProvider())
+
+    bundle = agent._evidence_bundle([source_a, source_b])
+
+    assert bundle.extracted_character_count == 4_000
+    assert bundle.per_source_character_counts == {"source-a": 2_000, "source-b": 2_000}

@@ -1,3 +1,4 @@
+import asyncio
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
@@ -28,6 +29,13 @@ class LLMProviderError(RuntimeError):
         self.action: str | None = None
         self.stage: int | None = None
         self.attempt: int | None = None
+        self.configured_timeout_seconds: float | None = None
+        self.effective_timeout_seconds: float | None = None
+        self.elapsed_operation_ms: int | None = None
+        self.remaining_budget_seconds: float | None = None
+        self.source_count: int | None = None
+        self.chunk_count: int | None = None
+        self.extracted_character_count: int | None = None
 
     def add_context(
         self,
@@ -41,6 +49,26 @@ class LLMProviderError(RuntimeError):
         self.action = action
         self.stage = stage
         self.attempt = attempt
+        return self
+
+    def add_diagnostics(
+        self,
+        *,
+        configured_timeout_seconds: float,
+        effective_timeout_seconds: float,
+        elapsed_operation_ms: int,
+        remaining_budget_seconds: float,
+        source_count: int,
+        chunk_count: int,
+        extracted_character_count: int,
+    ) -> "LLMProviderError":
+        self.configured_timeout_seconds = configured_timeout_seconds
+        self.effective_timeout_seconds = effective_timeout_seconds
+        self.elapsed_operation_ms = elapsed_operation_ms
+        self.remaining_budget_seconds = remaining_budget_seconds
+        self.source_count = source_count
+        self.chunk_count = chunk_count
+        self.extracted_character_count = extracted_character_count
         return self
 
 
@@ -135,6 +163,23 @@ class BaseLLMProvider(ABC):
         response_schema: dict[str, Any] | None = None,
     ) -> LLMResponse:
         raise NotImplementedError
+
+    async def generate_crop_finding_json(
+        self,
+        prompt: str,
+        response_schema: dict[str, Any] | None,
+        timeout_seconds: float,
+    ) -> LLMResponse:
+        """Run CropFinding analysis within its request-specific remaining budget.
+
+        Providers can override this to isolate SDK timeout/retry configuration.
+        The default keeps test and alternate providers compatible without
+        changing their existing ``generate_json`` behavior.
+        """
+        return await asyncio.wait_for(
+            self.generate_json(prompt, response_schema=response_schema),
+            timeout=timeout_seconds,
+        )
 
     async def search_web(
         self,

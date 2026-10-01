@@ -34,6 +34,10 @@ def test_crop_finding_provider_uses_shared_openai_model_configuration():
     assert not hasattr(settings, "crop_finding_model")
     assert provider._web_search_timeout_seconds == 50
     assert provider._web_search_client.max_retries == 0
+    assert settings.crop_finding_structured_analysis_timeout_seconds == 45
+    assert settings.crop_finding_completion_safety_margin_seconds == 5
+    assert settings.crop_finding_analysis_max_chars_per_source == 12_000
+    assert settings.crop_finding_analysis_max_total_chars == 45_000
 
     shared_provider = create_provider(settings)
     assert shared_provider is not None
@@ -50,6 +54,31 @@ def test_crop_finding_web_search_timeout_must_be_shorter_than_overall_timeout():
             OPENAI_API_KEY="test-key",
             CROP_FINDING_WEB_SEARCH_TIMEOUT_SECONDS=105,
             CROP_FINDING_OVERALL_TIMEOUT_SECONDS=105,
+        )
+
+
+def test_crop_finding_analysis_timeout_and_margin_must_fit_overall_timeout():
+    with pytest.raises(ValidationError):
+        Settings(
+            _env_file=None,
+            AI_PROVIDER="openai",
+            AI_MODEL="gpt-6-luna",
+            OPENAI_API_KEY="test-key",
+            CROP_FINDING_STRUCTURED_ANALYSIS_TIMEOUT_SECONDS=101,
+            CROP_FINDING_COMPLETION_SAFETY_MARGIN_SECONDS=5,
+            CROP_FINDING_OVERALL_TIMEOUT_SECONDS=105,
+        )
+
+
+def test_crop_finding_analysis_character_caps_cannot_exceed_extraction_caps():
+    with pytest.raises(ValidationError):
+        Settings(
+            _env_file=None,
+            AI_PROVIDER="openai",
+            AI_MODEL="gpt-6-luna",
+            OPENAI_API_KEY="test-key",
+            CROP_FINDING_MAX_EXTRACTED_CHARS_PER_SOURCE=10_000,
+            CROP_FINDING_ANALYSIS_MAX_CHARS_PER_SOURCE=12_000,
         )
 
 
@@ -97,6 +126,41 @@ async def test_openai_provider_preserves_json_object_mode_without_schema(monkeyp
     await provider.generate_json("coordinator prompt")
 
     assert captured["response_format"] == {"type": "json_object"}
+
+
+@pytest.mark.asyncio
+async def test_crop_finding_analysis_uses_dynamic_timeout_and_disables_sdk_retries(monkeypatch):
+    captured = {"with_options": []}
+
+    class FakeCompletions:
+        async def create(self, **kwargs):
+            captured["request"] = kwargs
+            return SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content='{"status":"Analyzed"}'))]
+            )
+
+    class FakeClient:
+        def __init__(self):
+            self.chat = SimpleNamespace(completions=FakeCompletions())
+
+        def with_options(self, **kwargs):
+            captured["with_options"].append(kwargs)
+            return self
+
+    fake_client = FakeClient()
+    monkeypatch.setattr(openai_provider_module, "AsyncOpenAI", lambda **kwargs: fake_client)
+    provider = OpenAIProvider(api_key="test-key", model="gpt-6-luna", timeout_seconds=30)
+
+    result = await provider.generate_crop_finding_json(
+        "crop finding prompt",
+        response_schema=RESPONSE_SCHEMA,
+        timeout_seconds=42.5,
+    )
+
+    assert result.text == '{"status":"Analyzed"}'
+    assert captured["with_options"] == [{"timeout": 42.5, "max_retries": 0}]
+    assert captured["request"]["response_format"]["json_schema"]["name"] == "crop_finding_output"
+    assert provider._timeout_seconds == 30
 
 
 @pytest.mark.asyncio
