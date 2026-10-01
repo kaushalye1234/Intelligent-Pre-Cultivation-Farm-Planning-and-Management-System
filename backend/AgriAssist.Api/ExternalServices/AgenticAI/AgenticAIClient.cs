@@ -10,7 +10,7 @@ namespace AgriAssist.Api.ExternalServices.AgenticAI;
 public sealed class AgenticAIClient(
     HttpClient httpClient,
     IConfiguration configuration,
-    ILogger<AgenticAIClient> logger) : IAgenticAIClient, IWeatherResourceAIClient, ISchedulingValidationAIClient
+    ILogger<AgenticAIClient> logger) : IAgenticAIClient, IWeatherResourceAIClient, ISchedulingValidationAIClient, ICropFindingAIClient
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -46,6 +46,27 @@ public sealed class AgenticAIClient(
             "scheduling validation",
             cancellationToken);
 
+    public Task<CropSuggestionsResponse> SuggestCropsAsync(SuggestCropsInput input, CancellationToken cancellationToken) =>
+        PostCropFindingAsync<SuggestCropsInput, CropSuggestionsResponse>(
+            "/crop-finding/suggest-crops",
+            input,
+            "suggest crops",
+            cancellationToken);
+
+    public Task<VarietySuggestionsResponse> SuggestVarietiesAsync(SuggestVarietiesInput input, CancellationToken cancellationToken) =>
+        PostCropFindingAsync<SuggestVarietiesInput, VarietySuggestionsResponse>(
+            "/crop-finding/suggest-varieties",
+            input,
+            "suggest varieties",
+            cancellationToken);
+
+    public Task<ReferenceDiscoveryResponse> DiscoverReferencesAsync(DiscoverReferencesInput input, CancellationToken cancellationToken) =>
+        PostCropFindingAsync<DiscoverReferencesInput, ReferenceDiscoveryResponse>(
+            "/crop-finding/discover-references",
+            input,
+            "discover references",
+            cancellationToken);
+
     private async Task<TOutput> PostAsync<TInput, TOutput>(
         string path,
         TInput input,
@@ -73,6 +94,42 @@ public sealed class AgenticAIClient(
         {
             logger.LogWarning("AI service returned {StatusCode} for {OperationName} workflow {WorkflowId}", response.StatusCode, operationName, workflowId);
             throw new InvalidOperationException($"AI service failed to complete the {operationName} step.");
+        }
+
+        var output = await response.Content.ReadFromJsonAsync<TOutput>(JsonOptions, timeout.Token);
+        return output ?? throw new InvalidOperationException($"AI service returned an empty {operationName} response.");
+    }
+
+    private async Task<TOutput> PostCropFindingAsync<TInput, TOutput>(
+        string path,
+        TInput input,
+        string operationName,
+        CancellationToken cancellationToken)
+    {
+        var serviceUrl = configuration["AI:ServiceUrl"];
+        var serviceToken = configuration["AI:ServiceToken"];
+        if (string.IsNullOrWhiteSpace(serviceUrl) || string.IsNullOrWhiteSpace(serviceToken))
+            throw new InvalidOperationException("AI service URL or token is not configured.");
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{serviceUrl.TrimEnd('/')}{path}");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", serviceToken);
+        request.Content = JsonContent.Create(input, options: JsonOptions);
+
+        var timeoutSeconds = Math.Clamp(configuration.GetValue<int?>("AI:CropFindingTimeoutSeconds") ?? 110, 10, 180);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+
+        using var response = await httpClient.SendAsync(request, timeout.Token);
+        if (!response.IsSuccessStatusCode)
+        {
+            logger.LogWarning(
+                "AI service returned {StatusCode} for CropFinding operation {OperationName}",
+                response.StatusCode,
+                operationName);
+            throw new HttpRequestException(
+                $"AI service failed to {operationName}.",
+                null,
+                response.StatusCode);
         }
 
         var output = await response.Content.ReadFromJsonAsync<TOutput>(JsonOptions, timeout.Token);

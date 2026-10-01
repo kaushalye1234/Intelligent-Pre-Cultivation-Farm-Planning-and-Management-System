@@ -99,6 +99,10 @@ builder.Services.AddScoped<IRequestValidator<CropPlanRequestCreate>, CropPlanReq
 builder.Services.AddScoped<IRequestValidator<CropPlanRequestUpdate>, CropPlanRequestUpdateValidator>();
 builder.Services.AddScoped<IRequestValidator<PrePlantingAssessmentRequest>, PrePlantingAssessmentRequestValidator>();
 builder.Services.AddScoped<ICropPlanningService, CropPlanningService>();
+builder.Services.AddScoped<IRequestValidator<SuggestCropsRequest>, SuggestCropsRequestValidator>();
+builder.Services.AddScoped<IRequestValidator<SuggestVarietiesRequest>, SuggestVarietiesRequestValidator>();
+builder.Services.AddScoped<IRequestValidator<DiscoverReferencesRequest>, DiscoverReferencesRequestValidator>();
+builder.Services.AddScoped<ICropFindingService, CropFindingService>();
 builder.Services.AddScoped<IRequestValidator<FieldInspectionRequest>, FieldInspectionRequestValidator>();
 builder.Services.AddScoped<IRequestValidator<ObservationRequest>, ObservationRequestValidator>();
 builder.Services.AddScoped<IRequestValidator<CropIssueRequest>, CropIssueRequestValidator>();
@@ -120,6 +124,7 @@ builder.Services.AddScoped<ITaskApprovalService, TaskApprovalService>();
 builder.Services.AddHttpClient<IAgenticAIClient, AgenticAIClient>();
 builder.Services.AddHttpClient<IWeatherResourceAIClient, AgenticAIClient>();
 builder.Services.AddHttpClient<ISchedulingValidationAIClient, AgenticAIClient>();
+builder.Services.AddHttpClient<ICropFindingAIClient, AgenticAIClient>();
 // OpenWeatherMap takes the API key as a query parameter, so do not log request URLs for this client.
 builder.Services.AddHttpClient<IWeatherService, WeatherService>().RemoveAllLoggers();
 builder.Services.AddScoped<IWeatherResourceWorkflowService, WeatherResourceWorkflowService>();
