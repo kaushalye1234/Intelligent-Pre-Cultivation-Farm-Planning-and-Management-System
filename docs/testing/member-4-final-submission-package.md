@@ -11,6 +11,8 @@ This index collects the evidence for the Member 4 scheduling, approval, and farm
 
 ## Verification evidence
 
+- [Toolchain inventory](phase3-toolchain-inventory.md) distinguishes verified project/CI versions from unavailable exact environment versions.
+
 - [Verification log](verification-log.md)
 - [Performance report](performance-report.md)
 - [Phase 3 final checklist](phase3-final-submission-checklist.md)
