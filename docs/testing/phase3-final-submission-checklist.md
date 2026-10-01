@@ -1,5 +1,9 @@
 # Phase 3 final submission checklist
 
+## Toolchain inventory
+
+- [Version inventory](phase3-toolchain-inventory.md) records configured/pinned versions and clearly identifies exact host patch versions or image digests that were not captured.
+
 ## Verified
 
 - [x] Backend Release suite: 197 xUnit tests against disposable PostgreSQL, 0 skipped
