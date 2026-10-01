@@ -594,7 +594,7 @@ public sealed class WorkflowApprovalService(
                 schedule.ScheduledAt.TimeOfDay < ruleTime.ToTimeSpan() ||
                 (schedule.ScheduledAt.TimeOfDay - ruleTime.ToTimeSpan()).TotalHours is < 0 or > 23 ||
                 (schedule.ScheduledAt.TimeOfDay - ruleTime.ToTimeSpan()).TotalMinutes % 60 != 0 ||
-                schedule.Reason != $"Verified irrigation rule {rules[0].RuleKey} specifies this offset, UTC time and duration.")
+                schedule.Reason != $"Verified irrigation rule {rules[0].RuleKey[..Math.Min(100, rules[0].RuleKey.Length)]} specifies this offset, UTC time and duration.")
                 errors.Add("Irrigation candidate does not follow a verified rule, explanation, and same-day slot.");
         }
 

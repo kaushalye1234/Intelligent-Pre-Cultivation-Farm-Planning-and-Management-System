@@ -224,6 +224,36 @@ public sealed class WorkflowApprovalTests
     }
 
     [Fact]
+    public async Task Version_two_candidate_accepts_a_long_verified_irrigation_rule_key()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedAsync(db, includeStock: true);
+        var longRuleKey = new string('r', 120);
+        var profile = await AddVersionTwoEvidenceAsync(db, data, irrigationRuleKey: longRuleKey);
+        var irrigationRule = profile.Rules.Single(item => item.RuleType == "IrrigationSchedule");
+        var service = NewService(db, data.Approver.Id, input =>
+        {
+            var candidate = VersionTwoCandidate(input, data.Stock!.Id, profile.Rules.Single(item => item.RuleType == "ResourceRequirement").Id);
+            return candidate with
+            {
+                CandidateIrrigation = [new SchedulingCandidateIrrigation(
+                    input.FieldId!.Value,
+                    StartAt(input.PreferredStartDate.AddDays(1), 6),
+                    30,
+                    "Candidate only; officer approval is required.",
+                    $"Verified irrigation rule {irrigationRule.RuleKey[..100]} specifies this offset, UTC time and duration.",
+                    [new SchedulingSource("IrrigationRule", irrigationRule.Id, "Verified guide", profile.Id,
+                        profile.SourceVersion, irrigationRule.VerifiedAt)])]
+            };
+        });
+
+        var review = await service.GenerateCandidateAsync(data.Workflow.Id, CancellationToken.None);
+
+        Assert.Equal(AgentWorkflowStatus.PendingOfficerApproval, review.Workflow.Status);
+        Assert.DoesNotContain(review.Validations.SelectMany(item => item.Errors), item => item.Length > 0);
+    }
+
+    [Fact]
     public async Task Malformed_member_three_stock_id_fails_validation_without_throwing()
     {
         await using var db = NewDbContext();
@@ -573,9 +603,18 @@ public sealed class WorkflowApprovalTests
     private static SchedulingValidationOutput Candidate(SchedulingValidationInput input) => Candidate(input, null, 0);
 
     private static async Task<CropReferenceProfile> AddVersionTwoEvidenceAsync(AppDbContext db, SeededData data,
-        decimal requiredQuantity = 2m)
+        decimal requiredQuantity = 2m, string? irrigationRuleKey = null)
     {
         var verified = DateTime.UtcNow.AddDays(-1);
+        var rules = new List<CropRuleReference>
+        {
+            new() { RuleType = "ResourceRequirement", RuleKey = "seed", StructuredValueJson = "{}",
+                SourceName = "Verified guide", VerifiedAt = verified }
+        };
+        if (irrigationRuleKey is not null)
+            rules.Add(new CropRuleReference { RuleType = "IrrigationSchedule", RuleKey = irrigationRuleKey,
+                StructuredValueJson = "{\"dayOffsetFromPlanting\":1,\"startTimeUtc\":\"06:00\",\"durationMinutes\":30}",
+                SourceName = "Verified guide", VerifiedAt = verified });
         var profile = new CropReferenceProfile
         {
             CropTypeId = data.Request.CropTypeId,
@@ -585,8 +624,7 @@ public sealed class WorkflowApprovalTests
             IsActive = true,
             Stages = [new CropStageReference { StageName = "Planting", Sequence = 1,
                 TypicalMinDays = 3, TypicalMaxDays = 5, SourceName = "Verified guide" }],
-            Rules = [new CropRuleReference { RuleType = "ResourceRequirement", RuleKey = "seed",
-                StructuredValueJson = "{}", SourceName = "Verified guide", VerifiedAt = verified }]
+            Rules = rules
         };
         db.CropReferenceProfiles.Add(profile);
         var weatherStep = data.Workflow.Steps.Single(item => item.AgentName == "WeatherResourceAgent");
@@ -597,7 +635,7 @@ public sealed class WorkflowApprovalTests
             weatherRisk = "Medium",
             requirementStatus = "Sufficient",
             requirementSource = new { cropReferenceProfileId = profile.Id },
-            resourceRequirements = new[] { new { ruleId = profile.Rules.Single().Id,
+            resourceRequirements = new[] { new { ruleId = profile.Rules.Single(item => item.RuleType == "ResourceRequirement").Id,
                 resourceId = data.Stock!.ResourceId, resourceName = "Seed", unit = "kg",
                 requiredQuantity, sufficient = true, requirementStatus = "Sufficient" } },
             resourceChecks = new[] { new { inventoryStockId = data.Stock!.Id,
