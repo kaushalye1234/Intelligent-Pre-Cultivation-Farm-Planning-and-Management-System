@@ -131,6 +131,7 @@ async def test_high_weather_keeps_a_reviewable_but_unapprovable_proposal():
     assert result.status == "CandidateBlocked"
     assert result.requires_human_approval is False
     assert len(result.candidate_tasks) == 3
+    assert len(result.candidate_reservations) == 1
 
 
 @pytest.mark.asyncio
@@ -159,9 +160,19 @@ async def test_missing_verified_evidence_cannot_use_generic_fallback():
 async def test_crop_stage_outside_window_blocks_without_extending_dates():
     value = sourced_request()
     value.preferred_end_date = value.preferred_start_date + timedelta(days=2)
+    payload = value.model_dump(by_alias=True, mode="json")
+    omitted_stage_ids = [str(uuid4()), str(uuid4())]
+    payload["evidence"]["stages"].append(
+        {"id": omitted_stage_ids[0], "stageName": "Flowering", "sequence": 3,
+         "typicalMinDays": 2, "typicalMaxDays": 4, "sourceName": "Verified guide"})
+    payload["evidence"]["stages"].append(
+        {"id": omitted_stage_ids[1], "stageName": "Harvest", "sequence": 4,
+         "typicalMinDays": 1, "typicalMaxDays": 2, "sourceName": "Verified guide"})
+    value = SchedulingValidationInput.model_validate(payload)
     result = await SchedulingValidationAgent().run(value)
     assert result.status == "CandidateBlocked"
     assert all(item.due_at.date() <= value.preferred_end_date for item in result.candidate_tasks)
+    assert all(any(stage_id in warning for warning in result.warnings) for stage_id in omitted_stage_ids)
 
 
 @pytest.mark.asyncio

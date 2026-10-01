@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Text.Json;
 using AgriAssist.Api.Data;
@@ -510,9 +511,15 @@ public sealed class WorkflowApprovalService(
             !weather.TryGetProperty("resourceChecks", out checks) || checks.ValueKind != JsonValueKind.Array)
             errors.Add("Verified resource requirements and stock checks are unavailable.");
 
+        var preparations = fresh.FieldAnalysisOutput.ValueKind == JsonValueKind.Object &&
+            fresh.FieldAnalysisOutput.TryGetProperty("fieldPreparationRequirements", out var preparationArray) &&
+            preparationArray.ValueKind == JsonValueKind.Array
+                ? preparationArray.EnumerateArray().Where(item => item.ValueKind == JsonValueKind.String)
+                    .Select(item => item.GetString() ?? string.Empty).ToArray()
+                : [];
         var preparationCount = fresh.FieldAnalysisOutput.ValueKind == JsonValueKind.Object &&
-            fresh.FieldAnalysisOutput.TryGetProperty("fieldPreparationRequirements", out var preparations) &&
-            preparations.ValueKind == JsonValueKind.Array ? preparations.GetArrayLength() : 0;
+            fresh.FieldAnalysisOutput.TryGetProperty("fieldPreparationRequirements", out var preparationCountArray) &&
+            preparationCountArray.ValueKind == JsonValueKind.Array ? preparationCountArray.GetArrayLength() : 0;
         var taskList = output.CandidateTasks ?? [];
         if (taskList.Count != preparationCount + evidence.Stages.Count)
             errors.Add("Candidate tasks do not cover every verified preparation requirement and crop stage.");
@@ -541,10 +548,15 @@ public sealed class WorkflowApprovalService(
             CheckItem(task.Reason, task.Sources);
         var preparationTasks = taskList.Where(item => item.Sources is { Count: 1 } &&
             item.Sources[0].Kind == "FieldAnalysis").ToArray();
+        var expectedPreparationReasons = preparations.Select(item =>
+            $"Member 2 recorded: {item[..Math.Min(350, item.Length)]}").ToList();
+        var preparationReasonsMatch = preparationTasks.All(item => expectedPreparationReasons.Remove(item.Reason ?? string.Empty))
+            && expectedPreparationReasons.Count == 0;
         if (preparationTasks.Length != preparationCount || preparationTasks.Any(item =>
             !SourceMatches(item.Sources![0], "FieldAnalysis", evidence.FieldAnalysisStepId ?? Guid.Empty, false) ||
-            DateOnly.FromDateTime(item.DueAt) != firstDay || item.Title != "Review recorded field preparation requirement"))
-            errors.Add("Preparation tasks do not match persisted Member 2 evidence and timing.");
+            DateOnly.FromDateTime(item.DueAt) != firstDay || item.Title != "Review recorded field preparation requirement") ||
+            !preparationReasonsMatch)
+            errors.Add("Preparation task evidence, explanation, or timing does not match persisted Member 2 output.");
 
         var stageDay = plantingDay;
         var orderedStages = evidence.Stages.OrderBy(item => item.Sequence).ThenBy(item => item.Id).ToArray();
@@ -562,8 +574,9 @@ public sealed class WorkflowApprovalService(
             var matches = taskList.Where(item => item.Sources is { Count: 1 } &&
                 SourceMatches(item.Sources[0], "CropStage", stage.Id, true)).ToArray();
             if (matches.Length != 1 || DateOnly.FromDateTime(matches[0].DueAt) != stageDay ||
-                matches[0].Title != $"Review {stage.StageName[..Math.Min(120, stage.StageName.Length)]} stage")
-                errors.Add($"Candidate stage {stage.Id} lacks its verified source or derived date.");
+                matches[0].Title != $"Review {stage.StageName[..Math.Min(120, stage.StageName.Length)]} stage" ||
+                matches[0].Reason != $"Verified stage {stage.Sequence} follows the profile's minimum stage durations.")
+                errors.Add($"Candidate stage {stage.Id} lacks its verified source, explanation, or derived date.");
         }
         if (taskList.Any(item => item.Sources is not { Count: 1 } ||
             item.Sources[0].Kind is not ("FieldAnalysis" or "CropStage")))
@@ -580,8 +593,9 @@ public sealed class WorkflowApprovalService(
                 DateOnly.FromDateTime(schedule.ScheduledAt) != plantingDay.AddDays(rules[0].DayOffsetFromPlanting) ||
                 schedule.ScheduledAt.TimeOfDay < ruleTime.ToTimeSpan() ||
                 (schedule.ScheduledAt.TimeOfDay - ruleTime.ToTimeSpan()).TotalHours is < 0 or > 23 ||
-                (schedule.ScheduledAt.TimeOfDay - ruleTime.ToTimeSpan()).TotalMinutes % 60 != 0)
-                errors.Add("Irrigation candidate does not follow a verified rule and same-day slot.");
+                (schedule.ScheduledAt.TimeOfDay - ruleTime.ToTimeSpan()).TotalMinutes % 60 != 0 ||
+                schedule.Reason != $"Verified irrigation rule {rules[0].RuleKey} specifies this offset, UTC time and duration.")
+                errors.Add("Irrigation candidate does not follow a verified rule, explanation, and same-day slot.");
         }
 
         var reservationList = output.CandidateReservations ?? [];
@@ -629,10 +643,15 @@ public sealed class WorkflowApprovalService(
                     currentStock.ResourceId != resourceId ||
                     !string.Equals(currentStock.Resource.Unit, unitElement.GetString(), StringComparison.OrdinalIgnoreCase))
                     errors.Add("Current inventory no longer matches the verified resource and unit.");
+                var unitName = unitElement.GetString() ?? string.Empty;
+                var unitLabel = unitName[..Math.Min(40, unitName.Length)];
+                var expectedReservationReason =
+                    $"Member 3 verified {quantity.ToString("0.###", CultureInfo.InvariantCulture)} {unitLabel} required and available.";
                 var matching = reservationList.Where(item => item.InventoryStockId == stockId && item.Quantity == quantity &&
                     item.EstimatedUnitCost is null && item.Sources is { Count: 1 } &&
-                    SourceMatches(item.Sources[0], "ResourceRequirement", ruleId, true)).ToArray();
-                if (matching.Length != 1) errors.Add("Reservation quantity or source differs from Member 3 evidence.");
+                    SourceMatches(item.Sources[0], "ResourceRequirement", ruleId, true) &&
+                    item.Reason == expectedReservationReason).ToArray();
+                if (matching.Length != 1) errors.Add("Reservation quantity, explanation, or source differs from Member 3 evidence.");
             }
         }
         foreach (var reservation in reservationList) CheckItem(reservation.Reason, reservation.Sources);

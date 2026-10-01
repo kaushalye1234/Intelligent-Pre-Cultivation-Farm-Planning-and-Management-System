@@ -200,6 +200,30 @@ public sealed class WorkflowApprovalTests
     }
 
     [Fact]
+    public async Task Version_two_candidate_rejects_a_fabricated_stage_explanation()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedAsync(db, includeStock: true);
+        var profile = await AddVersionTwoEvidenceAsync(db, data);
+        var service = NewService(db, data.Approver.Id, input =>
+        {
+            var candidate = VersionTwoCandidate(input, data.Stock!.Id, profile.Rules.Single().Id);
+            return candidate with
+            {
+                CandidateTasks = [candidate.CandidateTasks[0] with { Reason = "The weather report confirms planting is safe." }]
+            };
+        });
+
+        var review = await service.GenerateCandidateAsync(data.Workflow.Id, CancellationToken.None);
+
+        Assert.NotEqual(AgentWorkflowStatus.PendingOfficerApproval, review.Workflow.Status);
+        Assert.Contains(review.Validations.SelectMany(item => item.Errors),
+            item => item.Contains("explanation", StringComparison.OrdinalIgnoreCase));
+        Assert.Empty(db.FarmTasks);
+        Assert.Empty(db.ResourceReservations);
+    }
+
+    [Fact]
     public async Task Malformed_member_three_stock_id_fails_validation_without_throwing()
     {
         await using var db = NewDbContext();
@@ -593,7 +617,8 @@ public sealed class WorkflowApprovalTests
         return new SchedulingValidationOutput(input.WorkflowId, input.CandidateRevision, "CandidateReady", true, true,
             ["Officer review is required."],
             [new SchedulingCandidateTask(input.FarmId, "Review Planting stage", "Review verified stage.",
-                StartAt(input.PreferredStartDate, 8), input.AssignedToUserId, "Verified stage 1 is scheduled.",
+                StartAt(input.PreferredStartDate, 8), input.AssignedToUserId,
+                "Verified stage 1 follows the profile's minimum stage durations.",
                 [new SchedulingSource("CropStage", stage.Id, "Verified guide", evidence.ProfileId,
                     evidence.SourceVersion, evidence.VerifiedAt)])],
             [],

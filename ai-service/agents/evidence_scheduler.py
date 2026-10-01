@@ -26,6 +26,10 @@ def quantity(value: object) -> Decimal | None:
         return None
 
 
+def format_quantity(value: Decimal) -> str:
+    return format(value.normalize(), "f")
+
+
 class EvidenceScheduler:
     @staticmethod
     def result(request: SchedulingValidationInput, status: str, warnings: list[str],
@@ -133,16 +137,22 @@ class EvidenceScheduler:
             if index:
                 previous = stages[index - 1]
                 if previous.typical_min_days is None or previous.typical_min_days < 0:
-                    blocking.append(f"Stage {previous.id} lacks a valid minimum duration.")
+                    for unscheduled in stages[index:50]:
+                        blocking.append(
+                            f"Stage {unscheduled.id} cannot be scheduled because a preceding verified stage duration is missing."
+                        )
                     break
                 stage_day += timedelta(days=previous.typical_min_days)
             if stage_day > request.preferred_end_date or stage_day < first_day:
-                blocking.append(f"Stage {stage.id} cannot fit inside the selected window.")
+                for unscheduled in stages[index:50]:
+                    blocking.append(
+                        f"Stage {unscheduled.id} cannot fit inside the selected window after preceding stage durations."
+                    )
                 break
             slot = cls.task_slot(request, stage_day, occupied_tasks)
             if slot is None:
                 blocking.append(f"Stage {stage.id} has no same-day task slot.")
-                break
+                continue
             occupied_tasks.add(slot)
             tasks.append(CandidateTask(
                 farmId=request.farm_id, title=f"Review {stage.stage_name[:120]} stage",
@@ -204,7 +214,6 @@ class EvidenceScheduler:
         reservations, errors = cls.reservations(request)
         blocking.extend(errors)
         if blocking:
-            reservations = []
             constraints.extend(SchedulingConstraint(code="EVIDENCE_BLOCK", severity="Blocking", message=message)
                                for message in dict.fromkeys(blocking))
         return cls.result(request, "CandidateBlocked" if blocking else "CandidateReady",
@@ -216,7 +225,6 @@ class EvidenceScheduler:
         if risk == "High":
             draft.status = "CandidateBlocked"
             draft.requires_human_approval = False
-            draft.candidate_reservations = []
             message = "High weather risk blocks approval until a new upstream analysis."
             draft.warnings.append(message)
             draft.constraints.append(SchedulingConstraint(code="HIGH_WEATHER_RISK", severity="Blocking", message=message))
@@ -225,7 +233,6 @@ class EvidenceScheduler:
         elif risk not in {"Low", "Medium"}:
             draft.status = "CandidateBlocked"
             draft.requires_human_approval = False
-            draft.candidate_reservations = []
             message = "The persisted weather risk value is invalid."
             draft.warnings.append(message)
             draft.constraints.append(SchedulingConstraint(code="INVALID_WEATHER_RISK", severity="Blocking", message=message))
@@ -294,7 +301,7 @@ class EvidenceScheduler:
             reservations.append(CandidateReservation(
                 inventoryStockId=stock_id, quantity=float(amount), purpose="Candidate crop-plan resource use",
                 estimatedUnitCost=None,
-                reason=f"Member 3 verified {amount} {unit[:40]} required and available.",
+                reason=f"Member 3 verified {format_quantity(amount)} {unit[:40]} required and available.",
                 sources=[SchedulingSource(kind="ResourceRequirement", id=rule_id,
                     label=str(item.get("resourceName") or "Verified resource requirement")[:180],
                     profileId=evidence.profile_id, sourceVersion=evidence.source_version,

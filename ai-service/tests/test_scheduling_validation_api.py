@@ -40,4 +40,4 @@ async def test_scheduling_http_contract_preserves_review_and_source_evidence(
     if approvable:
         assert result["candidateReservations"][0]["sources"][0]["kind"] == "ResourceRequirement"
     else:
-        assert result["candidateReservations"] == []
+        assert result["candidateReservations"][0]["sources"][0]["kind"] == "ResourceRequirement"
