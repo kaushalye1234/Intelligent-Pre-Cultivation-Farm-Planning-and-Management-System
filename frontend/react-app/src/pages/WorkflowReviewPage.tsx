@@ -14,6 +14,7 @@ import type { WorkflowReview } from '../types'
 import { PrePlantingAssessmentPanel } from './PrePlantingAssessmentPanel'
 import { parseSchedulingOutput, safeSourceUrl } from './schedulingProposal'
 import type { ProposalSource } from './schedulingProposal'
+import { workflowStatusLabels } from './workflowStatusLabels'
 
 type DecisionKind = 'approve' | 'reject' | 'request-revision'
 
@@ -35,21 +36,6 @@ class PrePlantingAssessmentErrorBoundary extends Component<{ children: ReactNode
 
     return this.props.children
   }
-}
-
-const workflowStatus: Record<number, string> = {
-  1: 'Not Started',
-  2: 'Pending',
-  3: 'Running',
-  4: 'Completed',
-  5: 'Failed',
-  6: 'Cancelled',
-  7: 'Candidate Ready',
-  8: 'Pending Officer Approval',
-  9: 'Rejected',
-  10: 'Revision Requested',
-  11: 'Missing Dependency',
-  12: 'Candidate Blocked',
 }
 
 function tone(status: number) {
@@ -171,7 +157,7 @@ export function WorkflowReviewPage() {
 
       <section className="work-section">
         <div className="row-actions">
-          <StatusPill label={workflowStatus[review.workflow.status] ?? String(review.workflow.status)} tone={tone(review.workflow.status)} />
+          <StatusPill label={workflowStatusLabels[review.workflow.status] ?? String(review.workflow.status)} tone={tone(review.workflow.status)} />
           <span className="muted-text">Candidate revision {review.workflow.candidateRevision} · Version {review.workflow.version} · {review.preferredStartDate} to {review.preferredEndDate} · Budget {review.budget}</span>
         </div>
         <div className="row-actions">

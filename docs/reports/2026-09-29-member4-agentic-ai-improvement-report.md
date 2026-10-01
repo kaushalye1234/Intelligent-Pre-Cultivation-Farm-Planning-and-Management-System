@@ -1,7 +1,7 @@
 # Member 4 Agentic AI Improvement Report and Suggestions
 
 **Date:** 2026-09-29
-**Status:** Local implementation, disposable API-to-AI HTTP run, and draft PR CI verified; browser demo pending
+**Status:** Local implementation, disposable API-to-AI and officer-browser walkthrough, and PR CI verified
 **Related design:** `docs/superpowers/specs/2026-09-29-member4-explainable-scheduling-design.md`
 **Implementation plan:** `docs/plans/2026-09-29-member4-explainable-scheduling-implementation-plan.md`
 
@@ -42,7 +42,7 @@ flowchart LR
 
 The current branch builds a pinned profile and step evidence bundle, accepts validated Admin-authored irrigation rules, and routes the LangGraph scheduler through evidence, proposal, and risk nodes. It produces bounded source-linked preparation and crop-stage review tasks, rule-backed irrigation only when a rule exists, and Member 3-backed reservation candidates. A shortage or high weather risk returns a visible blocked candidate; unknown weather is a warning. The backend stores status `12`, checks version-2 source and stock mapping independently, and rechecks profile state inside the existing approval transaction. React displays proposal reasons and sources, and Flutter explains the blocked state to farmers.
 
-Final local suite results on 2026-09-30: 86 AI-service tests, 195 backend tests including PostgreSQL-only cases, 93 React tests, and 42 Flutter tests passed. React lint/build and Flutter analysis passed. The new precision migration was applied to disposable PostgreSQL, and a three-decimal reservation persisted exactly. A competing-approval test had one winner, and a forced reservation-insert failure left zero final workflow rows. The AI suite includes two authenticated FastAPI HTTP route cases for ready and blocked proposals. A separate live ASP.NET-to-Python HTTP run produced one valid ready review and one unapprovable high-weather review with zero final rows. Draft PR #59 passed all four GitHub CI jobs at commit `522bcc8`. See `docs/testing/verification-log.md` for the fixture and verification limits. A combined browser demo and live weather or LLM response remain unverified.
+Final local suite results on 2026-09-30: 86 AI-service tests, 195 backend tests including PostgreSQL-only cases, 93 React tests, and 42 Flutter tests passed. React lint/build and Flutter analysis passed. The new precision migration was applied to disposable PostgreSQL, and a three-decimal reservation persisted exactly. A competing-approval test had one winner, and a forced reservation-insert failure left zero final workflow rows. The AI suite includes two authenticated FastAPI HTTP route cases for ready and blocked proposals. A separate live ASP.NET-to-Python HTTP run produced one valid ready review and one unapprovable high-weather review with zero final rows. Draft PR #59 passed all four GitHub CI jobs on its earlier head. On 2026-10-01, a browser connected to disposable React, ASP.NET, Python, and PostgreSQL services displayed both officer reviews: the ready proposal included a sourced task and reservation, while the High-weather proposal showed its reason and no Approve action. The queue now uses the same officer-facing status labels as the review page; the React suite passed 94 tests after this fix. See `docs/testing/verification-log.md` for the fixture and verification limits. A live weather-provider or LLM response remains unverified.
 
 ## Recommended delivery order
 
@@ -82,4 +82,4 @@ The final submission report should include the workflow and source IDs, crop pro
 
 ## Completion boundary
 
-The feature is not ready to claim complete until a ready and a blocked workflow have been exercised end to end against an isolated PostgreSQL database, full frontend/Flutter checks finish, and applicable CI jobs pass. The linked implementation plan lists the remaining gates. No fixture result is evidence of a live weather provider or LLM response.
+The ready and blocked fixture paths were exercised through the browser, API, AI service, and isolated PostgreSQL database. Local frontend and Flutter checks finished, and the earlier PR head passed applicable CI jobs; CI must be checked again on any follow-up commit. The browser walkthrough stopped before an actual officer approval, while isolated PostgreSQL tests verified approval transactions, rollback, and concurrency. No fixture result is evidence of a live weather provider or LLM response.
