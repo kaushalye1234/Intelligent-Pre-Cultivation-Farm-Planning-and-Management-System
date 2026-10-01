@@ -557,6 +557,7 @@ class CropPlanningWorkflowStatus {
       9 => 'Rejected',
       10 => 'Revision requested',
       11 => 'Waiting for required data',
+      12 => 'Candidate blocked',
       _ => 'Unknown',
     };
   }

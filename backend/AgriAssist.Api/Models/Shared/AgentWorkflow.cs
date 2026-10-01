@@ -31,5 +31,6 @@ public enum AgentWorkflowStatus
     PendingOfficerApproval = 8,
     Rejected = 9,
     RevisionRequested = 10,
-    MissingDependency = 11
+    MissingDependency = 11,
+    CandidateBlocked = 12
 }

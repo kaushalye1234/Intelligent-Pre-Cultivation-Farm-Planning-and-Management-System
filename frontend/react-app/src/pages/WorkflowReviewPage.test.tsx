@@ -47,6 +47,41 @@ const review: WorkflowReview = {
 afterEach(() => vi.restoreAllMocks())
 
 describe('WorkflowReviewPage', () => {
+  it('shows a blocked proposal with its reason and source but no approval action', async () => {
+    const blocked: WorkflowReview = {
+      ...review,
+      workflow: { ...review.workflow, status: 12, currentStep: 'CANDIDATE_BLOCKED' },
+      steps: [{ id: 'scheduling-1', agentName: 'SchedulingValidationAgent', stepName: 'Scheduling',
+        sequence: 4, candidateRevision: 2, status: 4, input: {}, output: {
+          contractVersion: 2, status: 'CandidateBlocked', warnings: ['Weather risk is High'],
+          constraints: [{ code: 'HIGH_WEATHER_RISK', severity: 'Blocking', message: 'High weather blocks approval.' }],
+          candidateTasks: [{ title: 'Review Planting stage', dueAt: '2026-10-10T08:00:00Z',
+            reason: 'Verified crop stage timing.', sources: [{ kind: 'CropStage', id: 'stage-1',
+              label: 'Verified guide', sourceUrl: 'https://example.test/guide' }] }],
+          candidateIrrigation: [], candidateReservations: [],
+        } }],
+    }
+    vi.spyOn(api, 'get').mockImplementation(async (url) => {
+      if (url === '/task-approval/workflows/workflow-1') return { data: blocked } as never
+      if (url === '/crop-plans/plan-1/pre-planting-assessment') return { data: null } as never
+      throw new Error('Unexpected GET ' + url)
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/task-approval/workflows/workflow-1']}>
+        <AuthContext.Provider value={{ user: officer, token: 'token', isAuthenticated: true, isLoading: false, passwordChangeUser: null, hasPasswordChangeSession: false, login: vi.fn(), changeTemporaryPassword: vi.fn(), logout: vi.fn() }}>
+          <Routes><Route path="/task-approval/workflows/:id" element={<WorkflowReviewPage />} /></Routes>
+        </AuthContext.Provider>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('Scheduling proposal')).toBeInTheDocument()
+    expect(screen.getByText('Verified crop stage timing.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Verified guide' })).toHaveAttribute('href', 'https://example.test/guide')
+    expect(screen.getByText(/new upstream workflow before generating another candidate/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /approve workflow/i })).not.toBeInTheDocument()
+  })
+
   it('keeps Agent Evidence rendered when the assessment child throws', async () => {
     const reviewWithEvidence: WorkflowReview = {
       ...review,

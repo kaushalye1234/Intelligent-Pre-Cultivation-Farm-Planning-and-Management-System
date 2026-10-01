@@ -13,7 +13,10 @@ dotnet test backend\AgriAssist.Api.Tests\AgriAssist.Api.Tests.csproj --configura
 
 ```powershell
 cd ai-service
-.venv\Scripts\python.exe -m pytest
+py -3.12 -m venv .venv312
+.\.venv312\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv312\Scripts\python.exe -m compileall -q .
+.\.venv312\Scripts\python.exe -m pytest -p no:cacheprovider
 ```
 
 ```powershell
@@ -31,7 +34,7 @@ flutter test
 
 ## Service checks
 
-1. PostgreSQL contains the five applied migrations, including `AddSchedulingApprovalWorkflow`.
+1. PostgreSQL contains all current migrations, including `AddSchedulingApprovalWorkflow` and `Member4ResourceQuantityPrecision`.
 2. `GET http://localhost:8001/health` returns HTTP 200.
 3. An AI request without a bearer token returns HTTP 401.
 4. The same request with the configured token reaches schema validation instead of returning 401.
@@ -41,14 +44,16 @@ flutter test
 
 1. Create a crop-plan request and complete compatible Member 1, Member 2, and Member 3 workflow outputs.
 2. As an AgriculturalOfficer or Admin, call `POST /api/task-approval/workflows/{id}/generate-candidate`.
-3. Confirm the response contains candidate tasks and/or irrigation schedules, validation constraints, warnings, and `requiresHumanApproval=true`.
+3. Confirm the result has `contractVersion: 2`, source-linked preparation/stage tasks, any rule-backed irrigation entries, Member 3 quantity/stock-backed reservations, constraints, warnings, and `requiresHumanApproval=true`. Zero irrigation entries are expected when the profile has no verified irrigation rule.
 4. Confirm the workflow becomes `PendingOfficerApproval` only when deterministic validation succeeds.
 5. Approve with a unique idempotency key and the expected workflow version.
-6. Confirm the approval creates final tasks, irrigation schedules, reservations, decision history, and completed workflow state atomically.
+6. Confirm the approval creates final tasks, any verified-rule irrigation schedules, reservations, decision history, and completed workflow state atomically. Zero irrigation rows are correct when the verified profile has no irrigation rule.
 7. Replay the same approval request and confirm it returns the original decision without duplicates.
 8. Submit a stale version or competing decision and confirm HTTP 409 with no partial writes.
 9. Reject or request revision with a real officer comment and confirm the candidate does not create final work.
 10. Log in to Flutter as the owning farmer and confirm **My status** shows task status, irrigation status, and approval history.
+
+For a separate blocked case, use a disposable workflow with a verified Member 3 shortage or High weather risk. Confirm status `12` (`CandidateBlocked`), source/reason cards and blocking explanations, no Approve control, and zero final tasks, irrigation schedules, and reservations. Change the underlying evidence, run a **new upstream workflow**, and verify the old blocked candidate does not silently become approvable. Also exercise missing profile/stages, a stage outside the selected window, an unknown-weather warning, an invalid irrigation rule, duplicate stock mappings, and a deactivated profile between generation and approval.
 
 For a real pending workflow, run the API concurrency probe with its candidate revision, workflow version, and an authorized officer token:
 

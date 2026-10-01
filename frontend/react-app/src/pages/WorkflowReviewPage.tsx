@@ -12,6 +12,9 @@ import { formatDateTime } from '../format'
 import { isDecisionRole } from '../routing'
 import type { WorkflowReview } from '../types'
 import { PrePlantingAssessmentPanel } from './PrePlantingAssessmentPanel'
+import { parseSchedulingOutput, safeSourceUrl } from './schedulingProposal'
+import type { ProposalSource } from './schedulingProposal'
+import { workflowStatusLabels } from './workflowStatusLabels'
 
 type DecisionKind = 'approve' | 'reject' | 'request-revision'
 
@@ -35,25 +38,21 @@ class PrePlantingAssessmentErrorBoundary extends Component<{ children: ReactNode
   }
 }
 
-const workflowStatus: Record<number, string> = {
-  1: 'Not Started',
-  2: 'Pending',
-  3: 'Running',
-  4: 'Completed',
-  5: 'Failed',
-  6: 'Cancelled',
-  7: 'Candidate Ready',
-  8: 'Pending Officer Approval',
-  9: 'Rejected',
-  10: 'Revision Requested',
-  11: 'Missing Dependency',
-}
-
 function tone(status: number) {
   if (status === 4) return 'good'
-  if ([5, 6, 9, 11].includes(status)) return 'bad'
+  if ([5, 6, 9, 11, 12].includes(status)) return 'bad'
   if (status === 8) return 'warn'
   return 'info'
+}
+
+function ProposalSources({ sources }: { sources: ProposalSource[] }) {
+  return <p className="muted-text">Source: {sources.map((source, index) => {
+    const url = safeSourceUrl(source.sourceUrl)
+    return <span key={`${source.kind}-${source.id}`}>
+      {index > 0 ? ', ' : ''}{url ? <a href={url} target="_blank" rel="noopener noreferrer">{source.label}</a> : source.label}
+      {' '}({source.kind}, {source.id})
+    </span>
+  })}</p>
 }
 
 export function WorkflowReviewPage() {
@@ -96,7 +95,8 @@ export function WorkflowReviewPage() {
     try {
       const response = await api.post<WorkflowReview>(`/task-approval/workflows/${id}/generate-candidate`)
       setReview(response.data)
-      setSuccess('Scheduling candidate generated and validated.')
+      setSuccess(response.data.workflow.status === 8 ? 'Scheduling candidate is ready for officer review.' :
+        'Scheduling proposal recorded. Review its blocking reasons and validation result.')
     } catch (err) {
       setError(getErrorMessage(err))
     } finally {
@@ -136,6 +136,9 @@ export function WorkflowReviewPage() {
   if (!review) return <ErrorState message={error || 'Workflow review is unavailable.'} />
 
   const pendingApproval = review.workflow.status === 8
+  const schedulingStep = [...review.steps].reverse().find((step) => step.agentName === 'SchedulingValidationAgent' &&
+    step.candidateRevision === review.workflow.candidateRevision)
+  const proposal = parseSchedulingOutput(schedulingStep?.output)
   const canGenerate = canDecide
     && (review.workflow.currentStep === 'SchedulingValidationAgent' || review.workflow.status === 10)
     && ![3, 4, 6, 8, 9].includes(review.workflow.status)
@@ -154,7 +157,7 @@ export function WorkflowReviewPage() {
 
       <section className="work-section">
         <div className="row-actions">
-          <StatusPill label={workflowStatus[review.workflow.status] ?? String(review.workflow.status)} tone={tone(review.workflow.status)} />
+          <StatusPill label={workflowStatusLabels[review.workflow.status] ?? String(review.workflow.status)} tone={tone(review.workflow.status)} />
           <span className="muted-text">Candidate revision {review.workflow.candidateRevision} · Version {review.workflow.version} · {review.preferredStartDate} to {review.preferredEndDate} · Budget {review.budget}</span>
         </div>
         <div className="row-actions">
@@ -174,6 +177,31 @@ export function WorkflowReviewPage() {
           onWorkflowChanged={loadReview}
         />
       </PrePlantingAssessmentErrorBoundary>
+
+      {review.workflow.status === 12 ? <Notice tone="error">This proposal is blocked and cannot be approved. After stock, weather, or reference evidence changes, run a new upstream workflow before generating another candidate. No farm work has been created.</Notice> : null}
+
+      {proposal ? <section className="work-section" aria-label="Scheduling proposal">
+        <h2>Scheduling proposal</h2>
+        <p className="muted-text">These are candidate items only. Farm work is created after officer approval.</p>
+        {proposal.blocking.map((message, index) => <Notice key={`block-${index}`} tone="error">{message}</Notice>)}
+        {proposal.warnings.map((message, index) => <Notice key={`warning-${index}`} tone="info">{message}</Notice>)}
+        <h3>Farm tasks ({proposal.tasks.length})</h3>
+        {proposal.tasks.map((task, index) => <article key={`task-${index}`} className="work-section">
+          <strong>{task.title}</strong><p>{formatDateTime(task.dueAt)}</p><p>{task.reason}</p>
+          <ProposalSources sources={task.sources} />
+        </article>)}
+        <h3>Irrigation ({proposal.irrigation.length})</h3>
+        {proposal.irrigation.length === 0 ? <p className="muted-text">No verified irrigation schedule rule produced an entry.</p> : null}
+        {proposal.irrigation.map((item, index) => <article key={`irrigation-${index}`} className="work-section">
+          <strong>{formatDateTime(item.scheduledAt)} · {item.durationMinutes} min</strong><p>{item.reason}</p>
+          <ProposalSources sources={item.sources} />
+        </article>)}
+        <h3>Resource reservations ({proposal.reservations.length})</h3>
+        {proposal.reservations.map((item, index) => <article key={`reservation-${index}`} className="work-section">
+          <strong>{item.quantity} units · stock {item.inventoryStockId}</strong><p>{item.reason}</p>
+          <ProposalSources sources={item.sources} />
+        </article>)}
+      </section> : null}
 
       <section className="work-section">
         <h2>Agent evidence</h2>

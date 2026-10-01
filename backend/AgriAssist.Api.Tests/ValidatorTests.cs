@@ -37,6 +37,35 @@ public sealed class ValidatorTests
     }
 
     [Fact]
+    public void Crop_reference_validator_rejects_unsupported_irrigation_duration()
+    {
+        var request = new CropReferenceProfileRequest(
+            Guid.NewGuid(), null, null, "Verified source", null, "1",
+            DateTime.UtcNow.AddDays(-1), [],
+            [new CropReferenceRuleRequest("IrrigationSchedule", "first-watering",
+                "{\"dayOffsetFromPlanting\":1,\"startTimeUtc\":\"00:30\",\"durationMinutes\":0}")]);
+
+        var errors = new CropReferenceProfileRequestValidator().Validate(request);
+
+        Assert.Contains(errors, error => error.Contains("Irrigation schedule rule"));
+    }
+
+    [Fact]
+    public void Crop_reference_validator_rejects_duplicate_irrigation_slots()
+    {
+        const string schedule = "{\"dayOffsetFromPlanting\":1,\"startTimeUtc\":\"00:30\",\"durationMinutes\":60}";
+        var request = new CropReferenceProfileRequest(
+            Guid.NewGuid(), null, null, "Verified source", null, "1",
+            DateTime.UtcNow.AddDays(-1), [],
+            [new CropReferenceRuleRequest("IrrigationSchedule", "morning-one", schedule),
+             new CropReferenceRuleRequest("IrrigationSchedule", "morning-two", schedule)]);
+
+        var errors = new CropReferenceProfileRequestValidator().Validate(request);
+
+        Assert.Contains(errors, error => error.Contains("Duplicate irrigation slot"));
+    }
+
+    [Fact]
     public void Reservation_validator_rejects_zero_quantity()
     {
         var validator = new ResourceReservationRequestValidator();

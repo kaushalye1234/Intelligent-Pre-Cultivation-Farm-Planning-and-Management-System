@@ -69,12 +69,25 @@ class SchedulingValidationState(TypedDict):
 
 
 def build_scheduling_validation_graph(agent: SchedulingValidationAgent):
-    async def run_scheduling_validation(state: SchedulingValidationState) -> SchedulingValidationState:
-        output = await agent.run(state["request"])
+    async def validate_evidence(state: SchedulingValidationState) -> SchedulingValidationState:
+        output = agent.check_dependencies(state["request"])
         return {"request": state["request"], "output": output}
 
+    async def build_candidate(state: SchedulingValidationState) -> SchedulingValidationState:
+        return {"request": state["request"], "output": agent.propose(state["request"])}
+
+    async def assess_risk(state: SchedulingValidationState) -> SchedulingValidationState:
+        assert state["output"] is not None
+        return {"request": state["request"],
+                "output": agent.assess_risk(state["request"], state["output"])}
+
     graph = StateGraph(SchedulingValidationState)
-    graph.add_node("scheduling_validation", run_scheduling_validation)
-    graph.set_entry_point("scheduling_validation")
-    graph.add_edge("scheduling_validation", END)
+    graph.add_node("validate_evidence", validate_evidence)
+    graph.add_node("build_candidate", build_candidate)
+    graph.add_node("assess_risk", assess_risk)
+    graph.set_entry_point("validate_evidence")
+    graph.add_conditional_edges("validate_evidence", lambda state: "blocked" if state["output"] is not None else "ready",
+                                {"blocked": END, "ready": "build_candidate"})
+    graph.add_edge("build_candidate", "assess_risk")
+    graph.add_edge("assess_risk", END)
     return graph.compile()

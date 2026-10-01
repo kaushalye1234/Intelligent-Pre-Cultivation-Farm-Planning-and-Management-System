@@ -153,6 +153,13 @@ class PlanningProgressScreen extends StatelessWidget {
                       tone: JourneyTone.warning,
                     ),
                   ],
+                  if (workflow?.status == 12) ...[
+                    const SizedBox(height: 12),
+                    const JourneyStatusPill(
+                      'No farm work approved yet',
+                      tone: JourneyTone.warning,
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -165,7 +172,7 @@ class PlanningProgressScreen extends StatelessWidget {
   JourneyTone _workflowTone(int? status) => switch (status) {
     4 => JourneyTone.success,
     5 || 9 => JourneyTone.danger,
-    7 || 8 || 10 || 11 => JourneyTone.warning,
+    7 || 8 || 10 || 11 || 12 => JourneyTone.warning,
     _ => JourneyTone.neutral,
   };
 
@@ -180,6 +187,8 @@ class PlanningProgressScreen extends StatelessWidget {
       'Revisions were requested. The planning workflow will show updated stages when available.',
     11 =>
       'Required information is missing. The workflow is waiting for review or additional data.',
+    12 =>
+      'The proposed schedule is blocked by verified evidence. No tasks, irrigation, or resource reservations have been approved. An officer must start a new workflow after the evidence changes.',
     5 =>
       'The workflow stopped. Review the warnings and check again for an updated status.',
     4 =>

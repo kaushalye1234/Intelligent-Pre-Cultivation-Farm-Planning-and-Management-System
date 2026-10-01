@@ -7,10 +7,29 @@ namespace AgriAssist.Api.Dtos.TaskApproval;
 
 public sealed record ExistingFarmTaskSnapshot(Guid Id, Guid AssignedToUserId, DateTime DueAt, FarmTaskStatus Status);
 public sealed record ExistingIrrigationSnapshot(Guid Id, Guid FieldId, DateTime ScheduledAt, int DurationMinutes, IrrigationScheduleStatus Status);
-public sealed record SchedulingCandidateTask(Guid FarmId, string Title, string Description, DateTime DueAt, Guid AssignedToUserId);
-public sealed record SchedulingCandidateIrrigation(Guid FieldId, DateTime ScheduledAt, int DurationMinutes, string Notes);
-public sealed record SchedulingCandidateReservation(Guid InventoryStockId, decimal Quantity, string Purpose, decimal? EstimatedUnitCost);
+public sealed record SchedulingSource(string Kind, Guid Id, string Label, Guid? ProfileId = null,
+    string? SourceVersion = null, DateTime? VerifiedAt = null, string? SourceUrl = null);
+public sealed record SchedulingCandidateTask(Guid FarmId, string Title, string Description, DateTime DueAt, Guid AssignedToUserId,
+    string? Reason = null, IReadOnlyList<SchedulingSource>? Sources = null);
+public sealed record SchedulingCandidateIrrigation(Guid FieldId, DateTime ScheduledAt, int DurationMinutes, string Notes,
+    string? Reason = null, IReadOnlyList<SchedulingSource>? Sources = null);
+public sealed record SchedulingCandidateReservation(Guid InventoryStockId, decimal Quantity, string Purpose, decimal? EstimatedUnitCost,
+    string? Reason = null, IReadOnlyList<SchedulingSource>? Sources = null);
 public sealed record SchedulingConstraint(string Code, string Severity, string Message);
+public sealed record SchedulingStageEvidence(Guid Id, string StageName, int Sequence, int? TypicalMinDays, int? TypicalMaxDays, string SourceName, string? SourceUrl);
+public sealed record SchedulingIrrigationRuleEvidence(Guid Id, string RuleKey, int DayOffsetFromPlanting, string StartTimeUtc, int DurationMinutes, string SourceName, string? SourceUrl, DateTime VerifiedAt);
+public sealed record SchedulingEvidenceBundle(
+    Guid? ProfileId,
+    string? SourceName,
+    string? SourceUrl,
+    string? SourceVersion,
+    DateTime? VerifiedAt,
+    Guid? CoordinatorStepId,
+    Guid? FieldAnalysisStepId,
+    Guid? WeatherResourceStepId,
+    IReadOnlyList<SchedulingStageEvidence> Stages,
+    IReadOnlyList<SchedulingIrrigationRuleEvidence> IrrigationRules,
+    IReadOnlyList<Guid> InvalidIrrigationRuleIds);
 
 public sealed record SchedulingValidationInput(
     Guid WorkflowId,
@@ -26,7 +45,9 @@ public sealed record SchedulingValidationInput(
     JsonElement FieldAnalysisOutput,
     JsonElement WeatherResourceOutput,
     IReadOnlyList<ExistingFarmTaskSnapshot> ExistingTasks,
-    IReadOnlyList<ExistingIrrigationSnapshot> ExistingIrrigation);
+    IReadOnlyList<ExistingIrrigationSnapshot> ExistingIrrigation,
+    SchedulingEvidenceBundle? Evidence = null,
+    int ContractVersion = 2);
 
 public sealed record SchedulingValidationOutput(
     Guid WorkflowId,
@@ -39,7 +60,8 @@ public sealed record SchedulingValidationOutput(
     IReadOnlyList<SchedulingCandidateIrrigation> CandidateIrrigation,
     IReadOnlyList<SchedulingCandidateReservation> CandidateReservations,
     decimal? EstimatedCost,
-    IReadOnlyList<SchedulingConstraint> Constraints);
+    IReadOnlyList<SchedulingConstraint> Constraints,
+    int ContractVersion = 1);
 
 public sealed class WorkflowApprovalQuery : PagedQuery
 {

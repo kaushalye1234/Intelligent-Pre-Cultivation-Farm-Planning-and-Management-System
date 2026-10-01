@@ -243,9 +243,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         modelBuilder.Entity<InventoryStock>(entity =>
         {
-            entity.Property(stock => stock.QuantityOnHand).HasPrecision(12, 2);
-            entity.Property(stock => stock.ReservedQuantity).HasPrecision(12, 2);
-            entity.Property(stock => stock.LowStockThreshold).HasPrecision(12, 2);
+            entity.Property(stock => stock.QuantityOnHand).HasPrecision(13, 3);
+            entity.Property(stock => stock.ReservedQuantity).HasPrecision(13, 3);
+            entity.Property(stock => stock.LowStockThreshold).HasPrecision(13, 3);
             entity.Property(stock => stock.RowVersion).IsConcurrencyToken().IsRequired();
             entity.HasOne(stock => stock.Resource).WithMany().HasForeignKey(stock => stock.ResourceId).OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(stock => stock.ResourceId).IsUnique();
@@ -254,7 +254,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<StockTransaction>(entity =>
         {
             entity.Property(transaction => transaction.Type).HasConversion<string>().HasMaxLength(40);
-            entity.Property(transaction => transaction.Quantity).HasPrecision(12, 2);
+            entity.Property(transaction => transaction.Quantity).HasPrecision(13, 3);
             entity.Property(transaction => transaction.Note).HasMaxLength(500);
             entity.HasOne(transaction => transaction.InventoryStock).WithMany().HasForeignKey(transaction => transaction.InventoryStockId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(transaction => transaction.InventoryStockId);
@@ -263,7 +263,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         modelBuilder.Entity<ResourceReservation>(entity =>
         {
-            entity.Property(reservation => reservation.Quantity).HasPrecision(12, 2);
+            entity.Property(reservation => reservation.Quantity).HasPrecision(13, 3);
             entity.Property(reservation => reservation.Status).HasConversion<string>().HasMaxLength(40);
             entity.Property(reservation => reservation.Purpose).IsRequired().HasMaxLength(500);
             entity.HasOne(reservation => reservation.InventoryStock).WithMany().HasForeignKey(reservation => reservation.InventoryStockId).OnDelete(DeleteBehavior.Restrict);
