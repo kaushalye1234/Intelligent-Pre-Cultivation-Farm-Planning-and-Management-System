@@ -34,6 +34,10 @@ def test_source_policy_requires_exact_hosts_and_path_prefixes():
     with pytest.raises(SourcePolicyError):
         policy.match_url("https://doa.gov.lk:8443/hordi-home/", 1)
     with pytest.raises(SourcePolicyError):
+        policy.match_url("https://doa.gov.lk:80/hordi-home/", 1)
+    with pytest.raises(SourcePolicyError):
+        policy.match_url("http://doa.gov.lk:443/hordi-home/", 1)
+    with pytest.raises(SourcePolicyError):
         policy.match_url("https://user:secret@doa.gov.lk/hordi-home/", 1)
 
 
@@ -47,6 +51,12 @@ def test_ssrf_guard_rejects_non_public_addresses(address):
 
 @pytest.mark.asyncio
 async def test_html_retrieval_extracts_sections_and_removes_boilerplate():
+    resolved_ports: list[int | None] = []
+
+    async def recording_resolver(host: str, port: int | None) -> set[str]:
+        resolved_ports.append(port)
+        return await public_resolver(host, port)
+
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             200,
@@ -58,7 +68,7 @@ async def test_html_retrieval_extracts_sections_and_removes_boilerplate():
             <script>ignore()</script></body></html>""",
         )
 
-    tools = CropFindingTools(settings(), transport=httpx.MockTransport(handler), resolver=public_resolver)
+    tools = CropFindingTools(settings(), transport=httpx.MockTransport(handler), resolver=recording_resolver)
     document = await tools.retrieve("https://doa.gov.lk/rrdi_homepage/bg-352", "", 1)
 
     assert document.retrieval_status == "Retrieved"
@@ -66,6 +76,7 @@ async def test_html_retrieval_extracts_sections_and_removes_boilerplate():
     assert document.title == "Rice guide"
     assert document.segments[0].section == "Bg 352"
     assert "Ignore navigation" not in document.extracted_text
+    assert resolved_ports == [443]
 
 
 @pytest.mark.asyncio

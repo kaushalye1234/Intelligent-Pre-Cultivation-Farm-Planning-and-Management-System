@@ -119,8 +119,9 @@ class SourcePolicy:
             port = parsed.port
         except ValueError as exc:
             raise SourcePolicyError("Source URL has an invalid port.") from exc
-        if port is not None and port not in {80, 443}:
-            raise SourcePolicyError("Only standard HTTP and HTTPS ports are allowed.")
+        expected_port = 443 if parsed.scheme == "https" else 80
+        if port is not None and port != expected_port:
+            raise SourcePolicyError("Source URL port does not match its HTTP or HTTPS scheme.")
         host = (parsed.hostname or "").lower().rstrip(".")
         if not host:
             raise SourcePolicyError("Source URL must contain a host.")
@@ -199,7 +200,11 @@ class CropFindingTools:
         ) as client:
             for redirect_number in range(self.settings.crop_finding_max_redirects + 1):
                 entry = self.source_policy.match_url(current_url, stage)
-                resolved = await self._resolver(urlsplit(current_url).hostname or "", urlsplit(current_url).port)
+                parsed_current = urlsplit(current_url)
+                resolved = await self._resolver(
+                    parsed_current.hostname or "",
+                    parsed_current.port or (443 if parsed_current.scheme == "https" else 80),
+                )
                 async with client.stream("GET", current_url, headers={"Accept": "text/html,application/xhtml+xml,application/pdf"}) as response:
                     self._validate_connected_peer(response, resolved)
                     if response.status_code in {301, 302, 303, 307, 308}:
