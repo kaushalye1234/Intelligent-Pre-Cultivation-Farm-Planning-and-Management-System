@@ -15,8 +15,9 @@ async def public_resolver(host: str, port: int | None) -> set[str]:
 def settings(**overrides):
     return Settings(
         _env_file=None,
+        AI_PROVIDER="openai",
+        AI_MODEL="gpt-6-luna",
         OPENAI_API_KEY="test",
-        CROP_FINDING_MODEL="gpt-4.1-mini",
         **overrides,
     )
 

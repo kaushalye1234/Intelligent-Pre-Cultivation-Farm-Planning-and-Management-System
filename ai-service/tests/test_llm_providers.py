@@ -1,14 +1,11 @@
-import json
 from types import SimpleNamespace
 
-import google.generativeai as genai
 import pytest
-from google.generativeai.types import generation_types
 
 import providers.openai_provider as openai_provider_module
-from providers.gemini_provider import GeminiProvider
+from config import Settings
+from providers import create_crop_finding_provider
 from providers.openai_provider import OpenAIProvider
-from schemas.field_analysis import CropFieldAnalysisOutput
 
 
 RESPONSE_SCHEMA = {
@@ -19,34 +16,18 @@ RESPONSE_SCHEMA = {
 }
 
 
-@pytest.mark.asyncio
-async def test_gemini_provider_passes_response_schema_with_json_mime_type(monkeypatch):
-    captured = {}
+def test_crop_finding_provider_uses_shared_openai_model_configuration():
+    settings = Settings(
+        _env_file=None,
+        AI_PROVIDER="openai",
+        AI_MODEL="gpt-6-luna",
+        OPENAI_API_KEY="test-key",
+    )
 
-    class FakeModel:
-        def generate_content(self, prompt, generation_config):
-            captured["prompt"] = prompt
-            captured["generation_config"] = generation_config
-            return SimpleNamespace(text='{"status":"Analyzed"}')
+    provider = create_crop_finding_provider(settings)
 
-    monkeypatch.setattr(genai, "configure", lambda **kwargs: captured.update(configure=kwargs))
-    monkeypatch.setattr(genai, "GenerativeModel", lambda model: captured.update(model=model) or FakeModel())
-    provider = GeminiProvider(api_key="test-key", model="test-model", timeout_seconds=1)
-    pydantic_schema = CropFieldAnalysisOutput.model_json_schema(by_alias=True)
-
-    result = await provider.generate_json("field prompt", response_schema=pydantic_schema)
-
-    assert result.text == '{"status":"Analyzed"}'
-    assert captured["generation_config"]["response_mime_type"] == "application/json"
-    gemini_schema = captured["generation_config"]["response_schema"]
-    serialized = json.dumps(gemini_schema)
-    assert "$defs" not in serialized
-    assert "$ref" not in serialized
-    assert "additionalProperties" not in serialized
-    assert gemini_schema["properties"]["status"]["enum"] == ["Analyzed", "SafeFailure"]
-    assert gemini_schema["properties"]["fieldCondition"]["required"] == ["summary"]
-    normalized = generation_types.to_generation_config_dict(captured["generation_config"])
-    assert normalized["response_schema"] is not None
+    assert provider is not None
+    assert provider._model == settings.ai_model
 
 
 @pytest.mark.asyncio
@@ -114,7 +95,7 @@ async def test_openai_provider_web_search_uses_domain_filters_and_returns_source
         responses=FakeResponses(),
     )
     monkeypatch.setattr(openai_provider_module, "AsyncOpenAI", lambda **kwargs: fake_client)
-    provider = OpenAIProvider(api_key="test-key", model="gpt-4.1-mini", timeout_seconds=1)
+    provider = OpenAIProvider(api_key="test-key", model="gpt-6-luna", timeout_seconds=1)
 
     result = await provider.search_web("Find crops", ["doa.gov.lk"], 5)
 

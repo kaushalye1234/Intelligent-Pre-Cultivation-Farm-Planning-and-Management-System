@@ -31,7 +31,12 @@ def document(stage: int, source_id: str, text: str) -> RetrievedDocument:
 
 class FakeTools:
     def __init__(self, stage_documents):
-        self.settings = Settings(_env_file=None, OPENAI_API_KEY="test", CROP_FINDING_MODEL="gpt-4.1-mini")
+        self.settings = Settings(
+            _env_file=None,
+            AI_PROVIDER="openai",
+            AI_MODEL="gpt-6-luna",
+            OPENAI_API_KEY="test",
+        )
         self.source_policy = SourcePolicy.load_default()
         self.stage_documents = stage_documents
 

@@ -11,8 +11,9 @@ def test_crop_finding_endpoint_requires_service_token_and_validates_typed_input(
     settings = Settings(
         _env_file=None,
         AI_SERVICE_TOKEN="test-service-token",
+        AI_PROVIDER="openai",
+        AI_MODEL="gpt-6-luna",
         OPENAI_API_KEY="test-openai-key",
-        CROP_FINDING_MODEL="gpt-4.1-mini",
     )
     main.app.dependency_overrides[get_settings] = lambda: settings
 
