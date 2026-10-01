@@ -15,3 +15,13 @@ def create_provider(settings: Settings) -> BaseLLMProvider | None:
         return OpenAIProvider(api_key=settings.openai_api_key, model=settings.ai_model, timeout_seconds=settings.provider_timeout_seconds)
 
     return None
+
+
+def create_crop_finding_provider(settings: Settings) -> OpenAIProvider | None:
+    if not settings.openai_api_key or not settings.crop_finding_model:
+        return None
+    return OpenAIProvider(
+        api_key=settings.openai_api_key,
+        model=settings.crop_finding_model,
+        timeout_seconds=settings.provider_timeout_seconds,
+    )

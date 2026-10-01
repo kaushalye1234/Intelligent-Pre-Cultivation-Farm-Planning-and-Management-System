@@ -93,3 +93,32 @@ async def test_openai_provider_preserves_json_object_mode_without_schema(monkeyp
     await provider.generate_json("coordinator prompt")
 
     assert captured["response_format"] == {"type": "json_object"}
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_web_search_uses_domain_filters_and_returns_sources(monkeypatch):
+    captured = {}
+
+    class FakeResponses:
+        async def create(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(model_dump=lambda **_: {
+                "output": [{"type": "web_search_call", "action": {"sources": [
+                    {"url": "https://doa.gov.lk/hordi-home/", "title": "HORDI"},
+                    {"url": "https://doa.gov.lk/hordi-home/", "title": "duplicate"},
+                ]}}]
+            })
+
+    fake_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace()),
+        responses=FakeResponses(),
+    )
+    monkeypatch.setattr(openai_provider_module, "AsyncOpenAI", lambda **kwargs: fake_client)
+    provider = OpenAIProvider(api_key="test-key", model="gpt-4.1-mini", timeout_seconds=1)
+
+    result = await provider.search_web("Find crops", ["doa.gov.lk"], 5)
+
+    assert [source.url for source in result.sources] == ["https://doa.gov.lk/hordi-home/"]
+    assert captured["tools"][0]["filters"]["allowed_domains"] == ["doa.gov.lk"]
+    assert captured["include"] == ["web_search_call.action.sources"]
+    assert captured["store"] is False
