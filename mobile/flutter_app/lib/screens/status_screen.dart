@@ -259,10 +259,12 @@ class _TaskCard extends StatelessWidget {
                 color: overdue ? AgriColors.amber : AgriColors.muted,
               ),
               const SizedBox(width: 7),
-              Text(
-                (overdue ? 'Overdue - ' : 'Due ') + journeyDate(task.dueAt),
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: overdue ? AgriColors.amber : AgriColors.forest,
+              Expanded(
+                child: Text(
+                  (overdue ? 'Overdue - ' : 'Due ') + journeyDate(task.dueAt),
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: overdue ? AgriColors.amber : AgriColors.forest,
+                  ),
                 ),
               ),
             ],
