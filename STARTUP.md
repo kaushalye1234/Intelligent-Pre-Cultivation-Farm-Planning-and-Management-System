@@ -80,6 +80,16 @@ flutter run --dart-define AGRIASSIST_API_BASE_URL=http://10.0.2.2:5087/api
 
 Use `http://localhost:5087/api` for Windows desktop, or replace `10.0.2.2` with the host LAN IP for a physical device.
 
+To build and install an Android debug APK from `mobile\flutter_app`:
+
+```powershell
+flutter pub get
+flutter build apk --debug --no-pub
+adb install -r .\build\app\outputs\flutter-apk\app-debug.apk
+```
+
+The debug APK uses `http://10.0.2.2:5087/api` by default, so start the local backend on port 5087 before signing in on the Android emulator. For a physical phone, rebuild with `--dart-define AGRIASSIST_API_BASE_URL=http://YOUR_LAN_IP:5087/api` and make the API reachable from that phone. The 2026-10-01 locally verified artifact and checksum are recorded in `docs/testing/verification-log.md`; generated APKs are not committed to Git.
+
 ## Stop local services
 
 Press `Ctrl+C` in service terminals. Remove the disposable database when finished:

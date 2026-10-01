@@ -11,22 +11,30 @@ This index collects the evidence for the Member 4 scheduling, approval, and farm
 
 ## Verification evidence
 
+- [Toolchain inventory](phase3-toolchain-inventory.md) distinguishes verified project/CI versions from unavailable exact environment versions.
+
 - [Verification log](verification-log.md)
 - [Performance report](performance-report.md)
 - [Phase 3 final checklist](phase3-final-submission-checklist.md)
 - [Member 4 test checklist](member-4-testing-checklist.md)
+- [Group 04 consolidated report draft](../reports/group-04-consolidated-report-draft.md)
+
+Local generated artifacts for the group leader (excluded from this Git contribution): `output/apk/agriassist-member4-dev-46c50b4-debug.apk`, `output/pdf/SE3090_G04_consolidated_report_DRAFT.pdf`, and `output/screenshots/member4-apk-login-2026-10-01.png`. The PDF is a review copy and must be completed with student-authored sections and deployment/video evidence before submission.
 
 ## Verified results
 
-- Backend suite: 80 passed, 0 failed, 0 skipped when the disposable PostgreSQL connection string was supplied.
-- AI service Docker suite: 27 passed.
-- React suite: 18 passed; build and lint completed successfully.
+- Backend suite: 197 passed, 0 failed, 0 skipped against disposable PostgreSQL on the Member 4 PR #59 head.
+- AI service suite: 86 passed.
+- React suite: 94 passed; build and lint completed successfully.
+- Flutter suite: 42 passed; analysis completed successfully.
 - API smoke: health HTTP 200, authenticated Member 4 reads succeeded, and unauthenticated workflow access returned HTTP 401.
 - Approval concurrency: one HTTP 200 and one HTTP 409 conflict, with one final approved task, schedule, and decision.
-- CI for the Phase 3 reliability PR passed for backend, AI service, React, and Flutter.
+- CI for [PR #59](https://github.com/kaushalye1234/Intelligent-Pre-Cultivation-Farm-Planning-and-Management-System/pull/59) passed for backend, AI service, React, and Flutter before merge into `dev` (`46c50b4`).
+- Android debug APK built in 286.8 seconds from that merged `dev` commit, signed with the debug key, installed, and launched on an Android emulator. Its SHA-256 is recorded in the [verification log](verification-log.md).
 
 ## Known limitations to state during the demonstration
 
 - The workflow timing data is a local deterministic-fallback fixture and is not a production performance claim.
-- The Flutter aggregate runner and local debug APK Gradle task did not complete in the Windows environment; CI runs Flutter test files separately.
+- Earlier Windows APK attempts stalled; the 2026-10-01 build and emulator launch passed. Only the login screen was checked on the emulator, without a live backend sign-in.
 - No external LLM-provider run is claimed without a configured provider key.
+- Group 04 has not supplied deployed service URLs, a demonstration video, or the other members' personal report sections. The linked report is a draft for assembly, not a final submitted group report.

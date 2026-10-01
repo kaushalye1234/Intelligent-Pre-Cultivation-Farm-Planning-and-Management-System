@@ -1,30 +1,20 @@
-# Member 4 next-phase readiness
+# Member 4 submission-phase readiness
 
-## Completed
+Updated 2026-10-01 for Group 04. The implementation phases are complete: the scheduling agent, candidate validation, officer approval, React review, Flutter farmer status, and PostgreSQL integration have been merged into `dev`. PR #59 passed backend, AI service, React, and Flutter CI before merge commit `46c50b4`.
 
-- SchedulingValidationAgent and its structured contract are implemented.
-- Deterministic candidate validation and human approval are implemented.
-- React workflow review and Flutter farmer status are implemented.
-- Five EF migrations apply to isolated PostgreSQL 16.
-- PostgreSQL migration, required-table, rollback, and row-lock smoke checks pass.
-- Backend (44), AI service (27), and individual Flutter (6) tests pass.
-- API and AI health checks pass; officer authentication and Member 4 read endpoints pass.
-- Unauthenticated Member 4 workflow access returns HTTP 401.
+## Verified for Member 4
 
-## Remaining before final submission
+- Full backend suite: 197 passed, 0 skipped against disposable PostgreSQL; AI: 86 passed; React: 94 passed; Flutter: 42 passed on the PR #59 head.
+- A prior disposable API workflow reached approval, and a concurrency probe returned one HTTP 200 and one HTTP 409; farmer-scoped final records were checked. See the verification log for the fixtures and limits.
+- A new Android debug APK was built from merged `dev` in 286.8 seconds on 2026-10-01. Its package/signature were checked, and it installed and launched to the login screen on the `Medium_Phone_API_36.1` emulator. The artifact and SHA-256 are recorded in the verification log.
+- A Group 04 report draft and Member 4 evidence section are checked in as Markdown. A six-page review PDF was rendered locally and visually inspected. The draft is not the final single-PDF submission.
 
-Completed on 2026-09-19 in the disposable PostgreSQL environment:
+## Group work still needed before submission
 
-1. Created a real workflow with coordinator, field-analysis, weather/resource, and scheduling outputs.
-2. Generated candidate revision 1 and recorded the officer approval state.
-3. Ran the API concurrency probe with one HTTP 200 and one HTTP 409 conflict.
-4. Verified farmer-scoped visibility of the completed workflow, one approved task, one approved irrigation schedule, and one workflow approval decision.
+1. Deploy the React app, ASP.NET API, and PostgreSQL; record public React, health, and Swagger URLs, migration evidence, and evaluator access. This group has not supplied deployed URLs yet.
+2. Record and share a 10-minute demonstration video, then check access in a private browser. No video link has been supplied.
+3. Have Members 1-3 provide and review their own contribution sections, key commits/tests, dated AI usage logs, approximately one-page personal reflections, and signed declarations. Member 4 must also write their own reflection and sign their own declaration. Do not fabricate these.
+4. Combine the reviewed group report, all four individual sections, ADRs, diagrams, links, and AI declaration into **one** Group 04 PDF. Use the checked-in draft as an assembly source, then verify the final rendered PDF and every link.
+5. Extend the single-fixture workflow timing evidence only if the group wants percentile or performance claims. The existing report correctly labels its sample count as one and makes no p50/p95 claim.
 
-Still required before final submission:
-
-6. Extend measured workflow latency beyond the single-run baseline in `docs/testing/performance-report.md`.
-7. Attach Swagger/API evidence, ERD, verification log, and the final submission checklist.
-
-Flutter evidence is recorded: Flutter 3.47.4, dependency resolution, analysis, and the individual login, crop-planning, and inspection tests passed; the combined suite and debug APK Gradle task did not complete in this environment.
-
-The current evidence is valid for the disposable local database only. It must not be presented as production performance or as proof of a genuine external LLM-provider run.
+The Android APK and draft report address the local artifact gap. They do not establish cloud deployment, a live external LLM run, or final group authorship. The [Phase 3 checklist](../testing/phase3-final-submission-checklist.md) tracks exact verified results and limits.
