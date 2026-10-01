@@ -10,18 +10,34 @@ from providers.base_llm_provider import (
     ProviderConfigurationError,
     WebSearchResponse,
     WebSearchSource,
+    classify_provider_exception,
 )
 
 
 class OpenAIProvider(BaseLLMProvider):
     provider_name = "openai"
 
-    def __init__(self, api_key: str, model: str, timeout_seconds: float) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        timeout_seconds: float,
+        web_search_timeout_seconds: float | None = None,
+        web_search_max_retries: int | None = None,
+    ) -> None:
         if not api_key or not model:
             raise ProviderConfigurationError("OpenAI API key and AI_MODEL are required for OpenAI.")
         self._client = AsyncOpenAI(api_key=api_key, timeout=timeout_seconds)
         self._model = model
         self._timeout_seconds = timeout_seconds
+        self._web_search_timeout_seconds = web_search_timeout_seconds or timeout_seconds
+        if web_search_timeout_seconds is None and web_search_max_retries is None:
+            self._web_search_client = self._client
+        else:
+            options: dict[str, Any] = {"timeout": self._web_search_timeout_seconds}
+            if web_search_max_retries is not None:
+                options["max_retries"] = web_search_max_retries
+            self._web_search_client = self._client.with_options(**options)
 
     async def generate_json(
         self,
@@ -57,13 +73,13 @@ class OpenAIProvider(BaseLLMProvider):
     ) -> WebSearchResponse:
         if not allowed_domains:
             raise ProviderConfigurationError("Controlled web search requires at least one approved domain.")
-        if not hasattr(self._client, "responses"):
+        if not hasattr(self._web_search_client, "responses"):
             raise ProviderConfigurationError(
                 "The installed OpenAI SDK does not support the Responses API required for web search."
             )
 
         async def _search() -> Any:
-            return await self._client.responses.create(
+            return await self._web_search_client.responses.create(
                 model=self._model,
                 input=prompt,
                 tools=[{
@@ -76,11 +92,13 @@ class OpenAIProvider(BaseLLMProvider):
             )
 
         try:
-            response = await asyncio.wait_for(_search(), timeout=self._timeout_seconds)
-        except asyncio.TimeoutError:
-            raise
+            response = await asyncio.wait_for(_search(), timeout=self._web_search_timeout_seconds)
         except Exception as exc:
-            raise LLMProviderError(f"OpenAI web search failed: {exc}") from exc
+            raise classify_provider_exception(
+                exc,
+                operation="web_search",
+                timeout_message="OpenAI web search exceeded the configured CropFinding timeout.",
+            ) from exc
 
         payload = response.model_dump(mode="json") if hasattr(response, "model_dump") else response
         sources: list[WebSearchSource] = []

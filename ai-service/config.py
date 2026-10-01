@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     crop_finding_connect_timeout_seconds: float = Field(default=4, alias="CROP_FINDING_CONNECT_TIMEOUT_SECONDS", gt=0, le=30)
     crop_finding_read_timeout_seconds: float = Field(default=12, alias="CROP_FINDING_READ_TIMEOUT_SECONDS", gt=0, le=60)
     crop_finding_document_timeout_seconds: float = Field(default=18, alias="CROP_FINDING_DOCUMENT_TIMEOUT_SECONDS", gt=0, le=90)
+    crop_finding_web_search_timeout_seconds: float = Field(default=50, alias="CROP_FINDING_WEB_SEARCH_TIMEOUT_SECONDS", gt=0, le=90)
     crop_finding_overall_timeout_seconds: float = Field(default=105, alias="CROP_FINDING_OVERALL_TIMEOUT_SECONDS", gt=10, le=180)
     crop_finding_max_redirects: int = Field(default=3, alias="CROP_FINDING_MAX_REDIRECTS", ge=0, le=5)
     crop_finding_max_html_bytes: int = Field(default=2_000_000, alias="CROP_FINDING_MAX_HTML_BYTES", ge=100_000, le=5_000_000)
@@ -28,6 +29,12 @@ class Settings(BaseSettings):
     crop_finding_max_extracted_chars_per_source: int = Field(default=45_000, alias="CROP_FINDING_MAX_EXTRACTED_CHARS_PER_SOURCE", ge=5_000, le=100_000)
     crop_finding_max_total_extracted_chars: int = Field(default=100_000, alias="CROP_FINDING_MAX_TOTAL_EXTRACTED_CHARS", ge=10_000, le=250_000)
     crop_finding_retry_count: int = Field(default=1, alias="CROP_FINDING_RETRY_COUNT", ge=0, le=2)
+
+    @model_validator(mode="after")
+    def validate_crop_finding_timeouts(self) -> "Settings":
+        if self.crop_finding_web_search_timeout_seconds >= self.crop_finding_overall_timeout_seconds:
+            raise ValueError("CROP_FINDING_WEB_SEARCH_TIMEOUT_SECONDS must be shorter than CROP_FINDING_OVERALL_TIMEOUT_SECONDS.")
+        return self
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

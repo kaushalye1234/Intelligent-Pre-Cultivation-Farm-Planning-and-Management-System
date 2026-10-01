@@ -6,7 +6,7 @@ import pytest
 
 from agents.crop_finding_agent import CropFindingAgent
 from config import Settings
-from providers.base_llm_provider import BaseLLMProvider, LLMResponse, WebSearchResponse, WebSearchSource
+from providers.base_llm_provider import BaseLLMProvider, LLMProviderError, LLMResponse, WebSearchResponse, WebSearchSource
 from schemas.crop_finding import DiscoverReferencesInput, SuggestCropsInput, SuggestVarietiesInput
 from tools.crop_finding_tools import ExtractedSegment, RetrievedDocument, SourcePolicy
 
@@ -39,8 +39,10 @@ class FakeTools:
         )
         self.source_policy = SourcePolicy.load_default()
         self.stage_documents = stage_documents
+        self.retrieve_calls = []
 
     async def retrieve_many(self, candidates, stage, limit):
+        self.retrieve_calls.append(stage)
         return self.stage_documents.get(stage, [])[:limit], []
 
 
@@ -59,6 +61,33 @@ class FakeProvider(BaseLLMProvider):
 
     async def generate_json(self, prompt, response_schema=None):
         return LLMResponse(text=json.dumps(self.outputs.pop(0)))
+
+
+class ControlledProvider(BaseLLMProvider):
+    provider_name = "openai"
+
+    def __init__(self, search_outcomes=None, generate_outcomes=None):
+        self.search_outcomes = list(search_outcomes or [])
+        self.generate_outcomes = list(generate_outcomes or [])
+        self.search_stages = []
+        self.generate_calls = 0
+
+    async def search_web(self, prompt, allowed_domains, max_results):
+        stage = 1 if "doa.gov.lk" in allowed_domains else 2
+        self.search_stages.append(stage)
+        outcome = self.search_outcomes.pop(0)
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
+
+    async def generate_json(self, prompt, response_schema=None):
+        self.generate_calls += 1
+        outcome = self.generate_outcomes.pop(0)
+        if isinstance(outcome, BaseException):
+            raise outcome
+        if isinstance(outcome, str):
+            return LLMResponse(text=outcome)
+        return LLMResponse(text=json.dumps(outcome))
 
 
 @pytest.mark.asyncio
@@ -202,3 +231,141 @@ async def test_reference_conflicts_remain_source_specific_and_resource_rules_are
         "Sri Lankan evidence: Two Sri Lankan sources were compared.",
         "International fallback: No approved source could be extracted automatically.",
     ]
+
+
+@pytest.mark.asyncio
+async def test_stage_one_web_search_timeout_is_not_retried_or_followed_by_retrieval(caplog):
+    caplog.set_level("WARNING", logger="agriassist.crop_finding")
+    provider = ControlledProvider(search_outcomes=[TimeoutError("PROMPT_SECRET")])
+    tools = FakeTools({})
+
+    with pytest.raises(LLMProviderError) as captured:
+        await CropFindingAgent(tools, provider, request_id="request-timeout").discover_references(
+            DiscoverReferencesInput(adminUserId=uuid4(), cropTypeId=uuid4(), cropName="Chili")
+        )
+
+    error = captured.value
+    assert error.category == "timeout"
+    assert error.operation == "web_search"
+    assert error.stage == 1
+    assert error.attempt == 1
+    assert provider.search_stages == [1]
+    assert tools.retrieve_calls == []
+    assert provider.generate_calls == 0
+    assert "OpenAI web search exceeded the configured CropFinding timeout." in caplog.text
+    assert "requestId=request-timeout" in caplog.text
+    assert "PROMPT_SECRET" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("category", "status_code", "root_exception_class"),
+    [
+        ("rate_limit", 429, "RateLimitError"),
+        ("server_error", 500, "InternalServerError"),
+        ("server_error", 503, "InternalServerError"),
+        ("connection", None, "APIConnectionError"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_retryable_web_search_failure_receives_one_controlled_retry(
+    category,
+    status_code,
+    root_exception_class,
+):
+    failure = LLMProviderError(
+        "safe provider failure",
+        category=category,
+        operation="web_search",
+        status_code=status_code,
+        root_exception_class=root_exception_class,
+        retryable=True,
+    )
+    provider = ControlledProvider(search_outcomes=[failure, WebSearchResponse(sources=[])])
+    tools = FakeTools({})
+
+    documents, warnings = await CropFindingAgent(tools, provider)._discover(
+        stage=1,
+        query="Find crops",
+        action="DiscoverReferences",
+        request_id="request-retry",
+    )
+
+    assert documents == []
+    assert warnings == []
+    assert provider.search_stages == [1, 1]
+    assert tools.retrieve_calls == [1]
+
+
+@pytest.mark.asyncio
+async def test_invalid_request_web_search_failure_is_not_retried_and_preserves_stage_two_metadata():
+    failure = LLMProviderError(
+        "OpenAI rejected the CropFinding request.",
+        category="invalid_request",
+        operation="web_search",
+        status_code=400,
+        error_code="unsupported_parameter",
+        provider_request_id="provider-request-400",
+        root_exception_class="BadRequestError",
+        retryable=False,
+    )
+    provider = ControlledProvider(search_outcomes=[failure])
+    tools = FakeTools({})
+
+    with pytest.raises(LLMProviderError) as captured:
+        await CropFindingAgent(tools, provider)._discover(
+            stage=2,
+            query="Find fallback evidence",
+            action="DiscoverReferences",
+            request_id="request-stage-two",
+        )
+
+    error = captured.value
+    assert error.stage == 2
+    assert error.attempt == 1
+    assert error.status_code == 400
+    assert error.error_code == "unsupported_parameter"
+    assert error.provider_request_id == "provider-request-400"
+    assert provider.search_stages == [2]
+    assert tools.retrieve_calls == []
+
+
+@pytest.mark.asyncio
+async def test_structured_analysis_timeout_is_distinct_from_web_search_timeout():
+    provider = ControlledProvider(
+        search_outcomes=[WebSearchResponse(sources=[WebSearchSource(url="https://doa.gov.lk/guide", title="Guide")])],
+        generate_outcomes=[TimeoutError()],
+    )
+    tools = FakeTools({1: [document(1, "local", "Chili has an explicitly described establishment stage in this guide.")]})
+
+    with pytest.raises(LLMProviderError) as captured:
+        await CropFindingAgent(tools, provider, request_id="request-analysis").discover_references(
+            DiscoverReferencesInput(adminUserId=uuid4(), cropTypeId=uuid4(), cropName="Chili")
+        )
+
+    error = captured.value
+    assert error.category == "timeout"
+    assert error.operation == "structured_analysis"
+    assert error.stage == 1
+    assert str(error) == "OpenAI structured analysis exceeded the configured provider timeout."
+    assert provider.search_stages == [1]
+    assert tools.retrieve_calls == [1]
+    assert provider.generate_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_malformed_analysis_output_is_classified_without_retry():
+    provider = ControlledProvider(
+        search_outcomes=[WebSearchResponse(sources=[WebSearchSource(url="https://doa.gov.lk/guide", title="Guide")])],
+        generate_outcomes=["not-json"],
+    )
+    tools = FakeTools({1: [document(1, "local", "Chili has an explicitly described establishment stage in this guide.")]})
+
+    with pytest.raises(LLMProviderError) as captured:
+        await CropFindingAgent(tools, provider, request_id="request-structured").discover_references(
+            DiscoverReferencesInput(adminUserId=uuid4(), cropTypeId=uuid4(), cropName="Chili")
+        )
+
+    assert captured.value.category == "structured_output"
+    assert captured.value.operation == "structured_analysis"
+    assert captured.value.attempt == 1
+    assert provider.generate_calls == 1

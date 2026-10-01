@@ -4,6 +4,7 @@ import asyncio
 import logging
 import time
 from typing import Awaitable, Callable, TypeVar
+from uuid import uuid4
 
 from fastapi import HTTPException
 
@@ -55,9 +56,15 @@ async def _run_crop_finding(
     operation: Callable[[CropFindingAgent], Awaitable[T]],
 ) -> T:
     started = time.monotonic()
-    agent = CropFindingAgent(CropFindingTools(settings), create_crop_finding_provider(settings))
+    request_id = str(uuid4())
+    agent = CropFindingAgent(
+        CropFindingTools(settings),
+        create_crop_finding_provider(settings),
+        request_id=request_id,
+    )
     logger.info(
-        "CropFinding request started action=%s adminUserId=%s crop=%s variety=%s",
+        "CropFinding request started requestId=%s action=%s adminUserId=%s crop=%s variety=%s",
+        request_id,
         action,
         admin_user_id,
         crop,
@@ -67,21 +74,43 @@ async def _run_crop_finding(
         result = await asyncio.wait_for(operation(agent), timeout=settings.crop_finding_overall_timeout_seconds)
     except ProviderConfigurationError as exc:
         logger.warning(
-            "CropFinding configuration failure action=%s adminUserId=%s error=%s",
+            "CropFinding configuration failure requestId=%s action=%s adminUserId=%s error=%s",
+            request_id,
             action,
             admin_user_id,
             type(exc).__name__,
         )
         raise HTTPException(status_code=503, detail="CropFinding OpenAI configuration is unavailable.") from exc
     except asyncio.TimeoutError as exc:
-        logger.warning("CropFinding timeout action=%s adminUserId=%s", action, admin_user_id)
-        raise HTTPException(status_code=504, detail="CropFinding timed out before a complete result was available.") from exc
-    except LLMProviderError as exc:
         logger.warning(
-            "CropFinding provider failure action=%s adminUserId=%s error=%s",
+            "CropFinding timeout requestId=%s action=%s adminUserId=%s operation=overall_request "
+            "exceptionClass=%s rootCauseClass=%s category=timeout safeMessage=%s",
+            request_id,
             action,
             admin_user_id,
             type(exc).__name__,
+            type(exc.__cause__).__name__ if exc.__cause__ else type(exc).__name__,
+            "CropFinding exceeded the configured overall operation timeout.",
+        )
+        raise HTTPException(status_code=504, detail="CropFinding timed out before a complete result was available.") from exc
+    except LLMProviderError as exc:
+        logger.warning(
+            "CropFinding provider failure requestId=%s action=%s adminUserId=%s operation=%s stage=%s attempt=%s "
+            "exceptionClass=%s rootCauseClass=%s category=%s safeMessage=%s httpStatus=%s "
+            "openaiErrorCode=%s providerRequestId=%s",
+            exc.request_id or request_id,
+            action,
+            admin_user_id,
+            exc.operation,
+            exc.stage,
+            exc.attempt,
+            type(exc).__name__,
+            exc.root_exception_class,
+            exc.category,
+            str(exc),
+            exc.status_code,
+            exc.error_code,
+            exc.provider_request_id,
         )
         raise HTTPException(status_code=502, detail="CropFinding source discovery or analysis failed.") from exc
 
@@ -96,7 +125,8 @@ async def _run_crop_finding(
         status = str(item.get("evidenceStatus") or "Unknown")
         counts[status] = counts.get(status, 0) + 1
     logger.info(
-        "CropFinding request completed action=%s adminUserId=%s durationMs=%s usedInternationalFallback=%s sourceUrls=%s evidenceCounts=%s outcome=success",
+        "CropFinding request completed requestId=%s action=%s adminUserId=%s durationMs=%s usedInternationalFallback=%s sourceUrls=%s evidenceCounts=%s outcome=success",
+        request_id,
         action,
         admin_user_id,
         duration_ms,

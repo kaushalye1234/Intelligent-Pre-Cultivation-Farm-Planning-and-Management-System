@@ -1,11 +1,16 @@
-import asyncio
 import json
+import logging
 import re
 from dataclasses import replace
 from typing import Any, Literal
 from uuid import uuid4
 
-from providers.base_llm_provider import BaseLLMProvider, LLMProviderError, ProviderConfigurationError
+from providers.base_llm_provider import (
+    BaseLLMProvider,
+    LLMProviderError,
+    ProviderConfigurationError,
+    classify_provider_exception,
+)
 from schemas.crop_finding import (
     CropSuggestion,
     CropSuggestionsResponse,
@@ -33,6 +38,7 @@ FORBIDDEN_RULE_TERMS = (
     "resourcerequirement", "fertilizerquantity", "irrigationquantity",
     "seedquantity", "inventory", "stockreservation", "resourcequantity",
 )
+logger = logging.getLogger("agriassist.crop_finding")
 
 
 SUGGESTION_SCHEMA: dict[str, Any] = {
@@ -117,21 +123,29 @@ class CropFindingAgent:
             return []
         return [f"{label}: {str(value).strip()}" for value in values if str(value).strip()]
 
-    def __init__(self, tools: CropFindingTools, llm_provider: BaseLLMProvider | None) -> None:
+    def __init__(
+        self,
+        tools: CropFindingTools,
+        llm_provider: BaseLLMProvider | None,
+        request_id: str | None = None,
+    ) -> None:
         self._tools = tools
         self._provider = llm_provider
+        self._request_id = request_id
 
     async def suggest_crops(self, request: SuggestCropsInput) -> CropSuggestionsResponse:
-        request_id = str(uuid4())
+        request_id = self._request_id or str(uuid4())
         stage1, warnings = await self._discover(
             stage=1,
+            action="SuggestCrops",
+            request_id=request_id,
             query=(
                 "Find authoritative Sri Lankan sources identifying crops cultivated or officially researched in Sri Lanka. "
                 f"Optional admin context: {request.context or 'none'}. Return direct original source pages or text PDFs."
             ),
         )
         suggestions, analysis, recommendations = await self._analyze_suggestions(
-            "crop", stage1, request.max_suggestions, request.context, None,
+            "crop", stage1, request.max_suggestions, request.context, None, request_id,
         )
         analysis = self._label_stage_messages(analysis, 1)
         recommendations = self._label_stage_messages(recommendations, 1)
@@ -140,6 +154,8 @@ class CropFindingAgent:
         if used_fallback:
             stage2, stage2_warnings = await self._discover(
                 stage=2,
+                action="SuggestCrops",
+                request_id=request_id,
                 query=(
                     "Find recognized international agricultural sources about crops relevant to tropical South Asia. "
                     "This is fallback evidence only and must not claim Sri Lankan suitability. Return direct pages or text PDFs."
@@ -147,7 +163,7 @@ class CropFindingAgent:
             )
             warnings.extend(stage2_warnings)
             fallback, fallback_analysis, fallback_recommendations = await self._analyze_suggestions(
-                "crop", stage2, request.max_suggestions, request.context, None,
+                "crop", stage2, request.max_suggestions, request.context, None, request_id,
             )
             suggestions.extend(self._downgrade_fallback_suggestions(fallback))
             analysis.extend(self._label_stage_messages(fallback_analysis, 2))
@@ -164,16 +180,18 @@ class CropFindingAgent:
         )
 
     async def suggest_varieties(self, request: SuggestVarietiesInput) -> VarietySuggestionsResponse:
-        request_id = str(uuid4())
+        request_id = self._request_id or str(uuid4())
         stage1, warnings = await self._discover(
             stage=1,
+            action="SuggestVarieties",
+            request_id=request_id,
             query=(
                 f"Find authoritative Sri Lankan sources naming released, recommended, or researched varieties of {request.crop_name}. "
                 f"Optional admin context: {request.context or 'none'}. Return direct original source pages or text PDFs."
             ),
         )
         raw, analysis, recommendations = await self._analyze_suggestions(
-            "variety", stage1, request.max_suggestions, request.context, request.crop_name,
+            "variety", stage1, request.max_suggestions, request.context, request.crop_name, request_id,
         )
         analysis = self._label_stage_messages(analysis, 1)
         recommendations = self._label_stage_messages(recommendations, 1)
@@ -183,6 +201,8 @@ class CropFindingAgent:
         if used_fallback:
             stage2, stage2_warnings = await self._discover(
                 stage=2,
+                action="SuggestVarieties",
+                request_id=request_id,
                 query=(
                     f"Find recognized international agricultural sources that explicitly name varieties of {request.crop_name}. "
                     "This is fallback only; do not assert that a variety is released or suitable in Sri Lanka."
@@ -190,7 +210,7 @@ class CropFindingAgent:
             )
             warnings.extend(stage2_warnings)
             fallback_raw, fallback_analysis, fallback_recommendations = await self._analyze_suggestions(
-                "variety", stage2, request.max_suggestions, request.context, request.crop_name,
+                "variety", stage2, request.max_suggestions, request.context, request.crop_name, request_id,
             )
             suggestions.extend(
                 VarietySuggestion.model_validate(item.model_dump())
@@ -212,18 +232,20 @@ class CropFindingAgent:
         )
 
     async def discover_references(self, request: DiscoverReferencesInput) -> ReferenceDiscoveryResponse:
-        request_id = str(uuid4())
+        request_id = self._request_id or str(uuid4())
         target = request.crop_name + (f" variety {request.variety_name}" if request.variety_name else "")
         region = request.region or "Sri Lanka"
         stage1, warnings = await self._discover(
             stage=1,
+            action="DiscoverReferences",
+            request_id=request_id,
             query=(
                 f"Find authoritative Sri Lankan source documents for {target}, region/context {region}. "
                 "Prioritize explicit growth stages, durations, planting windows, season applicability, and non-resource cultivation rules. "
                 "Return direct original HTML pages or text PDFs."
             ),
         )
-        drafts, analysis, recommendations, unsupported = await self._analyze_references(request, stage1)
+        drafts, analysis, recommendations, unsupported = await self._analyze_references(request, stage1, request_id)
         analysis = self._label_stage_messages(analysis, 1)
         recommendations = self._label_stage_messages(recommendations, 1)
         supported_fields = {
@@ -235,6 +257,8 @@ class CropFindingAgent:
         if used_fallback:
             stage2, stage2_warnings = await self._discover(
                 stage=2,
+                action="DiscoverReferences",
+                request_id=request_id,
                 query=(
                     f"Find recognized international sources for {target} that may address these evidence gaps: "
                     f"{', '.join(evidence_gaps or unsupported or ['general reference evidence'])}. "
@@ -242,7 +266,7 @@ class CropFindingAgent:
                 ),
             )
             warnings.extend(stage2_warnings)
-            fallback_drafts, fallback_analysis, fallback_recommendations, fallback_unsupported = await self._analyze_references(request, stage2)
+            fallback_drafts, fallback_analysis, fallback_recommendations, fallback_unsupported = await self._analyze_references(request, stage2, request_id)
             drafts.extend(self._downgrade_fallback_drafts(fallback_drafts))
             analysis.extend(self._label_stage_messages(fallback_analysis, 2))
             recommendations.extend(self._label_stage_messages(fallback_recommendations, 2))
@@ -263,21 +287,41 @@ class CropFindingAgent:
             warnings=self._clean_strings(warnings),
         )
 
-    async def _discover(self, stage: int, query: str) -> tuple[list[RetrievedDocument], list[str]]:
+    async def _discover(
+        self,
+        stage: int,
+        query: str,
+        action: str,
+        request_id: str,
+    ) -> tuple[list[RetrievedDocument], list[str]]:
         if self._provider is None:
             raise ProviderConfigurationError("CropFinding requires the server-side OpenAI API key and model.")
         hosts = self._tools.source_policy.allowed_hosts(stage)
         attempts = self._tools.settings.crop_finding_retry_count + 1
-        last_error: Exception | None = None
         search = None
-        for _ in range(attempts):
+        for attempt in range(1, attempts + 1):
             try:
                 search = await self._provider.search_web(query, hosts, self._tools.settings.crop_finding_candidate_limit)
                 break
-            except (asyncio.TimeoutError, LLMProviderError) as exc:
-                last_error = exc
+            except ProviderConfigurationError:
+                raise
+            except Exception as exc:
+                failure = classify_provider_exception(
+                    exc,
+                    operation="web_search",
+                    timeout_message="OpenAI web search exceeded the configured CropFinding timeout.",
+                ).add_context(
+                    request_id=request_id,
+                    action=action,
+                    stage=stage,
+                    attempt=attempt,
+                )
+                self._log_provider_failure(failure)
+                if failure.retryable and attempt < attempts:
+                    continue
+                raise failure from exc
         if search is None:
-            raise LLMProviderError(f"Source discovery failed after bounded retry: {last_error}")
+            raise LLMProviderError("CropFinding source discovery ended without a provider result.")
         approved: list[tuple[str, str]] = []
         warnings: list[str] = []
         for candidate in search.sources:
@@ -301,6 +345,7 @@ class CropFindingAgent:
         limit: int,
         context: str | None,
         crop_name: str | None,
+        request_id: str,
     ) -> tuple[list[CropSuggestion], list[str], list[str]]:
         readable = [document for document in documents if document.retrieval_status == "Retrieved"]
         if not readable:
@@ -315,7 +360,13 @@ class CropFindingAgent:
             "Partially Supported for generic or incomplete evidence; Unsupported when evidence is absent; and preserve mismatches in warnings. "
             f"Admin context: {context or 'none'}. Return JSON matching the schema.\nEvidence documents:\n{evidence}"
         )
-        payload = await self._generate_payload(prompt, SUGGESTION_SCHEMA)
+        payload = await self._generate_payload(
+            prompt,
+            SUGGESTION_SCHEMA,
+            action="SuggestCrops" if kind == "crop" else "SuggestVarieties",
+            stage=readable[0].stage,
+            request_id=request_id,
+        )
         output: list[CropSuggestion] = []
         by_id = {document.source_id: document for document in readable}
         for index, item in enumerate(payload.get("suggestions", [])):
@@ -340,6 +391,7 @@ class CropFindingAgent:
         self,
         request: DiscoverReferencesInput,
         documents: list[RetrievedDocument],
+        request_id: str,
     ) -> tuple[list[ReferenceSourceDraft], list[str], list[str], list[str]]:
         readable = [document for document in documents if document.retrieval_status == "Retrieved"]
         manual = [document for document in documents if document.manual_review_required]
@@ -361,7 +413,13 @@ class CropFindingAgent:
             "Never invent facts, URLs, quotes, pages, or sections. Return JSON matching the schema.\nEvidence documents:\n"
             + self._evidence_bundle(readable)
         )
-        payload = await self._generate_payload(prompt, REFERENCE_SCHEMA)
+        payload = await self._generate_payload(
+            prompt,
+            REFERENCE_SCHEMA,
+            action="DiscoverReferences",
+            stage=readable[0].stage,
+            request_id=request_id,
+        )
         by_id = {document.source_id: document for document in readable}
         for raw_draft in payload.get("sourceDrafts", []):
             document = by_id.get(str(raw_draft.get("sourceId") or ""))
@@ -417,17 +475,75 @@ class CropFindingAgent:
             self._clean_strings(payload.get("unsupportedFields", [])),
         )
 
-    async def _generate_payload(self, prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
+    async def _generate_payload(
+        self,
+        prompt: str,
+        schema: dict[str, Any],
+        *,
+        action: str,
+        stage: int,
+        request_id: str,
+    ) -> dict[str, Any]:
         if self._provider is None:
             raise ProviderConfigurationError("CropFinding requires OpenAI configuration.")
         try:
             response = await self._provider.generate_json(prompt, response_schema=schema)
+        except ProviderConfigurationError:
+            raise
+        except Exception as exc:
+            failure = classify_provider_exception(
+                exc,
+                operation="structured_analysis",
+                timeout_message="OpenAI structured analysis exceeded the configured provider timeout.",
+            ).add_context(
+                request_id=request_id,
+                action=action,
+                stage=stage,
+                attempt=1,
+            )
+            self._log_provider_failure(failure)
+            raise failure from exc
+        try:
             payload = json.loads(response.text)
         except json.JSONDecodeError as exc:
-            raise LLMProviderError("OpenAI returned malformed structured CropFinding output.") from exc
+            failure = LLMProviderError(
+                "OpenAI returned malformed structured CropFinding output.",
+                category="structured_output",
+                operation="structured_analysis",
+                root_exception_class=type(exc).__name__,
+            ).add_context(request_id=request_id, action=action, stage=stage, attempt=1)
+            self._log_provider_failure(failure)
+            raise failure from exc
         if not isinstance(payload, dict):
-            raise LLMProviderError("OpenAI returned an invalid CropFinding response shape.")
+            failure = LLMProviderError(
+                "OpenAI returned an invalid CropFinding response shape.",
+                category="structured_output",
+                operation="structured_analysis",
+                root_exception_class=type(payload).__name__,
+            ).add_context(request_id=request_id, action=action, stage=stage, attempt=1)
+            self._log_provider_failure(failure)
+            raise failure
         return payload
+
+    @staticmethod
+    def _log_provider_failure(error: LLMProviderError) -> None:
+        logger.warning(
+            "CropFinding provider operation failed requestId=%s action=%s operation=%s stage=%s attempt=%s "
+            "exceptionClass=%s rootCauseClass=%s category=%s safeMessage=%s httpStatus=%s "
+            "openaiErrorCode=%s providerRequestId=%s",
+            error.request_id,
+            error.action,
+            error.operation,
+            error.stage,
+            error.attempt,
+            type(error).__name__,
+            error.root_exception_class,
+            error.category,
+            str(error),
+            error.status_code,
+            error.error_code,
+            error.provider_request_id,
+        )
 
     def _evidence_bundle(self, documents: list[RetrievedDocument]) -> str:
         remaining = self._tools.settings.crop_finding_max_total_extracted_chars

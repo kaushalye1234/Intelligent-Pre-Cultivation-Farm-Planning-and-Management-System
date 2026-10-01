@@ -20,4 +20,6 @@ def create_crop_finding_provider(settings: Settings) -> OpenAIProvider | None:
         api_key=settings.openai_api_key,
         model=settings.ai_model,
         timeout_seconds=settings.provider_timeout_seconds,
+        web_search_timeout_seconds=settings.crop_finding_web_search_timeout_seconds,
+        web_search_max_retries=0,
     )

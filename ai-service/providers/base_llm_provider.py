@@ -4,11 +4,109 @@ from typing import Any
 
 
 class LLMProviderError(RuntimeError):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        category: str = "unknown_provider_error",
+        operation: str | None = None,
+        status_code: int | None = None,
+        error_code: str | None = None,
+        provider_request_id: str | None = None,
+        root_exception_class: str | None = None,
+        retryable: bool = False,
+    ) -> None:
+        super().__init__(message)
+        self.category = category
+        self.operation = operation
+        self.status_code = status_code
+        self.error_code = error_code
+        self.provider_request_id = provider_request_id
+        self.root_exception_class = root_exception_class
+        self.retryable = retryable
+        self.request_id: str | None = None
+        self.action: str | None = None
+        self.stage: int | None = None
+        self.attempt: int | None = None
+
+    def add_context(
+        self,
+        *,
+        request_id: str,
+        action: str,
+        stage: int,
+        attempt: int,
+    ) -> "LLMProviderError":
+        self.request_id = request_id
+        self.action = action
+        self.stage = stage
+        self.attempt = attempt
+        return self
 
 
 class ProviderConfigurationError(LLMProviderError):
     pass
+
+
+def classify_provider_exception(
+    exc: Exception,
+    *,
+    operation: str,
+    timeout_message: str,
+) -> LLMProviderError:
+    if isinstance(exc, LLMProviderError):
+        if exc.operation is None:
+            exc.operation = operation
+        return exc
+
+    root = exc
+    while isinstance(root.__cause__, Exception):
+        root = root.__cause__
+
+    exception_name = type(root).__name__
+    normalized_name = exception_name.casefold()
+    raw_status = getattr(root, "status_code", None)
+    status_code = raw_status if isinstance(raw_status, int) else None
+    raw_code = getattr(root, "code", None)
+    error_code = str(raw_code)[:120] if raw_code is not None else None
+    raw_request_id = getattr(root, "request_id", None)
+    provider_request_id = str(raw_request_id)[:200] if raw_request_id is not None else None
+
+    if isinstance(exc, TimeoutError) or isinstance(root, TimeoutError) or "timeout" in normalized_name:
+        category = "timeout"
+        message = timeout_message
+        retryable = False
+    elif status_code == 429 or "ratelimit" in normalized_name or "rate_limit" in normalized_name:
+        category = "rate_limit"
+        message = "OpenAI rate limit was reached."
+        retryable = True
+    elif status_code is not None and 500 <= status_code <= 599:
+        category = "server_error"
+        message = "OpenAI returned a server error."
+        retryable = True
+    elif status_code is not None and 400 <= status_code <= 499:
+        category = "invalid_request"
+        message = "OpenAI rejected the CropFinding request."
+        retryable = False
+    elif isinstance(root, ConnectionError) or "connection" in normalized_name or "connect" in normalized_name:
+        category = "connection"
+        message = "OpenAI connection failed."
+        retryable = True
+    else:
+        category = "unknown_provider_error"
+        message = "OpenAI provider request failed."
+        retryable = False
+
+    return LLMProviderError(
+        message,
+        category=category,
+        operation=operation,
+        status_code=status_code,
+        error_code=error_code,
+        provider_request_id=provider_request_id,
+        root_exception_class=exception_name,
+        retryable=retryable,
+    )
 
 
 @dataclass(frozen=True)
