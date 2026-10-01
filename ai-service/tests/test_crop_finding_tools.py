@@ -4,6 +4,7 @@ import httpx
 import pytest
 
 from config import Settings
+import tools.crop_finding_tools as crop_finding_tools_module
 from tools.crop_finding_tools import CropFindingTools, RetrievalError, SourcePolicy, SourcePolicyError
 
 
@@ -101,6 +102,32 @@ async def test_unreadable_pdf_is_retained_for_manual_review():
     assert document.manual_review_required is True
     assert document.original_url == "https://doa.gov.lk/rrdi/manual.pdf"
     assert document.segments == []
+
+
+@pytest.mark.asyncio
+async def test_text_pdf_preserves_page_provenance(monkeypatch):
+    class FakePage:
+        def __init__(self, text: str):
+            self._text = text
+
+        def extract_text(self):
+            return self._text
+
+    class FakeReader:
+        pages = [FakePage("Bg 352 has a documented vegetative stage duration in this official rice guide.")]
+
+    monkeypatch.setattr(crop_finding_tools_module, "PdfReader", lambda *args, **kwargs: FakeReader())
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, request=request, headers={"content-type": "application/pdf"}, content=b"pdf")
+
+    tools = CropFindingTools(settings(), transport=httpx.MockTransport(handler), resolver=public_resolver)
+    document = await tools.retrieve("https://doa.gov.lk/rrdi/rice-guide.pdf", "Rice guide", 1)
+
+    assert document.retrieval_status == "Retrieved"
+    assert document.page_count == 1
+    assert document.segments[0].page_number == 1
+    assert "vegetative stage" in document.segments[0].text
 
 
 def test_connected_peer_must_be_public_and_match_resolved_address():

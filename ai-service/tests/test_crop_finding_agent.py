@@ -84,6 +84,30 @@ async def test_stage_two_runs_only_when_sri_lankan_evidence_has_a_gap():
 
 
 @pytest.mark.asyncio
+async def test_supported_sri_lankan_evidence_stops_before_stage_two():
+    local_text = "Rice is cultivated in Sri Lanka according to this official guide."
+    provider = FakeProvider([{
+        "suggestions": [{
+            "name": "Rice", "description": "Cereal crop", "evidenceStatus": "Supported",
+            "explanation": "The Sri Lankan source explicitly names rice.", "sourceId": "local",
+            "evidenceText": local_text, "pageNumber": None, "section": "Varieties", "warnings": []
+        }],
+        "analysis": ["Authoritative Sri Lankan evidence was sufficient."],
+        "recommendations": [],
+    }])
+    tools = FakeTools({1: [document(1, "local", local_text)]})
+
+    result = await CropFindingAgent(tools, provider).suggest_crops(
+        SuggestCropsInput(adminUserId=uuid4(), maxSuggestions=5)
+    )
+
+    assert provider.search_stages == [1]
+    assert result.used_international_fallback is False
+    assert result.suggestions[0].evidence_status == "Supported"
+    assert result.suggestions[0].provenance[0].source_classification == "Sri Lankan"
+
+
+@pytest.mark.asyncio
 async def test_reference_conflicts_remain_source_specific_and_resource_rules_are_removed():
     local_a = document(1, "source-a", "The establishment stage lasts 10 days. Maha planting is recommended.")
     local_b = document(1, "source-b", "The establishment stage lasts 14 days.")
