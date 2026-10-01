@@ -16,6 +16,32 @@ const provenance = [{
   originalUrl: source.originalUrl, finalUrl: source.finalUrl, sourceCategory: 'Government', country: 'Sri Lanka',
   sourceClassification: 'Sri Lankan' as const, stage: 1, evidenceText: 'Bg 352 is listed for cultivation.', pageNumber: null, section: 'Varieties',
 }]
+const fallbackSource = {
+  ...source,
+  sourceId: 'source-international',
+  title: 'World Vegetable Center variety release',
+  organizationName: 'World Vegetable Center',
+  originalUrl: 'https://worldveg.org/varieties/yummy-hot',
+  finalUrl: 'https://worldveg.org/varieties/yummy-hot',
+  sourceCategory: 'International crop research institute',
+  country: 'International',
+  sourceClassification: 'International fallback' as const,
+  stage: 2,
+}
+const fallbackProvenance = [{
+  sourceId: fallbackSource.sourceId,
+  sourceName: fallbackSource.title,
+  organizationName: fallbackSource.organizationName,
+  originalUrl: fallbackSource.originalUrl,
+  finalUrl: fallbackSource.finalUrl,
+  sourceCategory: fallbackSource.sourceCategory,
+  country: fallbackSource.country,
+  sourceClassification: fallbackSource.sourceClassification,
+  stage: 2,
+  evidenceText: 'This new variety, called Yummy Hot, is a high-yielding chili.',
+  pageNumber: null,
+  section: 'Varieties',
+}]
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -61,8 +87,11 @@ describe('CropFinding Admin review', () => {
     mockCatalog()
     vi.spyOn(api, 'post').mockResolvedValue({ data: {
       requestId: 'request-2', action: 'SuggestVarieties', cropTypeId: 'crop-1', cropName: 'Rice', usedInternationalFallback: true,
-      sources: [source], suggestions: [{ id: 'partial', name: 'Candidate 1', description: null, evidenceStatus: 'Partially Supported', explanation: 'International fallback only.', provenance, warnings: ['Local applicability is not established.'], alreadyExists: false }],
-      analysis: [], recommendations: [], warnings: [],
+      sources: [fallbackSource], suggestions: [{ id: 'partial', name: 'Candidate 1', description: null, evidenceStatus: 'Partially Supported', explanation: 'International fallback only.', provenance: fallbackProvenance, warnings: ['Local applicability is not established.'], alreadyExists: false }],
+      analysis: [
+        'Sri Lankan evidence: No explicit variety names were found.',
+        'International fallback: One explicit variety was found.',
+      ], recommendations: [], warnings: [],
     } })
 
     render(<AdminCropManagement />)
@@ -71,6 +100,9 @@ describe('CropFinding Admin review', () => {
     fireEvent.change(screen.getByRole('combobox', { name: 'Existing crop' }), { target: { value: 'crop-1' } })
     fireEvent.click(screen.getByRole('button', { name: 'Find Sri Lankan Varieties' }))
     await screen.findByText('Candidate 1')
+    expect(screen.getByText('Sri Lankan evidence: No explicit variety names were found.')).toBeInTheDocument()
+    expect(screen.getByText('International fallback: One explicit variety was found.')).toBeInTheDocument()
+    expect(screen.getAllByText('International fallback').length).toBeGreaterThan(0)
     fireEvent.click(screen.getByRole('button', { name: 'Accept' }))
 
     expect(screen.queryByRole('dialog', { name: 'Add variety' })).not.toBeInTheDocument()

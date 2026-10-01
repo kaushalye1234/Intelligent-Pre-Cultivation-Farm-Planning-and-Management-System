@@ -110,6 +110,13 @@ REFERENCE_SCHEMA: dict[str, Any] = {
 
 
 class CropFindingAgent:
+    @staticmethod
+    def _label_stage_messages(values: Any, stage: int) -> list[str]:
+        label = "Sri Lankan evidence" if stage == 1 else "International fallback"
+        if not isinstance(values, list):
+            return []
+        return [f"{label}: {str(value).strip()}" for value in values if str(value).strip()]
+
     def __init__(self, tools: CropFindingTools, llm_provider: BaseLLMProvider | None) -> None:
         self._tools = tools
         self._provider = llm_provider
@@ -126,6 +133,8 @@ class CropFindingAgent:
         suggestions, analysis, recommendations = await self._analyze_suggestions(
             "crop", stage1, request.max_suggestions, request.context, None,
         )
+        analysis = self._label_stage_messages(analysis, 1)
+        recommendations = self._label_stage_messages(recommendations, 1)
         used_fallback = not any(item.evidence_status == SUPPORTED for item in suggestions)
         documents = list(stage1)
         if used_fallback:
@@ -141,8 +150,8 @@ class CropFindingAgent:
                 "crop", stage2, request.max_suggestions, request.context, None,
             )
             suggestions.extend(self._downgrade_fallback_suggestions(fallback))
-            analysis.extend(fallback_analysis)
-            recommendations.extend(fallback_recommendations)
+            analysis.extend(self._label_stage_messages(fallback_analysis, 2))
+            recommendations.extend(self._label_stage_messages(fallback_recommendations, 2))
             documents.extend(stage2)
         return CropSuggestionsResponse(
             requestId=request_id,
@@ -166,6 +175,8 @@ class CropFindingAgent:
         raw, analysis, recommendations = await self._analyze_suggestions(
             "variety", stage1, request.max_suggestions, request.context, request.crop_name,
         )
+        analysis = self._label_stage_messages(analysis, 1)
+        recommendations = self._label_stage_messages(recommendations, 1)
         suggestions = [VarietySuggestion.model_validate(item.model_dump()) for item in raw]
         used_fallback = not any(item.evidence_status == SUPPORTED for item in suggestions)
         documents = list(stage1)
@@ -185,8 +196,8 @@ class CropFindingAgent:
                 VarietySuggestion.model_validate(item.model_dump())
                 for item in self._downgrade_fallback_suggestions(fallback_raw)
             )
-            analysis.extend(fallback_analysis)
-            recommendations.extend(fallback_recommendations)
+            analysis.extend(self._label_stage_messages(fallback_analysis, 2))
+            recommendations.extend(self._label_stage_messages(fallback_recommendations, 2))
             documents.extend(stage2)
         return VarietySuggestionsResponse(
             requestId=request_id,
@@ -213,6 +224,8 @@ class CropFindingAgent:
             ),
         )
         drafts, analysis, recommendations, unsupported = await self._analyze_references(request, stage1)
+        analysis = self._label_stage_messages(analysis, 1)
+        recommendations = self._label_stage_messages(recommendations, 1)
         supported_fields = {
             item.field for draft in drafts for item in draft.items if item.evidence_status == SUPPORTED
         }
@@ -231,8 +244,8 @@ class CropFindingAgent:
             warnings.extend(stage2_warnings)
             fallback_drafts, fallback_analysis, fallback_recommendations, fallback_unsupported = await self._analyze_references(request, stage2)
             drafts.extend(self._downgrade_fallback_drafts(fallback_drafts))
-            analysis.extend(fallback_analysis)
-            recommendations.extend(fallback_recommendations)
+            analysis.extend(self._label_stage_messages(fallback_analysis, 2))
+            recommendations.extend(self._label_stage_messages(fallback_recommendations, 2))
             unsupported.extend(fallback_unsupported)
             documents.extend(stage2)
         drafts = self._mark_conflicts(drafts)

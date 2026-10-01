@@ -43,6 +43,29 @@ def test_source_policy_requires_exact_hosts_and_path_prefixes():
         policy.match_url("https://user:secret@doa.gov.lk/hordi-home/", 1)
 
 
+def test_source_policy_approves_only_the_configured_repository_service_hosts_and_paths():
+    policy = SourcePolicy.load_default()
+
+    assert policy.match_url("https://dl.nsf.gov.lk/dl/api/core/bitstreams/example/content", 1).id == "lk-nsf"
+    assert policy.match_url("https://dl-doa.nsf.gov.lk/doa/api/core/bitstreams/example/content", 1).id == "lk-doa-repository"
+    assert policy.match_url("https://agris.fao.org/search/en/providers/122193/records/example", 2).id == "intl-fao-agris"
+    assert policy.match_url("https://glis.fao.org/glis/doi/10.18730/EXAMPLE", 2).id == "intl-fao-glis"
+
+    rejected = [
+        ("https://ecocrop.apps.fao.org/ecocrop/srv/en/cropView?id=618", 2),
+        ("https://random.fao.org/search/crops", 2),
+        ("https://fake.dl-doa.nsf.gov.lk/doa/", 1),
+        ("https://agris.fao.org.example.com/search/crops", 2),
+        ("https://agris.fao.org/browse/crops", 2),
+        ("https://glis.fao.org/about", 2),
+        ("https://agris.fao.org/search/crops", 1),
+        ("https://dl-doa.nsf.gov.lk/doa/", 2),
+    ]
+    for url, stage in rejected:
+        with pytest.raises(SourcePolicyError):
+            policy.match_url(url, stage)
+
+
 @pytest.mark.parametrize("address", [
     "127.0.0.1", "10.0.0.1", "169.254.169.254", "0.0.0.0", "224.0.0.1", "192.0.2.1", "::1", "fc00::1"
 ])
@@ -89,6 +112,30 @@ async def test_redirect_to_unapproved_host_is_rejected():
     tools = CropFindingTools(settings(), transport=httpx.MockTransport(handler), resolver=public_resolver)
     with pytest.raises(SourcePolicyError):
         await tools.retrieve("https://doa.gov.lk/hordi-home/", "HORDI", 1)
+
+
+@pytest.mark.asyncio
+async def test_redirect_within_approved_agris_path_is_accepted():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/search/old":
+            return httpx.Response(302, request=request, headers={"location": "/search/en/records/1"})
+        return httpx.Response(
+            200,
+            request=request,
+            headers={"content-type": "text/html; charset=utf-8"},
+            text=(
+                "<html><head><title>AGRIS crop record</title></head><body>"
+                "<h1>Crop record</h1><p>This agricultural record contains enough readable text for extraction.</p>"
+                "</body></html>"
+            ),
+        )
+
+    tools = CropFindingTools(settings(), transport=httpx.MockTransport(handler), resolver=public_resolver)
+    document = await tools.retrieve("https://agris.fao.org/search/old", "AGRIS record", 2)
+
+    assert document.retrieval_status == "Retrieved"
+    assert document.source_id.startswith("intl-fao-agris:")
+    assert document.final_url == "https://agris.fao.org/search/en/records/1"
 
 
 @pytest.mark.asyncio

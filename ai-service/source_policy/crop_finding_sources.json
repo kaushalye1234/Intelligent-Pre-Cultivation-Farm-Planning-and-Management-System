@@ -113,6 +113,17 @@
       "rationale": "Official national Department of Agriculture portal."
     },
     {
+      "id": "lk-doa-repository",
+      "organizationName": "Sri Lanka Department of Agriculture e-Repository",
+      "approvedHosts": ["dl-doa.nsf.gov.lk"],
+      "pathPrefixes": ["/"],
+      "country": "Sri Lanka",
+      "sourceCategory": "Government agricultural publication repository",
+      "stage": 1,
+      "relevance": ["Department of Agriculture publications", "crop varieties", "cultivation guides", "crop research", "agricultural journals"],
+      "rationale": "Official Department of Agriculture e-Repository maintained by the DOA Library through the NSF digitization programme."
+    },
+    {
       "id": "lk-export-agriculture",
       "organizationName": "Department of Export Agriculture",
       "approvedHosts": ["dea.gov.lk", "www.dea.gov.lk"],
@@ -353,6 +364,28 @@
       "stage": 2,
       "relevance": ["crop calendars", "plant genetic resources", "cultivation standards", "agricultural statistics"],
       "rationale": "Recognized UN authority for agricultural information; used only as international fallback."
+    },
+    {
+      "id": "intl-fao-agris",
+      "organizationName": "FAO AGRIS",
+      "approvedHosts": ["agris.fao.org"],
+      "pathPrefixes": ["/search"],
+      "country": "International",
+      "sourceCategory": "United Nations agricultural bibliographic repository",
+      "stage": 2,
+      "relevance": ["agricultural publications", "crop research", "variety research", "bibliographic discovery"],
+      "rationale": "Official FAO agricultural knowledge repository; indexed claims remain attributable to their original data providers and are used only as international fallback."
+    },
+    {
+      "id": "intl-fao-glis",
+      "organizationName": "FAO Global Information System on Plant Genetic Resources for Food and Agriculture",
+      "approvedHosts": ["glis.fao.org"],
+      "pathPrefixes": ["/glis"],
+      "country": "International",
+      "sourceCategory": "United Nations plant genetic resources information system",
+      "stage": 2,
+      "relevance": ["plant genetic resources", "germplasm", "breeding material", "cultivar identity", "released variety records"],
+      "rationale": "Official FAO/ITPGRFA system for plant genetic resources; used only as international fallback and not as evidence of Sri Lankan applicability."
     },
     {
       "id": "intl-irri",
