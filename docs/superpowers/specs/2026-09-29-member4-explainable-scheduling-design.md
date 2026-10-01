@@ -1,7 +1,7 @@
 # Member 4 Explainable Scheduling Design
 
 **Date:** 2026-09-29
-**Status:** Implemented locally on `member4/explainable-scheduling`; live cross-service HTTP and remote CI evidence pending
+**Status:** Implemented locally on `member4/explainable-scheduling`; disposable API-to-AI HTTP and draft PR CI passed; browser demo pending
 **Owner:** Member 4
 **Scope:** `SchedulingValidationAgent`, its ASP.NET handoff and validator, the existing officer review page, and farmer-facing blocked status.
 

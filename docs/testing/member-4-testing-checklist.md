@@ -34,7 +34,7 @@ flutter test
 
 ## Service checks
 
-1. PostgreSQL contains the five applied migrations, including `AddSchedulingApprovalWorkflow`.
+1. PostgreSQL contains all current migrations, including `AddSchedulingApprovalWorkflow` and `Member4ResourceQuantityPrecision`.
 2. `GET http://localhost:8001/health` returns HTTP 200.
 3. An AI request without a bearer token returns HTTP 401.
 4. The same request with the configured token reaches schema validation instead of returning 401.
@@ -47,7 +47,7 @@ flutter test
 3. Confirm the result has `contractVersion: 2`, source-linked preparation/stage tasks, any rule-backed irrigation entries, Member 3 quantity/stock-backed reservations, constraints, warnings, and `requiresHumanApproval=true`. Zero irrigation entries are expected when the profile has no verified irrigation rule.
 4. Confirm the workflow becomes `PendingOfficerApproval` only when deterministic validation succeeds.
 5. Approve with a unique idempotency key and the expected workflow version.
-6. Confirm the approval creates final tasks, irrigation schedules, reservations, decision history, and completed workflow state atomically.
+6. Confirm the approval creates final tasks, any verified-rule irrigation schedules, reservations, decision history, and completed workflow state atomically. Zero irrigation rows are correct when the verified profile has no irrigation rule.
 7. Replay the same approval request and confirm it returns the original decision without duplicates.
 8. Submit a stale version or competing decision and confirm HTTP 409 with no partial writes.
 9. Reject or request revision with a real officer comment and confirm the candidate does not create final work.

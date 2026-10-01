@@ -1,6 +1,6 @@
 # Member 4 Explainable Scheduling Implementation Plan
 
-**Progress on 2026-09-30:** The branch contains the evidence bundle, verified irrigation parser, deterministic three-node scheduler, version-2 backend guard, blocked status, officer/farmer views, and a three-decimal inventory migration. Local backend, AI, React, Flutter, and isolated PostgreSQL tests passed; exact counts are in `docs/testing/verification-log.md`. The checklist below remains the original work breakdown, not a claim that every named test or live acceptance scenario has run. A live HTTP ready/blocked demonstration and remote CI review remain.
+**Progress on 2026-09-30:** The branch contains the evidence bundle, verified irrigation parser, deterministic three-node scheduler, version-2 backend guard, blocked status, officer/farmer views, and a three-decimal inventory migration. Local backend, AI, React, Flutter, isolated PostgreSQL tests, a disposable live API-to-AI ready/blocked run, and draft PR #59 CI passed; exact evidence is in `docs/testing/verification-log.md`. The checklist below remains the original work breakdown, not a claim that every named test or browser acceptance scenario has run.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -152,4 +152,4 @@ These five conditions are easy to miss; each has a named test in the owning task
 
 ## Delivery gate
 
-This plan is complete only when one verified ready scenario and one reviewable blocked scenario pass across the Python agent, ASP.NET validator, React officer review, Flutter status, and isolated PostgreSQL approval transaction. The final report must distinguish implemented behavior from planned work, fixtures from live AI/weather evidence, and local tests from remote CI. The branch has strong local test coverage; live HTTP acceptance and remote CI have not been completed.
+The feature has a verified ready scenario and reviewable blocked scenario through the live Python agent and ASP.NET API, React officer review and Flutter blocked-state component tests, and isolated PostgreSQL approval transaction tests. The final report distinguishes fixtures from live weather or LLM evidence and local tests from remote CI. A combined browser walkthrough remains useful before the final group demonstration.
