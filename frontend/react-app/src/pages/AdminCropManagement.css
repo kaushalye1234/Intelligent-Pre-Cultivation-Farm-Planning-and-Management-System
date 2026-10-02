@@ -37,6 +37,164 @@
   gap: var(--space-4);
 }
 
+.crop-finding-panel {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--color-primary);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-muted);
+}
+
+.crop-finding-panel-heading,
+.crop-finding-review-card > header,
+.crop-finding-source-card > header,
+.crop-finding-evidence-item > header,
+.crop-finding-provenance-heading,
+.crop-finding-source-choice {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.crop-finding-panel-heading h3,
+.crop-finding-review-card h4,
+.crop-finding-source-card h4 {
+  margin: 2px 0 var(--space-1);
+}
+
+.crop-finding-panel-heading p,
+.crop-finding-source-card header p,
+.crop-finding-review-card > p,
+.crop-finding-evidence-item > p {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.crop-finding-label {
+  color: var(--color-primary-text);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.crop-finding-controls {
+  max-width: 360px;
+}
+
+.crop-finding-review-list,
+.crop-finding-reference-review,
+.crop-finding-summary {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.crop-finding-review-card,
+.crop-finding-source-card,
+.crop-finding-evidence-item {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.crop-finding-source-card.is-primary {
+  border-color: var(--color-primary);
+  box-shadow: inset 3px 0 0 var(--color-primary);
+}
+
+.crop-finding-evidence-item {
+  margin-top: var(--space-2);
+  background: var(--color-surface-muted);
+}
+
+.crop-finding-pills,
+.crop-finding-actions,
+.crop-finding-source-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.crop-finding-actions {
+  justify-content: flex-end;
+}
+
+.crop-finding-actions .ui-button {
+  min-height: 34px;
+  padding: 6px 10px;
+}
+
+.crop-finding-provenance {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+  font-size: 0.84rem;
+}
+
+.crop-finding-provenance q {
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.crop-finding-source-meta {
+  color: var(--color-text-subtle);
+}
+
+.crop-finding-source-meta a,
+.crop-finding-source-choice a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-primary-text);
+  font-weight: 700;
+}
+
+.crop-finding-warnings,
+.crop-finding-summary ul,
+.crop-finding-summary .notice ul {
+  margin: 0;
+  padding-left: var(--space-5);
+}
+
+.crop-finding-warnings {
+  color: var(--tone-warn-text);
+  font-size: 0.84rem;
+}
+
+.crop-finding-summary section {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.crop-finding-summary li {
+  margin: 3px 0;
+  color: var(--color-text-muted);
+}
+
+.crop-finding-evidence-item code {
+  max-height: 120px;
+  overflow: auto;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  background: var(--color-input-bg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .crop-admin-panel-header,
 .crop-reference-item-heading {
   display: flex;
@@ -254,6 +412,128 @@
   justify-content: flex-end;
 }
 
+.crop-reference-details,
+.crop-reference-detail-section,
+.crop-reference-detail-list,
+.crop-reference-details-error {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.crop-reference-details-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-muted);
+}
+
+.crop-reference-detail-item {
+  display: grid;
+  align-content: start;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.crop-reference-detail-item > span,
+.crop-reference-detail-card p > span,
+.crop-reference-detail-metrics dt {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.crop-reference-detail-item > strong,
+.crop-reference-detail-item > a {
+  overflow-wrap: anywhere;
+}
+
+.crop-reference-detail-item > a {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  gap: var(--space-1);
+  color: var(--color-primary-text);
+  font-weight: 700;
+}
+
+.crop-reference-detail-wide {
+  grid-column: 1 / -1;
+}
+
+.crop-reference-detail-section h3 {
+  margin: var(--space-2) 0 0;
+  font-size: 1rem;
+}
+
+.crop-reference-detail-section > p {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.crop-reference-detail-card {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+}
+
+.crop-reference-detail-card header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.crop-reference-detail-card header > span {
+  color: var(--color-text-muted);
+  font-size: 0.84rem;
+}
+
+.crop-reference-detail-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.crop-reference-detail-metrics div {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.crop-reference-detail-metrics dd {
+  margin: 0;
+  font-weight: 700;
+}
+
+.crop-reference-detail-card p {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.crop-reference-detail-card pre {
+  max-height: 180px;
+  margin: 0;
+  padding: var(--space-3);
+  overflow: auto;
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  background: var(--color-input-bg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.crop-reference-details-error .ui-button {
+  justify-self: start;
+}
+
 .crop-admin-delete-message {
   display: grid;
   gap: var(--space-2);
@@ -290,8 +570,24 @@
   }
 
   .crop-admin-panel-header .ui-button,
-  .crop-admin-filter {
+  .crop-admin-filter,
+  .crop-finding-panel-heading > .ui-button,
+  .crop-finding-controls {
     width: 100%;
+  }
+
+  .crop-finding-panel-heading,
+  .crop-finding-review-card > header,
+  .crop-finding-source-card > header,
+  .crop-finding-evidence-item > header,
+  .crop-finding-source-choice {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .crop-finding-actions {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .crop-admin-search {
@@ -309,5 +605,14 @@
 
   .crop-reference-section {
     padding: var(--space-3);
+  }
+
+  .crop-reference-details-grid,
+  .crop-reference-detail-metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .crop-reference-detail-wide {
+    grid-column: auto;
   }
 }

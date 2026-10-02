@@ -41,6 +41,8 @@ public sealed class AuthService(
         {
             FullName = request.FullName.Trim(),
             Email = normalizedEmail,
+            PhoneNumber = SriLankanPhoneNumber.Normalize(request.PhoneNumber),
+            ContactAddress = request.ContactAddress!.Trim(),
             Role = ApplicationRole.Farmer,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
             IsActive = true,

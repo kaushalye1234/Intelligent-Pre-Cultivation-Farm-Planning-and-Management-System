@@ -495,8 +495,13 @@ export function PrePlantingAssessmentPanel({
 function ContextSummary({ context }: { context: PrePlantingContext }) {
   return (
     <section className="preplant-context" aria-label="Crop plan context">
-      <div><span>Farmer</span><strong>{context.farmerName}</strong></div>
-      <div><span>Farm</span><strong>{context.farmName}</strong><small>{context.farmLocation}</small></div>
+      <div>
+        <span>Farmer</span>
+        <strong>{context.farmerName}</strong>
+        <small>{context.farmerPhoneNumber ?? 'Phone not provided'}</small>
+        <small>{context.farmerContactAddress ?? 'Contact address not provided'}</small>
+      </div>
+      <div><span>Farm</span><strong>{context.farmName}</strong><small>{[context.farmLocation, context.farmDistrict].filter(Boolean).join(' · ')}</small></div>
       <div><span>Field</span><strong>{context.fieldName}</strong></div>
       <div><span>Crop</span><strong>{context.cropName}{context.cropVarietyName ? ' · ' + context.cropVarietyName : ''}</strong></div>
       <div><span>Season</span><strong>{seasonLabels[context.cultivationSeason] ?? 'Unknown'}</strong></div>

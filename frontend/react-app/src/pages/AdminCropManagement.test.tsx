@@ -113,4 +113,78 @@ describe('Admin crop management', () => {
     expect(await within(varietyDelete).findByRole('alert')).toHaveTextContent('Deactivate it instead.')
     expect(remove).toHaveBeenCalledWith('/crop-planning/crop-varieties/variety-1')
   })
+
+  it('opens persisted verified reference details without changing data', async () => {
+    const profile = {
+      id: 'reference-1',
+      cropTypeId: 'crop-1',
+      varietyName: 'MICH HY2',
+      region: 'Sri Lanka',
+      sourceName: 'Sri Lanka Department of Agriculture e-Repository',
+      sourceUrl: 'https://dl-doa.nsf.gov.lk/reference/chili',
+      sourceVersion: '2018 edition',
+      verifiedAt: '2026-10-02T08:30:00Z',
+      isActive: true,
+      stageCount: 1,
+      ruleCount: 1,
+    }
+    const details = {
+      ...profile,
+      cropName: 'Chili',
+      stages: [{
+        id: 'stage-1',
+        stageName: 'Vegetative growth',
+        sequence: 1,
+        typicalMinDays: 18,
+        typicalMaxDays: 32,
+        notes: 'Duration stated in the persisted source evidence.',
+      }],
+      rules: [{
+        id: 'rule-1',
+        ruleType: 'Season',
+        ruleKey: 'planting-window',
+        structuredValueJson: '{"season":"Maha"}',
+      }],
+    }
+    const get = vi.spyOn(api, 'get').mockImplementation((url: string) => {
+      if (url === '/crop-planning/crop-reference-profiles/reference-1') return Promise.resolve({ data: details })
+      if (url.includes('/crop-types')) return Promise.resolve(paged([{ id: 'crop-1', name: 'Chili', description: '', isActive: true }]))
+      if (url.includes('/crop-varieties')) return Promise.resolve(paged([{ id: 'variety-1', cropTypeId: 'crop-1', name: 'MICH HY2', isActive: true }]))
+      if (url.includes('/crop-reference-profiles')) return Promise.resolve(paged([profile]))
+      return Promise.resolve(paged([]))
+    })
+    const post = vi.spyOn(api, 'post').mockResolvedValue({ data: {} })
+    const put = vi.spyOn(api, 'put').mockResolvedValue({ data: {} })
+
+    render(<AdminCropManagement />)
+    await screen.findByText('Chili')
+    fireEvent.click(screen.getByRole('tab', { name: /Verified References/ }))
+
+    const sourceNameInput = screen.getByRole('textbox', { name: /^Source name/ })
+    expect(sourceNameInput).toHaveValue('')
+    const viewDetails = screen.getByRole('button', { name: 'View details' })
+    expect(viewDetails).toBeVisible()
+    fireEvent.click(viewDetails)
+
+    const dialog = await screen.findByRole('dialog', { name: 'Chili reference' })
+    expect(get).toHaveBeenCalledWith('/crop-planning/crop-reference-profiles/reference-1')
+    expect(dialog).toHaveTextContent('MICH HY2')
+    expect(dialog).toHaveTextContent('Sri Lanka')
+    expect(dialog).toHaveTextContent('2018 edition')
+    expect(dialog).toHaveTextContent('Active')
+    expect(dialog).toHaveTextContent('Vegetative growth')
+    expect(dialog).toHaveTextContent('18')
+    expect(dialog).toHaveTextContent('32')
+    expect(dialog).toHaveTextContent('Duration stated in the persisted source evidence.')
+    expect(dialog).toHaveTextContent('Season')
+    expect(dialog).toHaveTextContent('planting-window')
+    expect(dialog).toHaveTextContent('"season": "Maha"')
+    expect(within(dialog).getByRole('link', { name: /Open original source/ })).toHaveAttribute('href', profile.sourceUrl)
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }))
+    expect(screen.queryByRole('dialog', { name: 'Chili reference' })).not.toBeInTheDocument()
+    expect(sourceNameInput).toHaveValue('')
+    expect(post).not.toHaveBeenCalled()
+    expect(put).not.toHaveBeenCalled()
+  })
 })

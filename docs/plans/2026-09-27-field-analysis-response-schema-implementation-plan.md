@@ -4,9 +4,9 @@
 
 **Goal:** Enforce the existing field-analysis response contract at provider generation and Pydantic validation boundaries.
 
-**Architecture:** Thread the existing Pydantic JSON schema through the provider abstraction, constrain Gemini/OpenAI structured output, and keep evidence-derived semantic validation in `CropFieldAnalysisAgent`. Invalid output remains a retryable SafeFailure with sanitized structured diagnostics.
+**Architecture:** Thread the existing Pydantic JSON schema through the provider abstraction, constrain OpenAI structured output, and keep evidence-derived semantic validation in `CropFieldAnalysisAgent`. Invalid output remains a retryable SafeFailure with sanitized structured diagnostics.
 
-**Tech Stack:** Python 3.13, Pydantic 2, FastAPI, Gemini/OpenAI providers, pytest, ASP.NET Core 8/xUnit.
+**Tech Stack:** Python 3.13, Pydantic 2, FastAPI, OpenAI provider, pytest, ASP.NET Core 8/xUnit.
 
 ---
 
@@ -36,13 +36,12 @@
 
 **Files:**
 - Modify: `ai-service/providers/base_llm_provider.py`
-- Modify: `ai-service/providers/gemini_provider.py`
 - Modify: `ai-service/providers/openai_provider.py`
 - Modify: `ai-service/agents/crop_field_analysis_agent.py`
 - Modify: affected fake providers/tests
 
 1. Add an optional response-schema parameter to `generate_json`.
-2. Forward it using each provider's structured-output API, dereferencing Pydantic definitions for Gemini SDK compatibility.
+2. Forward it using OpenAI's structured-output API.
 3. Pass `CropFieldAnalysisOutput.model_json_schema(by_alias=True)` from the field-analysis agent.
 4. Make the prompt explicit about types, enums, exact nested keys, and evidence-derived priority.
 5. Log sanitized validation error metadata only; retain the concise user warning.

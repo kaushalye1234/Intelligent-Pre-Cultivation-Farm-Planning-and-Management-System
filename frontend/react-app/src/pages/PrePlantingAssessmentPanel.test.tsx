@@ -48,9 +48,12 @@ const context: PrePlantingContext = {
   currentStep: 'CropFieldAnalysisAgent',
   farmerId: 'farmer-1',
   farmerName: 'Nimali Perera',
+  farmerPhoneNumber: '+94771234567',
+  farmerContactAddress: '25 Wariyapola Road, Kurunegala',
   farmId: 'farm-1',
   farmName: 'North Farm',
   farmLocation: 'Anuradhapura',
+  farmDistrict: 'Anuradhapura',
   fieldId: 'field-1',
   fieldName: 'Paddy Block A',
   cropTypeId: 'crop-1',
@@ -232,6 +235,8 @@ describe('PrePlantingAssessmentPanel', () => {
     render(<PrePlantingAssessmentPanel review={review} role={Roles.FieldOfficer} onWorkflowChanged={vi.fn()} />)
 
     expect(await screen.findByText('Nimali Perera')).toBeInTheDocument()
+    expect(screen.getByText('+94771234567')).toBeInTheDocument()
+    expect(screen.getByText('25 Wariyapola Road, Kurunegala')).toBeInTheDocument()
     expect(screen.getByText('North Farm')).toBeInTheDocument()
     expect(screen.getByText('Paddy Block A')).toBeInTheDocument()
     expect(screen.getByText(/Rice · Bg 352/)).toBeInTheDocument()

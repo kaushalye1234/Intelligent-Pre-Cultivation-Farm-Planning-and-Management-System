@@ -104,6 +104,11 @@ public sealed class CropPlanningController(ICropPlanningService cropPlanningServ
     public async Task<ActionResult<PagedResult<CropReferenceProfileResponse>>> SearchReferenceProfiles([FromQuery] PagedQuery query, [FromQuery] Guid? cropTypeId, CancellationToken cancellationToken) =>
         Ok(await cropPlanningService.SearchReferenceProfilesAsync(query, cropTypeId, cancellationToken));
 
+    [HttpGet("crop-reference-profiles/{id:guid}")]
+    [Authorize(Roles = nameof(ApplicationRole.Admin))]
+    public async Task<ActionResult<CropReferenceProfileDetailsResponse>> GetReferenceProfile(Guid id, CancellationToken cancellationToken) =>
+        Ok(await cropPlanningService.GetReferenceProfileAsync(id, cancellationToken));
+
     [HttpPost("crop-reference-profiles")]
     [Authorize(Roles = nameof(ApplicationRole.Admin))]
     public async Task<ActionResult<CropReferenceProfileResponse>> CreateReferenceProfile(CropReferenceProfileRequest request, CancellationToken cancellationToken) =>

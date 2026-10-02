@@ -100,7 +100,9 @@ public sealed class CropPlanningService(
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             var search = query.Search.Trim().ToLowerInvariant();
-            farms = farms.Where(farm => farm.Name.ToLower().Contains(search) || farm.Location.ToLower().Contains(search));
+            farms = farms.Where(farm => farm.Name.ToLower().Contains(search)
+                || farm.Location.ToLower().Contains(search)
+                || (farm.District != null && farm.District.ToLower().Contains(search)));
         }
 
         farms = query.SortBy?.ToLowerInvariant() switch
@@ -135,7 +137,15 @@ public sealed class CropPlanningService(
             throw new ApiException(HttpStatusCode.BadRequest, "INVALID_FARM_OWNER", "Farm owner must be an active Farmer user.");
         }
 
-        var farm = new Farm { Name = request.Name.Trim(), Location = request.Location.Trim(), TotalArea = request.TotalArea, OwnerUserId = ownerId, CreatedByUserId = currentUser.UserId };
+        var farm = new Farm
+        {
+            Name = request.Name.Trim(),
+            Location = request.Location.Trim(),
+            District = SriLankanDistricts.Canonicalize(request.District),
+            TotalArea = request.TotalArea,
+            OwnerUserId = ownerId,
+            CreatedByUserId = currentUser.UserId
+        };
         dbContext.Farms.Add(farm);
         await dbContext.SaveChangesAsync(cancellationToken);
         return MapFarm(farm);
@@ -154,6 +164,7 @@ public sealed class CropPlanningService(
 
         farm.Name = request.Name.Trim();
         farm.Location = request.Location.Trim();
+        farm.District = SriLankanDistricts.Canonicalize(request.District);
         farm.TotalArea = request.TotalArea;
         farm.UpdatedAt = DateTime.UtcNow;
         farm.UpdatedByUserId = currentUser.UserId;
@@ -403,6 +414,38 @@ public sealed class CropPlanningService(
                 item.SourceName, item.SourceUrl, item.SourceVersion, item.VerifiedAt, item.IsActive,
                 item.Stages.Count, item.Rules.Count)).ToListAsync(cancellationToken);
         return new PagedResult<CropReferenceProfileResponse>(items, query.Page, query.PageSize, total);
+    }
+
+    public async Task<CropReferenceProfileDetailsResponse> GetReferenceProfileAsync(Guid id, CancellationToken cancellationToken)
+    {
+        RequireAdmin();
+        var profile = await dbContext.CropReferenceProfiles.AsNoTracking()
+            .Include(item => item.CropType)
+            .Include(item => item.Stages)
+            .Include(item => item.Rules)
+            .SingleOrDefaultAsync(item => item.Id == id && !item.IsDeleted, cancellationToken)
+            ?? throw NotFound("Crop reference profile");
+        var cropName = profile.CropType?.Name ?? throw NotFound("Crop type");
+
+        return new CropReferenceProfileDetailsResponse(
+            profile.Id,
+            profile.CropTypeId,
+            cropName,
+            profile.VarietyName,
+            profile.Region,
+            profile.SourceName,
+            profile.SourceUrl,
+            profile.SourceVersion,
+            profile.VerifiedAt,
+            profile.IsActive,
+            profile.Stages.OrderBy(item => item.Sequence)
+                .Select(item => new CropReferenceStageResponse(
+                    item.Id, item.StageName, item.Sequence, item.TypicalMinDays, item.TypicalMaxDays, item.Notes))
+                .ToArray(),
+            profile.Rules.OrderBy(item => item.RuleType).ThenBy(item => item.RuleKey)
+                .Select(item => new CropReferenceRuleResponse(
+                    item.Id, item.RuleType, item.RuleKey, item.StructuredValueJson))
+                .ToArray());
     }
 
     public async Task<CropReferenceProfileResponse> CreateReferenceProfileAsync(CropReferenceProfileRequest request, CancellationToken cancellationToken)
@@ -744,9 +787,12 @@ public sealed class CropPlanningService(
             workflow.CurrentStep,
             planRequest.RequestedByUserId,
             planRequest.RequestedByUser?.FullName ?? string.Empty,
+            planRequest.RequestedByUser?.PhoneNumber,
+            planRequest.RequestedByUser?.ContactAddress,
             planRequest.FarmId,
             planRequest.Farm?.Name ?? string.Empty,
             planRequest.Farm?.Location ?? string.Empty,
+            planRequest.Farm?.District,
             planRequest.FieldId.Value,
             planRequest.Field.Name,
             planRequest.CropTypeId,
@@ -1948,7 +1994,7 @@ public sealed class CropPlanningService(
             throw new InvalidOperationException("AI service is not configured for this service instance.");
     }
 
-    private static FarmResponse MapFarm(Farm farm) => new(farm.Id, farm.Name, farm.Location, farm.TotalArea, farm.OwnerUserId, farm.CreatedAt);
+    private static FarmResponse MapFarm(Farm farm) => new(farm.Id, farm.Name, farm.Location, farm.TotalArea, farm.OwnerUserId, farm.CreatedAt, farm.District);
     private static FieldResponse MapField(Field field) => new(field.Id, field.FarmId, field.Name, field.Area, field.SoilType, field.IsActive);
     private static CropTypeResponse MapCropType(CropType cropType) => new(cropType.Id, cropType.Name, cropType.Description, cropType.IsActive);
     private static CropVarietyResponse MapVariety(CropVariety variety) => new(variety.Id, variety.CropTypeId, variety.Name, variety.IsActive);

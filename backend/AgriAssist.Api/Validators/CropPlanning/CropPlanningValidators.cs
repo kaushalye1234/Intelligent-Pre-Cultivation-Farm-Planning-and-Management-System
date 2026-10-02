@@ -1,4 +1,5 @@
 using AgriAssist.Api.Dtos.CropPlanning;
+using AgriAssist.Api.Models.CropPlanning;
 using AgriAssist.Api.Validators.Shared;
 
 namespace AgriAssist.Api.Validators.CropPlanning;
@@ -10,6 +11,7 @@ public sealed class FarmRequestValidator : IRequestValidator<FarmRequest>
         var errors = new List<string>();
         if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Length > 120) errors.Add("Farm name is required and must be 120 characters or fewer.");
         if (string.IsNullOrWhiteSpace(request.Location) || request.Location.Length > 240) errors.Add("Farm location is required and must be 240 characters or fewer.");
+        if (SriLankanDistricts.Canonicalize(request.District) is null) errors.Add("A valid Sri Lankan District is required.");
         if (request.TotalArea <= 0) errors.Add("Farm total area must be positive.");
         return errors;
     }

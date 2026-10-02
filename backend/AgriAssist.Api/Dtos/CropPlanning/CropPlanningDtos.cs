@@ -2,8 +2,8 @@ using AgriAssist.Api.Models.CropPlanning;
 
 namespace AgriAssist.Api.Dtos.CropPlanning;
 
-public sealed record FarmRequest(string Name, string Location, decimal TotalArea, Guid? OwnerUserId);
-public sealed record FarmResponse(Guid Id, string Name, string Location, decimal TotalArea, Guid OwnerUserId, DateTime CreatedAt);
+public sealed record FarmRequest(string Name, string Location, decimal TotalArea, Guid? OwnerUserId, string? District = null);
+public sealed record FarmResponse(Guid Id, string Name, string Location, decimal TotalArea, Guid OwnerUserId, DateTime CreatedAt, string? District = null);
 public sealed record FarmerOnboardingStatusResponse(string Stage, int ActiveFarmCount, int ActiveFieldCount);
 
 public sealed record FieldRequest(Guid FarmId, string Name, decimal Area, string SoilType, bool IsActive);
@@ -23,6 +23,14 @@ public sealed record CropReferenceProfileRequest(
 public sealed record CropReferenceProfileResponse(
     Guid Id, Guid CropTypeId, string? VarietyName, string? Region, string SourceName, string? SourceUrl,
     string SourceVersion, DateTime VerifiedAt, bool IsActive, int StageCount, int RuleCount);
+public sealed record CropReferenceStageResponse(
+    Guid Id, string StageName, int Sequence, int? TypicalMinDays, int? TypicalMaxDays, string? Notes);
+public sealed record CropReferenceRuleResponse(
+    Guid Id, string RuleType, string RuleKey, string StructuredValueJson);
+public sealed record CropReferenceProfileDetailsResponse(
+    Guid Id, Guid CropTypeId, string CropName, string? VarietyName, string? Region, string SourceName,
+    string? SourceUrl, string SourceVersion, DateTime VerifiedAt, bool IsActive,
+    IReadOnlyList<CropReferenceStageResponse> Stages, IReadOnlyList<CropReferenceRuleResponse> Rules);
 
 public sealed record CropCycleRequest(Guid FieldId, Guid CropTypeId, DateOnly PlannedStartDate, DateOnly PlannedEndDate, CropCycleStatus Status);
 public sealed record CropCycleResponse(Guid Id, Guid FieldId, Guid CropTypeId, DateOnly PlannedStartDate, DateOnly PlannedEndDate, CropCycleStatus Status);

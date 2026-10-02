@@ -50,6 +50,7 @@ export type Farm = {
   id: string
   name: string
   location: string
+  district?: string | null
   totalArea: number
   ownerUserId: string
   createdAt: string
@@ -90,6 +91,37 @@ export type CropReferenceProfile = {
   isActive: boolean
   stageCount: number
   ruleCount: number
+}
+
+export type CropReferenceStage = {
+  id: string
+  stageName: string
+  sequence: number
+  typicalMinDays?: number | null
+  typicalMaxDays?: number | null
+  notes?: string | null
+}
+
+export type CropReferenceRule = {
+  id: string
+  ruleType: string
+  ruleKey: string
+  structuredValueJson: string
+}
+
+export type CropReferenceProfileDetails = {
+  id: string
+  cropTypeId: string
+  cropName: string
+  varietyName?: string | null
+  region?: string | null
+  sourceName: string
+  sourceUrl?: string | null
+  sourceVersion: string
+  verifiedAt: string
+  isActive: boolean
+  stages: CropReferenceStage[]
+  rules: CropReferenceRule[]
 }
 
 export type CropPlan = {
@@ -271,9 +303,12 @@ export type PrePlantingContext = {
   currentStep: string
   farmerId: string
   farmerName: string
+  farmerPhoneNumber: string | null
+  farmerContactAddress: string | null
   farmId: string
   farmName: string
   farmLocation: string
+  farmDistrict: string | null
   fieldId: string
   fieldName: string
   cropTypeId: string

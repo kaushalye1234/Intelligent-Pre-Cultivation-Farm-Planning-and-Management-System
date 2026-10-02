@@ -6,15 +6,15 @@ Accepted.
 
 ## Decision
 
-Use a separate Python FastAPI service for shared AI orchestration, with LangGraph for workflow nodes, Pydantic for input/output contracts, and an LLM provider abstraction supporting one configured provider at a time.
+Use a separate Python FastAPI service for shared AI orchestration, with LangGraph for workflow nodes, Pydantic for input/output contracts, and an OpenAI provider behind the shared LLM interface.
 
-The default provider name is `gemini` because it is commonly available through institution or no-cost tiers. OpenAI is also supported behind the same abstraction. Model IDs and provider keys are runtime configuration only through `AI_MODEL`, `GEMINI_API_KEY`, and `OPENAI_API_KEY`; no model name or secret is hard-coded.
+The AI service uses `AI_PROVIDER=openai`, `AI_MODEL=gpt-6-luna`, and the server-side `OPENAI_API_KEY`. Both Member 1 agents consume the same configured provider/model. Secrets remain runtime configuration and are never exposed to React or Flutter.
 
 ## Rationale
 
 Python + FastAPI keeps AI orchestration, provider SDKs, and agent testing isolated from the ASP.NET business API. LangGraph gives explicit graph nodes and future multi-agent extension points while still allowing deterministic safety checks around each step. Pydantic gives strict JSON contracts for teammates and for backend validation.
 
-A provider abstraction prevents the project from depending on a paid subscription. Local or institutional Gemini can be used by default, OpenAI can be selected when configured, and missing provider configuration falls back to deterministic coordinator behavior rather than exposing secrets or fabricating facts.
+The shared provider interface keeps agent code independent from SDK details while the deployed project remains OpenAI-only. Missing OpenAI configuration falls back to deterministic coordinator behavior rather than exposing secrets or fabricating facts.
 
 ## Security
 

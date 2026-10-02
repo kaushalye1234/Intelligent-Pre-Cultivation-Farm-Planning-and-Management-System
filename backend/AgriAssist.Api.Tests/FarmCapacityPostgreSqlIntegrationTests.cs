@@ -81,7 +81,7 @@ public sealed class FarmCapacityPostgreSqlIntegrationTests
             {
                 await NewService(dbContext, data.FarmerId).UpdateFarmAsync(
                     data.FarmId,
-                    new FarmRequest("Concurrent Capacity Farm", "North", 4m, null),
+                    new FarmRequest("Concurrent Capacity Farm", "North", 4m, null, "Kurunegala"),
                     CancellationToken.None);
                 return true;
             }

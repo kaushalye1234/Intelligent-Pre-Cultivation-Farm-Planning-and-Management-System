@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { FormEvent } from 'react'
-import { BookOpenCheck, Pencil, Plus, Power, Search, Sprout, Trash2 } from 'lucide-react'
+import type { FormEvent, ReactNode } from 'react'
+import { BookOpenCheck, ExternalLink, Eye, Loader2, Pencil, Plus, Power, Search, Sparkles, Sprout, Trash2 } from 'lucide-react'
 import { api, getErrorMessage } from '../api/client'
+import { FindingSummary, ReferenceDiscoveryReview, SuggestionReview } from '../components/CropFindingReview'
 import { SelectInput, TextAreaInput, TextInput } from '../components/FormControls'
 import { DataTable } from '../components/DataTable'
+import { ErrorState, LoadingState } from '../components/States'
 import { StatusPill } from '../components/StatusPill'
 import { Button, Modal, Notice, Tabs } from '../components/Ui'
-import { formatDate } from '../format'
-import type { CropReferenceProfile, CropType, CropVariety, PagedResult } from '../types'
+import { formatDate, formatDateTime } from '../format'
+import type { CropFindingSuggestion, CropSuggestionsResponse, ReferenceDiscoveryResponse, ReferenceDraftItem, ReviewDecision, VarietySuggestionsResponse } from '../cropFinding'
+import type { CropReferenceProfile, CropReferenceProfileDetails, CropType, CropVariety, PagedResult } from '../types'
 import './AdminCropManagement.css'
 
 type AdminTab = 'crops' | 'varieties' | 'references'
@@ -15,6 +18,23 @@ type StatusFilter = 'all' | 'active' | 'inactive'
 type DeleteTarget = { kind: 'crop' | 'variety'; id: string; name: string } | null
 type StageForm = { stageName: string; sequence: number; typicalMinDays: string; typicalMaxDays: string; notes: string }
 type RuleForm = { ruleType: string; ruleKey: string; structuredValueJson: string }
+type FindingAction = 'crops' | 'varieties' | 'references' | null
+type PendingPartial =
+  | { kind: 'crop'; id: string; edit: boolean }
+  | { kind: 'variety'; id: string; edit: boolean }
+  | { kind: 'reference'; sourceId: string; id: string; edit: boolean }
+  | null
+type ReferenceSnapshot = {
+  form: ReturnType<typeof emptyReferenceForm>
+  stages: StageForm[]
+  rules: RuleForm[]
+}
+type ReferenceDetailsState = {
+  profile: CropReferenceProfile
+  details: CropReferenceProfileDetails | null
+  loading: boolean
+  error: string
+}
 
 const emptyCropForm = () => ({ id: '', name: '', description: '', isActive: true })
 const emptyVarietyForm = () => ({ id: '', cropTypeId: '', name: '', isActive: true })
@@ -31,6 +51,19 @@ async function allItems<T>(path: string): Promise<T[]> {
 
 function matchesStatus(isActive: boolean, filter: StatusFilter) {
   return filter === 'all' || (filter === 'active' ? isActive : !isActive)
+}
+
+function objectValue(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
+}
+
+function textValue(value: unknown): string {
+  return typeof value === 'string' ? value : value == null ? '' : String(value)
+}
+
+function numericValue(...values: unknown[]): string {
+  const value = values.find((candidate) => typeof candidate === 'number' && Number.isFinite(candidate))
+  return value === undefined ? '' : String(value)
 }
 
 export function AdminCropManagement() {
@@ -55,6 +88,19 @@ export function AdminCropManagement() {
   const [success, setSuccess] = useState('')
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [findingAction, setFindingAction] = useState<FindingAction>(null)
+  const [findingErrors, setFindingErrors] = useState<Record<Exclude<FindingAction, null>, string>>({ crops: '', varieties: '', references: '' })
+  const [cropSuggestions, setCropSuggestions] = useState<CropSuggestionsResponse | null>(null)
+  const [varietySuggestions, setVarietySuggestions] = useState<VarietySuggestionsResponse | null>(null)
+  const [referenceDiscovery, setReferenceDiscovery] = useState<ReferenceDiscoveryResponse | null>(null)
+  const [varietyFindingCropId, setVarietyFindingCropId] = useState('')
+  const [cropReview, setCropReview] = useState<Record<string, ReviewDecision>>({})
+  const [varietyReview, setVarietyReview] = useState<Record<string, ReviewDecision>>({})
+  const [referenceReview, setReferenceReview] = useState<Record<string, ReviewDecision>>({})
+  const [primarySourceId, setPrimarySourceId] = useState('')
+  const [referenceSnapshot, setReferenceSnapshot] = useState<ReferenceSnapshot | null>(null)
+  const [pendingPartial, setPendingPartial] = useState<PendingPartial>(null)
+  const [referenceDetails, setReferenceDetails] = useState<ReferenceDetailsState | null>(null)
 
   async function load() {
     const [nextCrops, nextVarieties, nextProfiles] = await Promise.all([
@@ -80,6 +126,20 @@ export function AdminCropManagement() {
 
     void initialize()
   }, [])
+
+  async function openReferenceDetails(profile: CropReferenceProfile) {
+    setReferenceDetails({ profile, details: null, loading: true, error: '' })
+    try {
+      const response = await api.get<CropReferenceProfileDetails>(`/crop-planning/crop-reference-profiles/${profile.id}`)
+      setReferenceDetails((current) => current?.profile.id === profile.id
+        ? { ...current, details: response.data, loading: false }
+        : current)
+    } catch (cause) {
+      setReferenceDetails((current) => current?.profile.id === profile.id
+        ? { ...current, error: getErrorMessage(cause), loading: false }
+        : current)
+    }
+  }
 
   async function run(action: () => Promise<void>, message: string, errorTarget: 'page' | 'dialog' = 'page') {
     setBusy(true)
@@ -140,6 +200,10 @@ export function AdminCropManagement() {
     if (saved) {
       setCropDialogOpen(false)
       setCropForm(emptyCropForm())
+      if (!editing) {
+        setCropSuggestions(null)
+        setCropReview({})
+      }
     }
   }
 
@@ -158,6 +222,10 @@ export function AdminCropManagement() {
     if (saved) {
       setVarietyDialogOpen(false)
       setVarietyForm(emptyVarietyForm())
+      if (!editing) {
+        setVarietySuggestions(null)
+        setVarietyReview({})
+      }
     }
   }
 
@@ -198,6 +266,171 @@ export function AdminCropManagement() {
     if (deleted) setDeleteTarget(null)
   }
 
+  async function findCrops() {
+    setFindingAction('crops')
+    setFindingErrors((current) => ({ ...current, crops: '' }))
+    try {
+      const response = await api.post<CropSuggestionsResponse>('/crop-finding/suggest-crops', { maxSuggestions: 8 })
+      setCropSuggestions(response.data)
+      setCropReview({})
+    } catch (cause) {
+      setFindingErrors((current) => ({ ...current, crops: getErrorMessage(cause) }))
+    } finally {
+      setFindingAction(null)
+    }
+  }
+
+  async function findVarieties() {
+    if (!varietyFindingCropId) return
+    setFindingAction('varieties')
+    setFindingErrors((current) => ({ ...current, varieties: '' }))
+    try {
+      const response = await api.post<VarietySuggestionsResponse>('/crop-finding/suggest-varieties', {
+        cropTypeId: varietyFindingCropId,
+        maxSuggestions: 8,
+      })
+      setVarietySuggestions(response.data)
+      setVarietyReview({})
+    } catch (cause) {
+      setFindingErrors((current) => ({ ...current, varieties: getErrorMessage(cause) }))
+    } finally {
+      setFindingAction(null)
+    }
+  }
+
+  async function findReferences() {
+    if (!referenceForm.cropTypeId) return
+    setFindingAction('references')
+    setFindingErrors((current) => ({ ...current, references: '' }))
+    try {
+      const response = await api.post<ReferenceDiscoveryResponse>('/crop-finding/discover-references', {
+        cropTypeId: referenceForm.cropTypeId,
+        cropVarietyId: referenceForm.cropVarietyId || null,
+        region: referenceForm.region.trim() || null,
+      })
+      setReferenceDiscovery(response.data)
+      setReferenceReview({})
+      setPrimarySourceId('')
+      setReferenceSnapshot(null)
+    } catch (cause) {
+      setFindingErrors((current) => ({ ...current, references: getErrorMessage(cause) }))
+    } finally {
+      setFindingAction(null)
+    }
+  }
+
+  function prefillCropSuggestion(suggestion: CropFindingSuggestion, edit: boolean) {
+    setCropReview((current) => ({ ...current, [suggestion.id]: edit ? 'edited' : 'accepted' }))
+    setCropForm({ id: '', name: suggestion.name, description: suggestion.description ?? '', isActive: true })
+    setDialogError('')
+    setCropDialogOpen(true)
+  }
+
+  function prefillVarietySuggestion(suggestion: CropFindingSuggestion, edit: boolean) {
+    setVarietyReview((current) => ({ ...current, [suggestion.id]: edit ? 'edited' : 'accepted' }))
+    setVarietyForm({ id: '', cropTypeId: varietyFindingCropId, name: suggestion.name, isActive: true })
+    setDialogError('')
+    setVarietyDialogOpen(true)
+  }
+
+  function requestSuggestionUse(kind: 'crop' | 'variety', suggestion: CropFindingSuggestion, edit: boolean) {
+    if (suggestion.evidenceStatus === 'Partially Supported') {
+      setPendingPartial({ kind, id: suggestion.id, edit })
+      return
+    }
+    if (kind === 'crop') prefillCropSuggestion(suggestion, edit)
+    else prefillVarietySuggestion(suggestion, edit)
+  }
+
+  function selectPrimarySource(sourceId: string) {
+    if (sourceId !== primarySourceId && referenceSnapshot) {
+      setReferenceForm(referenceSnapshot.form)
+      setStages(referenceSnapshot.stages)
+      setRules(referenceSnapshot.rules)
+      setReferenceReview({})
+      setReferenceSnapshot(null)
+    }
+    setPrimarySourceId(sourceId)
+    setFindingErrors((current) => ({ ...current, references: '' }))
+  }
+
+  function applyReferenceItem(sourceId: string, item: ReferenceDraftItem, edit: boolean) {
+    if (sourceId !== primarySourceId) return
+    if (!referenceSnapshot) setReferenceSnapshot({ form: { ...referenceForm }, stages: stages.map((stage) => ({ ...stage })), rules: rules.map((rule) => ({ ...rule })) })
+    const value = objectValue(item.suggestedValue)
+    let applied = true
+    if (item.field === 'sourceName') setReferenceForm((current) => ({ ...current, sourceName: textValue(item.suggestedValue) }))
+    else if (item.field === 'sourceUrl') setReferenceForm((current) => ({ ...current, sourceUrl: textValue(item.suggestedValue) }))
+    else if (item.field === 'sourceVersion') setReferenceForm((current) => ({ ...current, sourceVersion: textValue(item.suggestedValue) }))
+    else if (item.field === 'region') setReferenceForm((current) => ({ ...current, region: textValue(item.suggestedValue) }))
+    else if (item.field === 'growthStage') {
+      const stageName = textValue(value?.stageName ?? value?.name ?? item.suggestedValue).trim()
+      if (!stageName) applied = false
+      else {
+        const stage: StageForm = {
+          stageName,
+          sequence: typeof value?.sequence === 'number' ? value.sequence : stages.filter((entry) => entry.stageName.trim()).length + 1,
+          typicalMinDays: numericValue(value?.typicalMinDays, value?.minimumDays, value?.minDays),
+          typicalMaxDays: numericValue(value?.typicalMaxDays, value?.maximumDays, value?.maxDays),
+          notes: textValue(value?.notes),
+        }
+        setStages((current) => current.length === 1 && !current[0].stageName.trim() ? [stage] : [...current, stage])
+      }
+    } else if (item.field === 'minimumDays' || item.field === 'maximumDays') {
+      const stageName = textValue(value?.stageName ?? value?.name).trim()
+      const days = numericValue(value?.days, value?.value, item.suggestedValue)
+      if (!stageName || !days) applied = false
+      else setStages((current) => {
+        const index = current.findIndex((stage) => stage.stageName.localeCompare(stageName, undefined, { sensitivity: 'base' }) === 0)
+        const key = item.field === 'minimumDays' ? 'typicalMinDays' : 'typicalMaxDays'
+        if (index < 0) return [...current.filter((stage) => stage.stageName.trim()), { ...emptyStage(), stageName, sequence: current.filter((stage) => stage.stageName.trim()).length + 1, [key]: days }]
+        return current.map((stage, position) => position === index ? { ...stage, [key]: days } : stage)
+      })
+    } else if (item.field === 'evidenceNotes') {
+      const stageName = textValue(value?.stageName ?? value?.name).trim()
+      const notes = textValue(value?.notes ?? value?.note ?? item.suggestedValue).trim()
+      if (!stageName || !notes) applied = false
+      else setStages((current) => current.map((stage) => stage.stageName.localeCompare(stageName, undefined, { sensitivity: 'base' }) === 0 ? { ...stage, notes } : stage))
+    } else if (item.field === 'structuredRule') {
+      const ruleType = textValue(value?.ruleType).trim()
+      const ruleKey = textValue(value?.ruleKey).trim()
+      const structuredValueJson = typeof value?.structuredValueJson === 'string'
+        ? value.structuredValueJson
+        : JSON.stringify(value?.structuredValue ?? value?.value ?? {})
+      if (!ruleType || !ruleKey) applied = false
+      else setRules((current) => [...current, { ruleType, ruleKey, structuredValueJson }])
+    }
+
+    if (!applied) {
+      setFindingErrors((current) => ({ ...current, references: `The ${item.field} suggestion could not be mapped safely. Enter it manually after reviewing the source.` }))
+      return
+    }
+    setReferenceReview((current) => ({ ...current, [item.id]: edit ? 'edited' : 'accepted' }))
+  }
+
+  function requestReferenceUse(sourceId: string, item: ReferenceDraftItem, edit: boolean) {
+    if (item.evidenceStatus === 'Partially Supported') {
+      setPendingPartial({ kind: 'reference', sourceId, id: item.id, edit })
+      return
+    }
+    applyReferenceItem(sourceId, item, edit)
+  }
+
+  function confirmPartialUse() {
+    if (!pendingPartial) return
+    if (pendingPartial.kind === 'crop') {
+      const suggestion = cropSuggestions?.suggestions.find((item) => item.id === pendingPartial.id)
+      if (suggestion) prefillCropSuggestion(suggestion, pendingPartial.edit)
+    } else if (pendingPartial.kind === 'variety') {
+      const suggestion = varietySuggestions?.suggestions.find((item) => item.id === pendingPartial.id)
+      if (suggestion) prefillVarietySuggestion(suggestion, pendingPartial.edit)
+    } else {
+      const item = referenceDiscovery?.sourceDrafts.flatMap((draft) => draft.items).find((candidate) => candidate.id === pendingPartial.id)
+      if (item) applyReferenceItem(pendingPartial.sourceId, item, pendingPartial.edit)
+    }
+    setPendingPartial(null)
+  }
+
   async function saveReference(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const includedStages = stages.filter((stage) => stage.stageName.trim())
@@ -226,6 +459,10 @@ export function AdminCropManagement() {
       setReferenceForm(emptyReferenceForm())
       setStages([emptyStage()])
       setRules([])
+      setReferenceDiscovery(null)
+      setReferenceReview({})
+      setPrimarySourceId('')
+      setReferenceSnapshot(null)
     }, 'Verified reference version created.')
   }
 
@@ -273,6 +510,17 @@ export function AdminCropManagement() {
             <div><h3>Crops</h3><p>Active crops are available in the farmer catalog.</p></div>
             <Button icon={<Plus size={17} />} onClick={openAddCrop}>Add crop</Button>
           </div>
+          <section className="crop-finding-panel" aria-label="AI Sri Lankan crop suggestions">
+            <div className="crop-finding-panel-heading">
+              <div><span className="crop-finding-label">Needs Admin Review</span><h3>AI Sri Lankan crop suggestions</h3><p>Find evidence-backed candidates. Nothing is created until you submit the existing Add crop form.</p></div>
+              <Button variant="secondary" icon={findingAction === 'crops' ? <Loader2 className="spin" size={16} /> : <Sparkles size={16} />} disabled={findingAction !== null} onClick={() => void findCrops()}>{findingAction === 'crops' ? 'Finding crops…' : 'Suggest Sri Lankan Crops'}</Button>
+            </div>
+            {findingErrors.crops ? <Notice tone="error">{findingErrors.crops} Retry without losing the current catalog form.</Notice> : null}
+            {cropSuggestions ? <>
+              <FindingSummary analysis={cropSuggestions.analysis} recommendations={cropSuggestions.recommendations} warnings={cropSuggestions.warnings} />
+              <SuggestionReview suggestions={cropSuggestions.suggestions} decisions={cropReview} noun="crop" onAccept={(item) => requestSuggestionUse('crop', item, false)} onEdit={(item) => requestSuggestionUse('crop', item, true)} onReject={(item) => setCropReview((current) => ({ ...current, [item.id]: 'rejected' }))} />
+            </> : null}
+          </section>
           <ManagementToolbar searchLabel="Search crops" search={cropSearch} onSearch={setCropSearch} placeholder="Search crops or notes" status={cropStatus} onStatus={setCropStatus} />
           {loading ? <p className="crop-admin-loading">Loading crops…</p> : (
             <DataTable rows={filteredCrops} emptyTitle="No crops found" emptyMessage="Try another search or status filter." getRowKey={(crop) => crop.id} columns={[
@@ -290,6 +538,18 @@ export function AdminCropManagement() {
             <div><h3>Varieties</h3><p>Organize selectable varieties beneath an active crop.</p></div>
             <Button icon={<Plus size={17} />} onClick={openAddVariety} disabled={!activeCropOptions.length}>Add variety</Button>
           </div>
+          <section className="crop-finding-panel" aria-label="AI Sri Lankan variety suggestions">
+            <div className="crop-finding-panel-heading">
+              <div><span className="crop-finding-label">Needs Admin Review</span><h3>Find Sri Lankan varieties</h3><p>Select an existing crop, then review source-backed variety suggestions before using the Add variety form.</p></div>
+              <Button variant="secondary" icon={findingAction === 'varieties' ? <Loader2 className="spin" size={16} /> : <Sparkles size={16} />} disabled={!varietyFindingCropId || findingAction !== null} onClick={() => void findVarieties()}>{findingAction === 'varieties' ? 'Finding varieties…' : 'Find Sri Lankan Varieties'}</Button>
+            </div>
+            <div className="crop-finding-controls"><SelectInput label="Existing crop" value={varietyFindingCropId} options={activeCropOptions} disabled={findingAction === 'varieties'} onChange={(cropTypeId) => { setVarietyFindingCropId(cropTypeId); setVarietySuggestions(null); setVarietyReview({}) }} /></div>
+            {findingErrors.varieties ? <Notice tone="error">{findingErrors.varieties} Retry without losing the current variety form.</Notice> : null}
+            {varietySuggestions ? <>
+              <FindingSummary analysis={varietySuggestions.analysis} recommendations={varietySuggestions.recommendations} warnings={varietySuggestions.warnings} />
+              <SuggestionReview suggestions={varietySuggestions.suggestions} decisions={varietyReview} noun="variety" onAccept={(item) => requestSuggestionUse('variety', item, false)} onEdit={(item) => requestSuggestionUse('variety', item, true)} onReject={(item) => setVarietyReview((current) => ({ ...current, [item.id]: 'rejected' }))} />
+            </> : null}
+          </section>
           <ManagementToolbar searchLabel="Search varieties" search={varietySearch} onSearch={setVarietySearch} placeholder="Search varieties or crops" status={varietyStatus} onStatus={setVarietyStatus} />
           {loading ? <p className="crop-admin-loading">Loading varieties…</p> : (
             <DataTable rows={filteredVarieties} emptyTitle="No varieties found" emptyMessage="Try another search or status filter." getRowKey={(variety) => variety.id} columns={[
@@ -310,10 +570,18 @@ export function AdminCropManagement() {
             { header: 'Verified', render: (profile) => formatDate(profile.verifiedAt) },
             { header: 'Evidence', render: (profile) => `${profile.stageCount} stages · ${profile.ruleCount} rules` },
             { header: 'State', render: (profile) => <StatusPill label={profile.isActive ? 'Active' : 'Inactive'} tone={profile.isActive ? 'good' : 'bad'} /> },
-            { header: 'Actions', render: (profile) => <Button variant="secondary" disabled={busy} onClick={() => void run(async () => { await api.put(`/crop-planning/crop-reference-profiles/${profile.id}/active`, !profile.isActive, { headers: { 'Content-Type': 'application/json' } }) }, 'Reference state updated.')}>{profile.isActive ? 'Deactivate' : 'Activate'}</Button> },
+            { header: 'Actions', className: 'crop-admin-actions-column', render: (profile) => <div className="crop-admin-actions"><Button variant="secondary" icon={<Eye size={15} />} onClick={() => void openReferenceDetails(profile)}>View details</Button><Button variant="ghost" disabled={busy} onClick={() => void run(async () => { await api.put(`/crop-planning/crop-reference-profiles/${profile.id}/active`, !profile.isActive, { headers: { 'Content-Type': 'application/json' } }) }, 'Reference state updated.')}>{profile.isActive ? 'Deactivate' : 'Activate'}</Button></div> },
           ]} />
           <form className="crop-reference-form" onSubmit={(event) => void saveReference(event)}>
             <div className="crop-reference-form-heading"><h3>Create verified version</h3><p>Add a traceable source and at least one growth stage or structured rule.</p></div>
+            <section className="crop-finding-panel" aria-label="AI reference discovery">
+              <div className="crop-finding-panel-heading">
+                <div><span className="crop-finding-label">AI Generated Draft · Needs Admin Review</span><h3>Find references with AI</h3><p>Choose the crop below first. Review one primary source at a time; accepted items only prefill this existing form.</p></div>
+                <Button variant="secondary" icon={findingAction === 'references' ? <Loader2 className="spin" size={16} /> : <Sparkles size={16} />} disabled={!referenceForm.cropTypeId || findingAction !== null} onClick={() => void findReferences()}>{findingAction === 'references' ? 'Finding references…' : 'Find References with AI'}</Button>
+              </div>
+              {findingErrors.references ? <Notice tone="error">{findingErrors.references} Current form values and completed review decisions were preserved.</Notice> : null}
+              {referenceDiscovery ? <ReferenceDiscoveryReview response={referenceDiscovery} primarySourceId={primarySourceId} decisions={referenceReview} onSelectPrimary={selectPrimarySource} onAccept={(sourceId, item) => requestReferenceUse(sourceId, item, false)} onEdit={(sourceId, item) => requestReferenceUse(sourceId, item, true)} onReject={(item) => setReferenceReview((current) => ({ ...current, [item.id]: 'rejected' }))} /> : null}
+            </section>
             <fieldset className="crop-reference-section">
               <legend>Source details</legend>
               <div className="form-grid">
@@ -363,6 +631,10 @@ export function AdminCropManagement() {
       <CropDialog open={cropDialogOpen} form={cropForm} error={dialogError} busy={busy} onChange={setCropForm} onClose={() => setCropDialogOpen(false)} onSubmit={saveCrop} />
       <VarietyDialog open={varietyDialogOpen} form={varietyForm} cropOptions={varietyCropOptions} error={dialogError} busy={busy} onChange={setVarietyForm} onClose={() => setVarietyDialogOpen(false)} onSubmit={saveVariety} />
       <DeleteDialog target={deleteTarget} error={dialogError} busy={busy} onCancel={() => setDeleteTarget(null)} onConfirm={confirmDelete} />
+      <ReferenceDetailsDialog state={referenceDetails} onClose={() => setReferenceDetails(null)} onRetry={(profile) => void openReferenceDetails(profile)} />
+      <Modal open={Boolean(pendingPartial)} title="Use partially supported value?" description="The source does not fully support the exact crop, variety, region, or value." onClose={() => setPendingPartial(null)} footer={<><Button variant="secondary" onClick={() => setPendingPartial(null)}>Cancel</Button><Button onClick={confirmPartialUse}>Use with warning</Button></>}>
+        <Notice tone="warning">Check the original evidence before continuing. The warning remains in this review session, and the value is not verified until you submit the existing Admin form.</Notice>
+      </Modal>
     </div>
   )
 }
@@ -376,6 +648,70 @@ function ManagementToolbar({ searchLabel, search, onSearch, placeholder, status,
 
 function PrimaryCell({ title, detail }: { title: string; detail: string }) {
   return <div className="crop-admin-primary-cell"><strong>{title}</strong><span>{detail}</span></div>
+}
+
+function ReferenceDetailsDialog({ state, onClose, onRetry }: { state: ReferenceDetailsState | null; onClose: () => void; onRetry: (profile: CropReferenceProfile) => void }) {
+  const details = state?.details
+  const title = details ? `${details.cropName} reference` : 'Verified reference details'
+
+  return <Modal
+    open={Boolean(state)}
+    title={title}
+    description="Read-only persisted evidence from this verified reference."
+    onClose={onClose}
+    footer={<Button variant="secondary" onClick={onClose}>Close</Button>}
+  >
+    {state?.loading ? <LoadingState label="Loading reference details" /> : null}
+    {state?.error ? <div className="crop-reference-details-error"><ErrorState message={state.error} /><Button variant="secondary" onClick={() => onRetry(state.profile)}>Retry</Button></div> : null}
+    {details ? <div className="crop-reference-details">
+      <section className="crop-reference-details-grid" aria-label="Reference source details">
+        <DetailItem label="Crop" value={details.cropName} />
+        <DetailItem label="Variety" value={details.varietyName || 'All varieties'} />
+        <DetailItem label="Region" value={details.region || 'Not specified'} />
+        <DetailItem label="Source name" value={details.sourceName} />
+        <DetailItem label="Source version" value={details.sourceVersion} />
+        <DetailItem label="Verified at" value={formatDateTime(details.verifiedAt)} />
+        <div className="crop-reference-detail-item"><span>State</span><StatusPill label={details.isActive ? 'Active' : 'Inactive'} tone={details.isActive ? 'good' : 'bad'} /></div>
+        <div className="crop-reference-detail-item crop-reference-detail-wide"><span>Source URL</span>{details.sourceUrl
+          ? <a href={details.sourceUrl} target="_blank" rel="noreferrer">Open original source <ExternalLink size={14} aria-hidden="true" /></a>
+          : <strong>Not provided</strong>}</div>
+      </section>
+
+      <ReferenceDetailSection title="Growth stages" emptyMessage="No growth stages were recorded for this reference.">
+        {details.stages.map((stage) => <article className="crop-reference-detail-card" key={stage.id}>
+          <header><strong>{stage.sequence}. {stage.stageName}</strong></header>
+          <dl className="crop-reference-detail-metrics">
+            <div><dt>Minimum days</dt><dd>{stage.typicalMinDays ?? 'Not specified'}</dd></div>
+            <div><dt>Maximum days</dt><dd>{stage.typicalMaxDays ?? 'Not specified'}</dd></div>
+          </dl>
+          <p><span>Evidence notes</span>{stage.notes || 'No notes recorded.'}</p>
+        </article>)}
+      </ReferenceDetailSection>
+
+      <ReferenceDetailSection title="Structured rules" emptyMessage="No structured rules were recorded for this reference.">
+        {details.rules.map((rule) => <article className="crop-reference-detail-card" key={rule.id}>
+          <header><strong>{rule.ruleType}</strong><span>{rule.ruleKey}</span></header>
+          <pre><code>{formatStructuredJson(rule.structuredValueJson)}</code></pre>
+        </article>)}
+      </ReferenceDetailSection>
+    </div> : null}
+  </Modal>
+}
+
+function DetailItem({ label, value }: { label: string; value: string }) {
+  return <div className="crop-reference-detail-item"><span>{label}</span><strong>{value}</strong></div>
+}
+
+function ReferenceDetailSection({ title, emptyMessage, children }: { title: string; emptyMessage: string; children: ReactNode[] }) {
+  return <section className="crop-reference-detail-section"><h3>{title}</h3>{children.length ? <div className="crop-reference-detail-list">{children}</div> : <p>{emptyMessage}</p>}</section>
+}
+
+function formatStructuredJson(value: string) {
+  try {
+    return JSON.stringify(JSON.parse(value), null, 2)
+  } catch {
+    return value
+  }
 }
 
 function CropDialog({ open, form, error, busy, onChange, onClose, onSubmit }: { open: boolean; form: ReturnType<typeof emptyCropForm>; error: string; busy: boolean; onChange: (value: ReturnType<typeof emptyCropForm>) => void; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {

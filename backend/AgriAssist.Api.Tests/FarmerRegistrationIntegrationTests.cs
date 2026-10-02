@@ -34,6 +34,8 @@ public sealed class FarmerRegistrationIntegrationTests
             {
                 fullName = "New Farmer",
                 email = "new.farmer@example.com",
+                phoneNumber = "077-123-4567",
+                contactAddress = "No. 25, Wariyapola Road",
                 password = "harvest fields safely",
                 role = 5
             });
@@ -49,6 +51,8 @@ public sealed class FarmerRegistrationIntegrationTests
         var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var user = await dbContext.Users.SingleAsync(item => item.Email == "new.farmer@example.com");
         Assert.Equal(1, user.TokenVersion);
+        Assert.Equal("+94771234567", user.PhoneNumber);
+        Assert.Equal("No. 25, Wariyapola Road", user.ContactAddress);
         Assert.NotNull(user.PasswordChangedAt);
         Assert.Null(user.CreatedByUserId);
     }
@@ -61,7 +65,9 @@ public sealed class FarmerRegistrationIntegrationTests
         var request = new RegisterFarmerRequest(
             "Duplicate Farmer",
             "duplicate@example.com",
-            "harvest fields safely");
+            "harvest fields safely",
+            "+94 77 123 4567",
+            "Kurunegala Road, Wariyapola");
 
         var first = await client.PostAsJsonAsync("/api/auth/register-farmer", request);
         var duplicate = await client.PostAsJsonAsync("/api/auth/register-farmer", request);
@@ -70,6 +76,28 @@ public sealed class FarmerRegistrationIntegrationTests
         Assert.Equal(HttpStatusCode.Created, first.StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
         Assert.Equal("EMAIL_ALREADY_EXISTS", payload.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Theory]
+    [InlineData("771234567")]
+    [InlineData("+940771234567")]
+    [InlineData("07712345")]
+    [InlineData("077(123)4567")]
+    public async Task Registration_rejects_malformed_Sri_Lankan_phone_numbers(string phoneNumber)
+    {
+        await using var factory = CreateFactory();
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync(
+            "/api/auth/register-farmer",
+            new RegisterFarmerRequest(
+                "Invalid Phone Farmer",
+                $"invalid.{Guid.NewGuid():N}@example.com",
+                "harvest fields safely",
+                phoneNumber,
+                "Kurunegala Road, Wariyapola"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]

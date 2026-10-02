@@ -116,11 +116,63 @@ public sealed class FarmerOnboardingIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
+    [Fact]
+    public async Task Farm_creation_requires_and_canonicalizes_a_Sri_Lankan_District()
+    {
+        await using var factory = CreateFactory();
+        using var client = factory.CreateClient();
+        var session = await RegisterFarmerAsync(client, "district.farmer@example.test");
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", session.AccessToken);
+
+        var valid = await client.PostAsJsonAsync(
+            "/api/crop-planning/farms",
+            new FarmRequest("Wariyapola Farm", "Wariyapola", 5m, null, "kurunegala"));
+        var created = await valid.Content.ReadFromJsonAsync<FarmResponse>();
+        var invalid = await client.PostAsJsonAsync(
+            "/api/crop-planning/farms",
+            new FarmRequest("Invalid Farm", "Somewhere", 5m, null, "North Western"));
+
+        Assert.Equal(HttpStatusCode.Created, valid.StatusCode);
+        Assert.Equal("Kurunegala", created?.District);
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+    }
+
+    [Fact]
+    public async Task Farm_edit_requires_a_District_and_preserves_the_location_value()
+    {
+        await using var factory = CreateFactory();
+        using var client = factory.CreateClient();
+        var session = await RegisterFarmerAsync(client, "district.edit@example.test");
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", session.AccessToken);
+        var created = await (await client.PostAsJsonAsync(
+            "/api/crop-planning/farms",
+            new FarmRequest("Editable Farm", "Wariyapola", 5m, null, "Kurunegala")))
+            .Content.ReadFromJsonAsync<FarmResponse>();
+
+        var missingDistrict = await client.PutAsJsonAsync(
+            $"/api/crop-planning/farms/{created!.Id}",
+            new FarmRequest("Editable Farm", "Wariyapola Road", 6m, null));
+        var validEdit = await client.PutAsJsonAsync(
+            $"/api/crop-planning/farms/{created.Id}",
+            new FarmRequest("Editable Farm", "Wariyapola Road", 6m, null, "kurunegala"));
+        var updated = await validEdit.Content.ReadFromJsonAsync<FarmResponse>();
+
+        Assert.Equal(HttpStatusCode.BadRequest, missingDistrict.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, validEdit.StatusCode);
+        Assert.Equal("Wariyapola Road", updated?.Location);
+        Assert.Equal("Kurunegala", updated?.District);
+    }
+
     private static async Task<AuthResponse> RegisterFarmerAsync(HttpClient client, string email)
     {
         var response = await client.PostAsJsonAsync(
             "/api/auth/register-farmer",
-            new RegisterFarmerRequest("Onboarding Farmer", email, "harvest fields safely"));
+            new RegisterFarmerRequest(
+                "Onboarding Farmer",
+                email,
+                "harvest fields safely",
+                "077 123 4567",
+                "No. 25, Wariyapola Road"));
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<AuthResponse>())!;
     }

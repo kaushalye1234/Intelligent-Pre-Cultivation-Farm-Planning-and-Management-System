@@ -227,12 +227,14 @@ class FarmOption {
     required this.id,
     required this.name,
     this.location = '',
+    this.district,
     this.totalArea = 0,
   });
 
   final String id;
   final String name;
   final String location;
+  final String? district;
   final num totalArea;
 
   factory FarmOption.fromJson(Map<String, dynamic> json) {
@@ -240,6 +242,7 @@ class FarmOption {
       id: json['id'] as String,
       name: json['name'] as String,
       location: json['location'] as String? ?? '',
+      district: json['district'] as String?,
       totalArea: json['totalArea'] as num? ?? 0,
     );
   }

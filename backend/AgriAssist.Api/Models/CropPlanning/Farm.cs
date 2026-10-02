@@ -6,6 +6,7 @@ public sealed class Farm : AuditableEntity
 {
     public string Name { get; set; } = string.Empty;
     public string Location { get; set; } = string.Empty;
+    public string? District { get; set; }
     public decimal TotalArea { get; set; }
     public Guid OwnerUserId { get; set; }
     public AppUser? OwnerUser { get; set; }

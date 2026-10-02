@@ -61,7 +61,7 @@ public sealed class FarmCapacityBusinessRuleTests
 
         var exception = await Assert.ThrowsAsync<ApiException>(() => service.UpdateFarmAsync(
             data.FarmId,
-            new FarmRequest("Capacity Farm", "North", 5m, null),
+            new FarmRequest("Capacity Farm", "North", 5m, null, "Kurunegala"),
             CancellationToken.None));
 
         Assert.Equal("FIELD_AREA_EXCEEDS_FARM", exception.Code);

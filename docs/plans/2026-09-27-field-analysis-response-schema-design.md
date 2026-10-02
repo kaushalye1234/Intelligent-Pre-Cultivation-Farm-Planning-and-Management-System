@@ -15,7 +15,7 @@ Prevent `CropFieldAnalysisAgent` from accepting or requesting provider output th
 
 ## Provider interface
 
-`BaseLLMProvider.generate_json` accepts an optional JSON-schema dictionary. Gemini dereferences the Pydantic `$defs` and maps it to the installed SDK's supported schema subset before passing it as `response_schema` together with `response_mime_type = application/json`; Pydantic remains the authoritative post-response validator for constraints the SDK cannot express. OpenAI uses JSON Schema structured output rather than JSON-object-only mode. Test providers accept the same optional argument.
+`BaseLLMProvider.generate_json` accepts an optional JSON-schema dictionary. OpenAI uses JSON Schema structured output rather than JSON-object-only mode, while Pydantic remains the authoritative post-response validator. Test providers accept the same optional argument.
 
 ## Error handling
 
