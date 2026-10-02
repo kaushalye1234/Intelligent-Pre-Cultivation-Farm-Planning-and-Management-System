@@ -1,7 +1,7 @@
 import { useContext, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { AlertTriangle, PlayCircle, Plus, RefreshCw, Search, Sprout } from 'lucide-react'
-import { api, getErrorMessage } from '../api/client'
+import { api, getErrorCode, getErrorMessage } from '../api/client'
 import { SelectInput, TextAreaInput, TextInput } from '../components/FormControls'
 import { DataTable } from '../components/DataTable'
 import { ErrorState, LoadingState } from '../components/States'
@@ -17,16 +17,6 @@ import type { CropPlan, CropPlanningResult, CropPlanningWorkflowStatus, CropType
 type CropTab = 'overview' | 'farms' | 'fields' | 'cropTypes' | 'requests'
 type CropModal = 'farm' | 'field' | 'plan' | null
 
-const workflowStatusLabel: Record<number, string> = {
-  1: 'Not Started',
-  2: 'Pending',
-  3: 'Running',
-  4: 'Completed',
-  5: 'Failed',
-  6: 'Cancelled',
-  12: 'Candidate blocked',
-}
-
 function getCropPlanTone(status: number) {
   if (status === 4) return 'good'
   if (status === 5 || status === 6) return 'bad'
@@ -41,8 +31,12 @@ function getWorkflowTone(status?: number) {
   return 'warn'
 }
 
-function isSafeFailure(result?: CropPlanningResult, status?: CropPlanningWorkflowStatus) {
-  return result?.status === 'SafeFailure' || status?.status === 5
+function startErrorMessage(error: unknown) {
+  return {
+    AI_WORKFLOW_ALREADY_ACTIVE: 'AI planning is already running for this request. The latest status has been refreshed.',
+    AI_WORKFLOW_ALREADY_COMPLETED: 'Member 1 crop planning has already completed for this request.',
+    CROP_PLAN_STATE_NOT_ALLOWED: 'This crop plan request is not eligible to start or retry AI planning.',
+  }[getErrorCode(error) ?? ''] ?? getErrorMessage(error)
 }
 
 export function CropPlanningPage() {
@@ -150,7 +144,8 @@ export function CropPlanningPage() {
       await loadData()
       setActiveTab('requests')
     } catch (err) {
-      setActionError(getErrorMessage(err))
+      setActionError(startErrorMessage(err))
+      await loadData()
     } finally {
       setWorkflowBusyId(null)
     }
@@ -304,7 +299,7 @@ export function CropPlanningPage() {
                   { header: 'Crop', render: (row) => cropNameById.get(row.cropTypeId) ?? row.cropTypeId.slice(0, 8) },
                   { header: 'Window', render: (row) => `${formatDate(row.preferredStartDate)} to ${formatDate(row.preferredEndDate)}` },
                   { header: 'Budget', render: (row) => formatMoney(row.budget) },
-                  { header: 'Status', render: (row) => <StatusPill label={cropPlanStatus[row.status] ?? String(row.status)} tone={getCropPlanTone(row.status)} /> },
+                  { header: 'Status', render: (row) => <StatusPill label={row.statusLabel || cropPlanStatus[row.status] || String(row.status)} tone={getCropPlanTone(row.status)} /> },
                   {
                     header: 'AI Workflow',
                     className: 'wide-column',
@@ -312,18 +307,24 @@ export function CropPlanningPage() {
                       const status = workflowStatuses[row.id]
                       const result = planningResults[row.id]
                       const busy = workflowBusyId === row.id
-                      const retry = isSafeFailure(result, status)
+                      const canStart = isAdmin && row.statusCode === 'pending'
+                      const canRetry = isAdmin && row.statusCode === 'ai_planning_failed'
                       return (
                         <div className="workflow-cell">
                           <div className="workflow-cell-top">
-                            <StatusPill label={status ? workflowStatusLabel[status.status] ?? String(status.status) : 'Not Started'} tone={getWorkflowTone(status?.status)} />
+                            <StatusPill label={status?.statusLabel ?? row.statusLabel} tone={getWorkflowTone(status?.status)} />
                             {result?.referenceDataStatus === 'Unavailable' ? <span className="reference-warning"><AlertTriangle size={14} aria-hidden="true" /> Missing reference</span> : null}
                           </div>
                           {result?.objectiveSummary ? <p>{result.objectiveSummary}</p> : <span className="muted-text">Coordinator output has not been generated.</span>}
                           {result?.warnings.length ? <ul className="workflow-warnings">{result.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}
                           {result?.steps.length ? <div className="workflow-step-list">{result.steps.map((step) => <span key={`${step.sequence}-${step.assignedAgent}`}>{step.sequence}. {step.assignedAgent}</span>)}</div> : null}
                           <div className="row-actions">
-                            <Button icon={<PlayCircle size={16} aria-hidden="true" />} disabled={busy || Boolean(status && !retry)} onClick={() => void startAiWorkflow(row)}>{busy ? 'Working...' : retry ? 'Retry AI' : 'Start AI'}</Button>
+                            {canStart || canRetry ? (
+                              <Button icon={<PlayCircle size={16} aria-hidden="true" />} disabled={busy} onClick={() => void startAiWorkflow(row)}>
+                                {busy ? 'Working...' : canRetry ? 'Retry AI Plan' : 'Start AI Plan'}
+                              </Button>
+                            ) : null}
+                            {row.statusCode === 'ai_planning' ? <span className="muted-text">AI planning is running.</span> : null}
                             <Button variant="secondary" icon={<RefreshCw size={16} aria-hidden="true" />} disabled={busy || !status} onClick={() => void refreshWorkflow(row.id)}>Refresh</Button>
                           </div>
                         </div>
