@@ -1,10 +1,10 @@
 # SE3090 Group 04 - Consolidated report assembly draft
 
-**Status (2026-10-01):** Technical evidence draft for one eventual group PDF. Group 04 reported that it has no deployed system URLs, demonstration video, or member-authored reports yet. This draft must not be submitted as the completed assignment. The other members must review their own work and supply their personal sections, AI logs, reflections, and signed declarations.
+**Status (updated 2026-10-02):** Technical evidence draft for one eventual group PDF. Member 4 Phase 3 evidence is merged in PR #60 (merge commit `0132934`). Group 04 previously reported that it had no deployed system URLs, demonstration video, or member-authored reports; no replacement material has been supplied for this update. This draft must not be submitted as the completed assignment. The other members must review their own work and supply their personal sections, AI logs, reflections, and signed declarations.
 
 **Repository:** [Intelligent Pre-Cultivation Farm Planning and Management System](https://github.com/kaushalye1234/Intelligent-Pre-Cultivation-Farm-Planning-and-Management-System)
 
-**Verified integration baseline:** `dev` merge commit `46c50b4` from [Member 4 PR #59](https://github.com/kaushalye1234/Intelligent-Pre-Cultivation-Farm-Planning-and-Management-System/pull/59).
+**Verified application baseline:** `dev` merge commit `46c50b4` from [Member 4 implementation PR #59](https://github.com/kaushalye1234/Intelligent-Pre-Cultivation-Farm-Planning-and-Management-System/pull/59). The Phase 3 evidence package was subsequently merged by [PR #60](https://github.com/kaushalye1234/Intelligent-Pre-Cultivation-Farm-Planning-and-Management-System/pull/60) at `0132934`.
 
 ## Group report - project and responsibilities
 
@@ -52,7 +52,7 @@ The recorded AI suite used deterministic inputs. The 2026-10-01 browser and API 
 | AI service pytest | 86 passed | Deterministic fixtures |
 | React Vitest | 94 passed | Officer queue and review components included |
 | Flutter tests | 42 passed | CI on PR #59; Flutter analysis passed |
-| GitHub Actions | Backend, AI service, React, Flutter passed | [PR #59](https://github.com/kaushalye1234/Intelligent-Pre-Cultivation-Farm-Planning-and-Management-System/pull/59) before merge |
+| GitHub Actions | Backend, AI service, React, Flutter passed | [PR #59](https://github.com/kaushalye1234/Intelligent-Pre-Cultivation-Farm-Planning-and-Management-System/pull/59) before application merge; [PR #60](https://github.com/kaushalye1234/Intelligent-Pre-Cultivation-Farm-Planning-and-Management-System/pull/60) documentation update checks also passed |
 | Android debug APK | Built in 286.8 s; installed and launched on emulator | `dev` commit `46c50b4`; login screen only, without backend sign-in |
 
 The [performance report](../testing/performance-report.md) records one complete workflow fixture: coordinator 658.5 ms, field analysis 705.3 ms, weather/resource 63.9 ms, and scheduling 148.1 ms. Two ten-request local `/health` samples are also reported. These are smoke measurements with sample count one per workflow step, so no p50/p95, load capacity, or production SLA is claimed.
@@ -83,7 +83,7 @@ The Member 3 owner must add their resource and weather contribution statement, t
 
 ## Individual report - Member 4 technical evidence
 
-**Component ownership:** Task and irrigation schedule operations, `SchedulingValidationAgent`, candidate validation, officer approval and revision workflow, and final integration. The [Member 4 plan](../plans/member-4-task-approval-integration-plan.md), [contract](../ai-usage/member-4-scheduling-approval-contract.md), and [PR #59](https://github.com/kaushalye1234/Intelligent-Pre-Cultivation-Farm-Planning-and-Management-System/pull/59) support this technical scope. The exact authorship of shared files must be confirmed from Git history, not inferred from path ownership.
+**Component ownership:** Task and irrigation schedule operations, `SchedulingValidationAgent`, candidate validation, officer approval and revision workflow, and final integration. The [Member 4 plan](../plans/member-4-task-approval-integration-plan.md), [contract](../ai-usage/member-4-scheduling-approval-contract.md), and [PR #59](https://github.com/kaushalye1234/Intelligent-Pre-Cultivation-Farm-Planning-and-Management-System/pull/59) support this technical scope. The exact authorship of shared files must be confirmed from Git history, not inferred from path ownership. PR #60 adds the Phase 3 report evidence, toolchain inventory, and final-package documentation; it does not supply the group’s missing personal sections or deployment artifacts.
 
 **Technical work:** The scheduling agent turns structured upstream evidence into sourced candidate tasks, optional verified-rule irrigation, and stock-backed reservation proposals. The backend checks sources and explanations, prevents premature final writes, and commits approved results atomically after revalidation. React makes candidate reasons and blocked status reviewable; Flutter exposes farmer progress and approved results. A three-decimal resource-quantity migration protects the reservation arithmetic.
 
