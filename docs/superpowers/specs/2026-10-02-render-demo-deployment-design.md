@@ -16,7 +16,8 @@ This is a demo plan. It does not claim the application is production-ready, and 
 - The accepted deployment ADR selects a .NET-capable API host, static React assets, Supabase PostgreSQL, Cloudinary, and Flutter platform builds.
 - The ASP.NET project targets .NET 8. It exposes a health endpoint at /health, configures the React CORS origin through App:ReactUrl, and only enables Swagger in Development or Testing.
 - The AI service is FastAPI, has a /health endpoint, and already has a Dockerfile based on Python 3.12. That Dockerfile currently binds to port 8001 rather than Render's assigned port.
-- The API reads its AI service URL and shared service/tool tokens from configuration. The AI service reads its incoming service token and backend tool URL/token from environment configuration.
+- The API reads its AI service URL and shared service/tool tokens from configuration. The AI service reads its incoming service token and backend tool URL/token from environment configuration. The current AI Settings type accepts AI_PROVIDER=openai; do not configure Gemini unless a separately reviewed code change adds support.
+- The API invokes DotNetEnv.Env.Load() during startup. The deployment image must be tested without a .env file to confirm the process continues using Render-injected environment variables; if not, production startup behavior must be corrected before deployment.
 - The project startup guide applies EF Core migrations explicitly. There is no automatic production migration step in API startup.
 - A separate open security PR replaces credential-looking values in tracked environment examples with placeholders. That change must be merged before those sanitized examples are used for deployment. Any values that were genuine must be rotated with their providers; replacing a tracked sample does not remove older Git history.
 
@@ -43,7 +44,7 @@ A repository Blueprint may describe the three services, but it must not contain 
 Set secrets in the Render dashboard as secret environment variables, never in source control, Blueprint values, frontend variables, or build logs.
 
 - API: database connection string, JWT signing secret and issuer/audience, Cloudinary credentials, weather API key if the feature is used, AI service URL and service token, AI tool token, and React origin.
-- AI: provider selection and API key, the same inbound service token as the API's AI token, public API base URL for backend tool calls, and the same tool token as the API's tool token.
+- AI: AI_PROVIDER=openai and OPENAI_API_KEY for the current implementation, the same inbound service token as the API's AI token, public API base URL for backend tool calls, and the same tool token as the API's tool token.
 - React: VITE_API_BASE_URL set to the API's public origin plus /api. This is public configuration and must contain no secret.
 - Flutter builds: use the API's public HTTPS /api base URL through the existing build-time define. Do not embed AI or backend tool tokens.
 
@@ -58,7 +59,7 @@ Do not apply migrations automatically during API startup. Before changing the da
 ## Runtime behavior and failure handling
 
 - All browser-facing traffic uses HTTPS. API and AI health checks use /health.
-- Render services may sleep on free plans and cold-start on their next request. Demo users should expect a delay after inactivity; long AI requests must stay within the API and provider timeout budgets.
+- Render services may sleep on free plans and cold-start on their next request. Demo users should expect a delay after inactivity; long AI requests must stay within the API and provider timeout budgets; verify that cold-start plus AI processing stays within the API's configured request timeout.
 - Because free services cannot use private service networking, API-to-AI and AI-to-API calls use public HTTPS URLs and their existing service-token checks.
 - A failing health check blocks or marks a deployment unhealthy; it must not bypass authentication or cause the API to seed or mutate production data.
 - If Supabase, Cloudinary, the weather provider, or the AI provider is unavailable, the application should surface the existing safe failure behavior. Deployment must not fabricate analysis or bypass human approval.
@@ -77,7 +78,7 @@ Do not apply migrations automatically during API startup. Before changing the da
 Phase 4 implementation is ready for demo review when:
 
 1. The reviewed security-example cleanup is merged, and any exposed real credentials have been rotated or confirmed as non-credentials by their owners.
-2. API and AI Docker images build from a clean checkout and both processes bind to Render's assigned port.
+2. API and AI Docker images build from a clean checkout and both processes bind to Render's assigned port. The API starts with Render-injected environment values when no .env file is present.
 3. The React static build succeeds and receives only the public API URL.
 4. Render dashboard configuration links the React origin, API URL, AI URL, and matching service-token pairs without exposing secrets.
 5. The operator has reviewed the exact Supabase target and applied pending migrations explicitly.
