@@ -66,11 +66,15 @@ class ApiClient {
   Future<AuthenticationSession> registerFarmer({
     required String fullName,
     required String email,
+    required String phoneNumber,
+    required String contactAddress,
     required String password,
   }) async {
     final response = await _postUnauthenticated('/auth/register-farmer', {
       'fullName': fullName,
       'email': email,
+      'phoneNumber': phoneNumber,
+      'contactAddress': contactAddress,
       'password': password,
     });
     final session = AuthenticationSession.fromJson(response);
@@ -103,11 +107,13 @@ class ApiClient {
   Future<FarmOption> createFarm({
     required String name,
     required String location,
+    required String district,
     required num totalArea,
   }) async {
     final response = await _post('/crop-planning/farms', {
       'name': name,
       'location': location,
+      'district': district,
       'totalArea': totalArea,
       'ownerUserId': null,
     });

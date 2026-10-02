@@ -87,12 +87,16 @@ class AppState extends ChangeNotifier {
   Future<void> registerFarmer({
     required String fullName,
     required String email,
+    required String phoneNumber,
+    required String contactAddress,
     required String password,
   }) async {
     await _guard(() async {
       final session = await _apiClient.registerFarmer(
         fullName: fullName,
         email: email,
+        phoneNumber: phoneNumber,
+        contactAddress: contactAddress,
         password: password,
       );
       passwordChangeSession = null;
@@ -144,12 +148,14 @@ class AppState extends ChangeNotifier {
   Future<void> createOnboardingFarm({
     required String name,
     required String location,
+    required String district,
     required num totalArea,
   }) async {
     await _guard(() async {
       await _apiClient.createFarm(
         name: name,
         location: location,
+        district: district,
         totalArea: totalArea,
       );
       await _loadAuthenticatedLanding();

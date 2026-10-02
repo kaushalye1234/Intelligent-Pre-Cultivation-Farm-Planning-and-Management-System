@@ -74,8 +74,27 @@ void main() {
 
     expect(find.text('Start with your farm'), findsOneWidget);
     expect(find.text('Full name'), findsOneWidget);
+    expect(find.text('Phone number'), findsOneWidget);
+    expect(find.text('Contact / home address'), findsOneWidget);
     expect(find.text('Role'), findsNothing);
     expect(find.byType(DropdownButtonFormField<int>), findsNothing);
+  });
+
+  testWidgets('new Farmer registration requires phone and contact address', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_authGateHarness(AppState()));
+    await tester.ensureVisible(find.text('Create farmer account'));
+    await tester.tap(find.text('Create farmer account'));
+    await tester.pumpAndSettle();
+
+    final submit = find.widgetWithText(FilledButton, 'Create farmer account');
+    await tester.ensureVisible(submit);
+    await tester.tap(submit);
+    await tester.pump();
+
+    expect(find.text('Phone number is required'), findsOneWidget);
+    expect(find.text('Contact / home address is required'), findsOneWidget);
   });
 
   testWidgets('staff temporary session is blocked from Farmer screens', (
@@ -123,6 +142,7 @@ void main() {
 
     expect(find.text('Add your first farm'), findsOneWidget);
     expect(find.text('STEP 1 OF 2'), findsOneWidget);
+    expect(find.text('District'), findsWidgets);
   });
 
   testWidgets('Farmer with a farm but no active field opens field onboarding', (
