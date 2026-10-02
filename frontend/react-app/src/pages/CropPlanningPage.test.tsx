@@ -33,6 +33,33 @@ describe('CropPlanningPage AI workflow surface', () => {
     expect(screen.getByText('Provider warning')).toBeInTheDocument()
     expect(screen.getByText(/CropFieldAnalysisAgent/i)).toBeInTheDocument()
   })
+
+  it('requires and submits an approved Sri Lankan district when creating a farm', async () => {
+    vi.spyOn(api, 'get').mockImplementation((url: string) => {
+      if (url.includes('/farms') || url.includes('/fields') || url.includes('/crop-types') || url.includes('/requests')) {
+        return Promise.resolve(paged([]))
+      }
+      throw new Error(`Unexpected GET ${url}`)
+    })
+    const post = vi.spyOn(api, 'post').mockResolvedValue({ data: {} } as never)
+    render(<MemoryRouter><CropPlanningPage /></MemoryRouter>)
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /add farm/i })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: /add farm/i }))
+    fireEvent.change(screen.getByPlaceholderText('Farm name'), { target: { value: 'Wariyapola Farm' } })
+    fireEvent.change(screen.getByPlaceholderText('Farm address or town / city'), { target: { value: 'Wariyapola' } })
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Kurunegala' } })
+    fireEvent.change(screen.getByPlaceholderText('2.5'), { target: { value: '10' } })
+    fireEvent.click(screen.getByRole('button', { name: /create farm/i }))
+
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/crop-planning/farms', {
+      name: 'Wariyapola Farm',
+      location: 'Wariyapola',
+      district: 'Kurunegala',
+      totalArea: 10,
+      ownerUserId: null,
+    }))
+  })
 })
 
 

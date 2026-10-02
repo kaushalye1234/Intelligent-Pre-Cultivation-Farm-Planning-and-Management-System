@@ -9,6 +9,7 @@ import { StatusPill } from '../components/StatusPill'
 import { Button, MetricCard, Modal, Notice, PageHeader, Tabs, Toolbar } from '../components/Ui'
 import { formatArea, formatDate, formatMoney } from '../format'
 import { cropPlanStatus } from '../labels'
+import { sriLankanDistrictOptions } from '../location'
 import { AuthContext } from '../auth/AuthContext'
 import { AdminCropManagement } from './AdminCropManagement'
 import type { CropPlan, CropPlanningResult, CropPlanningWorkflowStatus, CropType, Farm, Field, PagedResult } from '../types'
@@ -60,7 +61,7 @@ export function CropPlanningPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [workflowBusyId, setWorkflowBusyId] = useState<string | null>(null)
-  const [farmForm, setFarmForm] = useState({ name: '', location: '', totalArea: '' })
+  const [farmForm, setFarmForm] = useState({ name: '', location: '', district: '', totalArea: '' })
   const [fieldForm, setFieldForm] = useState({ farmId: '', name: '', area: '', soilType: '' })
   const [planForm, setPlanForm] = useState({ farmId: '', fieldId: '', cropTypeId: '', preferredStartDate: '', preferredEndDate: '', budget: '', objective: '' })
 
@@ -174,7 +175,7 @@ export function CropPlanningPage() {
     event.preventDefault()
     await runAction(async () => {
       await api.post('/crop-planning/farms', { ...farmForm, totalArea: Number(farmForm.totalArea), ownerUserId: null })
-      setFarmForm({ name: '', location: '', totalArea: '' })
+      setFarmForm({ name: '', location: '', district: '', totalArea: '' })
     }, 'Farm created successfully.')
   }
 
@@ -255,7 +256,7 @@ export function CropPlanningPage() {
               <div className="section-title"><h2>Farms</h2></div>
               <DataTable rows={farms} emptyTitle="No farms found" emptyMessage="Create a farm record before adding fields or planning requests." getRowKey={(row) => row.id} columns={[
                 { header: 'Farm Name', render: (row) => row.name },
-                { header: 'Location', render: (row) => row.location },
+                { header: 'Location', render: (row) => row.district ? `${row.location} · ${row.district}` : row.location },
                 { header: 'Area', render: (row) => formatArea(row.totalArea) },
                 { header: 'Created', render: (row) => formatDate(row.createdAt) },
               ]} />
@@ -338,7 +339,8 @@ export function CropPlanningPage() {
       <Modal open={activeModal === 'farm'} title="Add Farm" description="Create a farm record for future field and planning workflows." onClose={closeModal} footer={<><Button variant="secondary" onClick={closeModal} disabled={isSubmitting}>Cancel</Button><Button type="submit" form="farm-form" disabled={isSubmitting}>{isSubmitting ? 'Creating...' : 'Create Farm'}</Button></>}>
         <form id="farm-form" className="form-grid" onSubmit={(event) => void createFarm(event)}>
           <TextInput label="Name" value={farmForm.name} placeholder="Farm name" required onChange={(value) => setFarmForm({ ...farmForm, name: value })} />
-          <TextInput label="Location" value={farmForm.location} placeholder="Farm location" required onChange={(value) => setFarmForm({ ...farmForm, location: value })} />
+          <TextInput label="Location" value={farmForm.location} placeholder="Farm address or town / city" required onChange={(value) => setFarmForm({ ...farmForm, location: value })} />
+          <SelectInput label="District" value={farmForm.district} required options={sriLankanDistrictOptions} onChange={(value) => setFarmForm({ ...farmForm, district: value })} />
           <TextInput label="Total area" value={farmForm.totalArea} type="number" min="0" step="0.01" placeholder="2.5" required onChange={(value) => setFarmForm({ ...farmForm, totalArea: value })} />
           {actionError ? <div className="form-error field-control-wide" role="alert">{actionError}</div> : null}
         </form>

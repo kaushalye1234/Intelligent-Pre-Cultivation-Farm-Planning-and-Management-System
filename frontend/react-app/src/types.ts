@@ -50,6 +50,7 @@ export type Farm = {
   id: string
   name: string
   location: string
+  district?: string | null
   totalArea: number
   ownerUserId: string
   createdAt: string
@@ -302,9 +303,12 @@ export type PrePlantingContext = {
   currentStep: string
   farmerId: string
   farmerName: string
+  farmerPhoneNumber: string | null
+  farmerContactAddress: string | null
   farmId: string
   farmName: string
   farmLocation: string
+  farmDistrict: string | null
   fieldId: string
   fieldName: string
   cropTypeId: string
