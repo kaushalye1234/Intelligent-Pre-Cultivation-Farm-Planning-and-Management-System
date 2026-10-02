@@ -93,3 +93,14 @@ Phase 4 implementation is ready for demo review when:
 - Publishing a demo video or filling in other members' report sections.
 - Changing application product behavior unrelated to deployment readiness.
 - Claiming Flutter is deployed as a hosted web app; Flutter remains a platform build that points at the public API.
+
+
+## References
+
+- [Render Blueprint specification](https://render.com/docs/blueprint-spec) — service definitions, environment variables, regions, and hostname interpolation limits.
+- [Render web services](https://render.com/docs/web-services) and [Docker](https://render.com/docs/docker) — container port binding and Docker runtime.
+- [Render health checks](https://render.com/docs/health-checks) — health-check path behavior.
+- [Render environment variables](https://render.com/docs/environment-variables) — service configuration and secrets.
+- [Render free instance limits](https://render.com/docs/free) and [pricing](https://render.com/pricing) — spin-down and possible usage charges.
+- [Render deploys](https://render.com/docs/deploys) — deploy lifecycle and pre-deploy command availability.
+- Project deployment decision: docs/adr/0009-deployment.md.
