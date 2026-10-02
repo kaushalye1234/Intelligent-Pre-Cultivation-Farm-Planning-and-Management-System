@@ -72,11 +72,16 @@ public sealed class WeatherResourceToolService(AppDbContext dbContext, IWeatherS
     /// <summary>Forecast for the farm location of the workflow's crop plan. Provider failures come back unavailable.</summary>
     public async Task<WeatherForecastResponse> GetWeatherForecastAsync(Guid workflowId, CancellationToken cancellationToken)
     {
-        var location = await dbContext.AgentWorkflows.AsNoTracking()
+        var farmLocation = await dbContext.AgentWorkflows.AsNoTracking()
             .Where(workflow => workflow.Id == workflowId && !workflow.IsDeleted && workflow.CropPlanRequest != null)
-            .Select(workflow => workflow.CropPlanRequest!.Farm!.Location)
+            .Select(workflow => new
+            {
+                workflow.CropPlanRequest!.Farm!.Location,
+                workflow.CropPlanRequest.Farm.District
+            })
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw new ApiException(HttpStatusCode.NotFound, "NOT_FOUND", "Workflow crop plan was not found.");
+        var location = WeatherLocationResolver.Resolve(farmLocation.Location, farmLocation.District);
         return await weatherService.GetForecastAsync(location, cancellationToken);
     }
 

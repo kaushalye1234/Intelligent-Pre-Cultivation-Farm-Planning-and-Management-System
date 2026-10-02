@@ -47,6 +47,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             entity.Property(user => user.FullName).IsRequired().HasMaxLength(120);
             entity.Property(user => user.Email).IsRequired().HasMaxLength(180);
+            entity.Property(user => user.PhoneNumber).HasMaxLength(12);
+            entity.Property(user => user.ContactAddress).HasMaxLength(500);
             entity.Property(user => user.PasswordHash).IsRequired().HasMaxLength(500);
             entity.Property(user => user.Role).HasConversion<string>().HasMaxLength(40);
             entity.Property(user => user.MustChangePassword).HasDefaultValue(false);
@@ -60,6 +62,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             entity.Property(farm => farm.Name).IsRequired().HasMaxLength(120);
             entity.Property(farm => farm.Location).IsRequired().HasMaxLength(240);
+            entity.Property(farm => farm.District).HasMaxLength(40);
             entity.Property(farm => farm.TotalArea).HasPrecision(12, 2);
             entity.HasOne(farm => farm.OwnerUser).WithMany().HasForeignKey(farm => farm.OwnerUserId).OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(farm => farm.OwnerUserId);

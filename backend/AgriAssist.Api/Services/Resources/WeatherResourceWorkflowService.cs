@@ -64,7 +64,8 @@ public sealed class WeatherResourceWorkflowService(
 
         // Enforces exact crop-plan access/stage and returns only the safe completed Member 2 output.
         var handoff = await cropPlanningService.GetMember3HandoffAsync(cropPlanRequestId, cancellationToken);
-        var location = workflow.CropPlanRequest?.Farm?.Location ?? string.Empty;
+        var farm = workflow.CropPlanRequest?.Farm;
+        var location = WeatherLocationResolver.Resolve(farm?.Location, farm?.District);
         var input = new WeatherResourceInput(
             workflow.Id,
             step.Id,

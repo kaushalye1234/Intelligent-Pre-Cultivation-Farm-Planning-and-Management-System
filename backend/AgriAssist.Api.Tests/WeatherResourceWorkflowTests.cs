@@ -22,7 +22,7 @@ public sealed class WeatherResourceWorkflowTests
     public async Task Run_stores_output_and_hands_off_to_member4()
     {
         await using var db = NewDbContext();
-        var data = await SeedAsync(db);
+        var data = await SeedAsync(db, farmLocation: "Wariyapola", farmDistrict: "Kurunegala");
         var agent = new ToolCallingAgent(db);
 
         var result = await NewService(db, agent).RunAsync(data.RequestId, CancellationToken.None);
@@ -31,7 +31,7 @@ public sealed class WeatherResourceWorkflowTests
         Assert.Equal("Medium", result.WeatherRisk);
         Assert.Equal(ResourceRequirementStatus.Insufficient, result.RequirementStatus);
         var sentInput = agent.Input!;
-        Assert.Equal("Kurunegala", sentInput.Location);
+        Assert.Equal("Wariyapola, Kurunegala, Sri Lanka", sentInput.Location);
         Assert.Equal(data.FieldId, sentInput.FieldId);
         Assert.Equal("High", sentInput.FieldPriority);
         Assert.NotNull(sentInput.Member2FieldAnalysisContext);

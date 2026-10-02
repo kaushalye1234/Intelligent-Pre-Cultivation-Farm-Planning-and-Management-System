@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AgriAssist.Api.Models.CropPlanning;
 using Microsoft.Extensions.Options;
 
 namespace AgriAssist.Api.ExternalServices.Weather;
@@ -20,8 +21,13 @@ public sealed class WeatherService(HttpClient httpClient, IOptions<WeatherOption
             return WeatherForecastResponse.Unavailable(location, "Weather service is not configured.");
         }
 
-        // Farm locations are often "Town, District"; fall back to the first part if the full text is not recognised.
-        var candidates = new[] { location, location.Split(',')[0].Trim() }.Distinct(StringComparer.OrdinalIgnoreCase);
+        // Prefer the full context, then its leading location and recognized District.
+        var locationParts = location.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        var district = locationParts.Select(SriLankanDistricts.Canonicalize).FirstOrDefault(item => item is not null);
+        var candidates = new[] { location, locationParts.FirstOrDefault(), district }
+            .Where(candidate => !string.IsNullOrWhiteSpace(candidate))
+            .Select(candidate => candidate!)
+            .Distinct(StringComparer.OrdinalIgnoreCase);
         foreach (var candidate in candidates)
         {
             try

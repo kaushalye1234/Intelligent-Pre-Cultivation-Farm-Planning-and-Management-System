@@ -1,4 +1,5 @@
 using AgriAssist.Api.Dtos.Shared;
+using AgriAssist.Api.Services.Shared;
 namespace AgriAssist.Api.Validators.Shared;
 
 public sealed class RegisterFarmerRequestValidator : IRequestValidator<RegisterFarmerRequest>
@@ -15,6 +16,16 @@ public sealed class RegisterFarmerRequestValidator : IRequestValidator<RegisterF
         if (string.IsNullOrWhiteSpace(request.Email) || request.Email.Length > 180 || !request.Email.Contains('@'))
         {
             errors.Add("A valid email address is required.");
+        }
+
+        if (SriLankanPhoneNumber.Normalize(request.PhoneNumber) is null)
+        {
+            errors.Add("A valid Sri Lankan phone number is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.ContactAddress) || request.ContactAddress.Length > 500)
+        {
+            errors.Add("Contact address is required and must be 500 characters or fewer.");
         }
 
         if (string.IsNullOrWhiteSpace(request.Password))

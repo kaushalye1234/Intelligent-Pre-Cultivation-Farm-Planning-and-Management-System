@@ -4,6 +4,8 @@ public sealed class AppUser : AuditableEntity
 {
     public string FullName { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
+    public string? PhoneNumber { get; set; }
+    public string? ContactAddress { get; set; }
     public string PasswordHash { get; set; } = string.Empty;
     public ApplicationRole Role { get; set; }
     public bool IsActive { get; set; } = true;

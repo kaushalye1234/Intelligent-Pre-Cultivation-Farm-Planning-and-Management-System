@@ -555,7 +555,10 @@ public sealed class CropPlanningAiWorkflowTests
         Assert.Equal(data.Request.Id, context.CropPlanRequestId);
         Assert.Equal(data.Farmer.Id, context.FarmerId);
         Assert.Equal("Farmer", context.FarmerName);
+        Assert.Equal("+94771234567", context.FarmerPhoneNumber);
+        Assert.Equal("No. 25, Wariyapola Road", context.FarmerContactAddress);
         Assert.Equal("North Farm", context.FarmName);
+        Assert.Equal("Kurunegala", context.FarmDistrict);
         Assert.Equal(data.Field.Id, context.FieldId);
         Assert.Equal("Field A", context.FieldName);
         Assert.Equal("Rice", context.CropName);
@@ -655,8 +658,8 @@ public sealed class CropPlanningAiWorkflowTests
 
     private static async Task<SeededPlan> SeedPlanAsync(AppDbContext db, CropPlanRequestStatus status)
     {
-        var farmer = new AppUser { FullName = "Farmer", Email = "farmer.ai@example.test", PasswordHash = "hash", Role = ApplicationRole.Farmer, IsActive = true };
-        var farm = new Farm { Name = "North Farm", Location = "North", TotalArea = 10, OwnerUser = farmer };
+        var farmer = new AppUser { FullName = "Farmer", Email = "farmer.ai@example.test", PhoneNumber = "+94771234567", ContactAddress = "No. 25, Wariyapola Road", PasswordHash = "hash", Role = ApplicationRole.Farmer, IsActive = true };
+        var farm = new Farm { Name = "North Farm", Location = "North", District = "Kurunegala", TotalArea = 10, OwnerUser = farmer };
         var field = new Field { Name = "Field A", Area = 2, SoilType = "Loam", Farm = farm, IsActive = true };
         var cropType = new CropType { Name = "Rice", IsActive = true };
         var request = new CropPlanRequest
