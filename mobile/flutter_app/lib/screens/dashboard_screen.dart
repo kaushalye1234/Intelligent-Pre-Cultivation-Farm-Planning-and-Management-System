@@ -215,10 +215,8 @@ class DashboardScreen extends StatelessWidget {
                         ),
                       ),
                       JourneyStatusPill(
-                        workflow?.statusLabel ?? currentPlan.statusLabel,
-                        tone: workflow == null
-                            ? _planTone(currentPlan)
-                            : _workflowTone(workflow.status),
+                        currentPlan.statusLabel,
+                        tone: _planTone(currentPlan),
                       ),
                     ],
                   ),
@@ -297,17 +295,17 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  JourneyTone _workflowTone(int status) => switch (status) {
-    4 => JourneyTone.success,
-    5 || 9 => JourneyTone.danger,
-    7 || 8 || 10 || 11 => JourneyTone.warning,
-    _ => JourneyTone.neutral,
-  };
-
-  JourneyTone _planTone(CropPlanRecord plan) => switch (plan.status) {
-    4 => JourneyTone.success,
-    5 => JourneyTone.danger,
-    6 => JourneyTone.neutral,
+  JourneyTone _planTone(CropPlanRecord plan) => switch (plan.statusCode) {
+    'approved' ||
+    'preliminary_plan_ready' ||
+    'candidate_ready' => JourneyTone.success,
+    'rejected' ||
+    'ai_planning_failed' ||
+    'field_analysis_failed' ||
+    'weather_resource_analysis_failed' ||
+    'scheduling_validation_failed' ||
+    'workflow_failed' => JourneyTone.danger,
+    'cancelled' => JourneyTone.neutral,
     _ => JourneyTone.warning,
   };
 }

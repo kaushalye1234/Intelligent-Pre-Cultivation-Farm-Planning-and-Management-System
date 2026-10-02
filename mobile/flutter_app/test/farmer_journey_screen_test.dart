@@ -7,25 +7,65 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 void main() {
-  testWidgets('blocked proposal explains that no farm work is approved', (tester) async {
+  testWidgets('blocked proposal explains that no farm work is approved', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(900, 1200);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     const workflow = CropPlanningWorkflowStatus(
-      workflowId: 'wf-blocked', cropPlanRequestId: 'plan-blocked',
-      status: 12, currentStep: 'Candidate blocked', warnings: [], steps: [],
+      workflowId: 'wf-blocked',
+      cropPlanRequestId: 'plan-blocked',
+      status: 12,
+      currentStep: 'Candidate blocked',
+      warnings: [],
+      statusCode: 'candidate_blocked',
+      statusLabel: 'Candidate Plan Blocked',
+      overallStatusCode: 'in_progress',
+      overallStatusLabel: 'In Progress',
+      steps: [],
     );
-    final state = AppState()..planWorkflows = const {'plan-blocked': workflow};
-    await tester.pumpWidget(ChangeNotifierProvider.value(
-      value: state,
-      child: const MaterialApp(home: PlanningProgressScreen(planId: 'plan-blocked')),
-    ));
+    final state = AppState()
+      ..cropPlans = const [
+        CropPlanRecord(
+          id: 'plan-blocked',
+          farmId: 'farm-1',
+          cropTypeId: 'crop-1',
+          objective: 'Blocked',
+          status: 3,
+          statusCode: 'candidate_blocked',
+          statusLabel: 'Candidate Plan Blocked',
+          overallStatusCode: 'in_progress',
+          overallStatusLabel: 'In Progress',
+          preferredStartDate: '2026-10-01',
+          preferredEndDate: '2027-01-01',
+          budget: 25000,
+          createdAt: '2026-09-24T00:00:00Z',
+        ),
+      ]
+      ..planWorkflows = const {'plan-blocked': workflow};
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: state,
+        child: const MaterialApp(
+          home: PlanningProgressScreen(planId: 'plan-blocked'),
+        ),
+      ),
+    );
 
-    expect(workflow.statusLabel, 'Candidate blocked');
-    await tester.scrollUntilVisible(find.text('No farm work approved yet'), 300);
+    expect(workflow.statusLabel, 'Candidate Plan Blocked');
+    await tester.scrollUntilVisible(
+      find.text('No farm work approved yet'),
+      300,
+    );
     expect(find.text('No farm work approved yet'), findsOneWidget);
-    expect(find.textContaining('No tasks, irrigation, or resource reservations have been approved'), findsOneWidget);
+    expect(
+      find.textContaining(
+        'No tasks, irrigation, or resource reservations have been approved',
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Human approval required'), findsNothing);
   });
 
@@ -45,6 +85,10 @@ void main() {
             cropTypeId: 'crop-1',
             objective: 'Grow rice',
             status: 2,
+            statusCode: 'awaiting_approval',
+            statusLabel: 'Awaiting Final Approval',
+            overallStatusCode: 'in_progress',
+            overallStatusLabel: 'In Progress',
             preferredStartDate: '2026-10-01',
             preferredEndDate: '2027-01-01',
             budget: 25000,
@@ -60,6 +104,10 @@ void main() {
             cropPlanRequestId: 'plan-1',
             status: 8,
             currentStep: 'Officer review',
+            statusCode: 'awaiting_approval',
+            statusLabel: 'Awaiting Final Approval',
+            overallStatusCode: 'in_progress',
+            overallStatusLabel: 'In Progress',
             warnings: ['Check water availability'],
             steps: [
               CropPlanningStepStatus(stepName: 'Field analysis', status: 3),
@@ -78,7 +126,7 @@ void main() {
 
       expect(find.text('Officer review'), findsWidgets);
       expect(find.text('Field analysis'), findsOneWidget);
-      expect(find.text('Awaiting officer approval'), findsOneWidget);
+      expect(find.text('Awaiting Final Approval'), findsWidgets);
       await tester.scrollUntilVisible(
         find.text('Check water availability'),
         300,
