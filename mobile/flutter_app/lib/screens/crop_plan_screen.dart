@@ -103,7 +103,7 @@ class _CropPlanScreenState extends State<CropPlanScreen> {
     }
     if (_farmId == null || _fieldId == null || _cropTypeId == null) return;
     final state = context.read<AppState>();
-    await state.createAndStartAiCropPlan(
+    await state.createPreliminaryCropPlan(
       farmId: _farmId!,
       fieldId: _fieldId!,
       cropTypeId: _cropTypeId!,
@@ -270,15 +270,15 @@ class _CropPlanScreenState extends State<CropPlanScreen> {
                           : Icon(
                               _step < 3
                                   ? Icons.arrow_forward_rounded
-                                  : Icons.auto_awesome_rounded,
+                                  : Icons.post_add_rounded,
                             ),
                       label: Text(
                         state.isBusy
-                            ? 'Starting AI crop planning...'
+                            ? 'Creating crop plan...'
                             : _step < 3
                             ? 'Continue'
                             : _submittedPlanId == null
-                            ? 'Start AI crop planning'
+                            ? 'Generate Plan'
                             : 'View plan progress',
                       ),
                     ),

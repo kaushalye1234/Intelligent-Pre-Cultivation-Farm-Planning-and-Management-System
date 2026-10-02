@@ -132,6 +132,10 @@ public sealed class CropPlanningController(ICropPlanningService cropPlanningServ
     public async Task<ActionResult<PagedResult<CropPlanRequestResponse>>> SearchRequests([FromQuery] PagedQuery query, CancellationToken cancellationToken) =>
         Ok(await cropPlanningService.SearchCropPlanRequestsAsync(query, cancellationToken));
 
+    [HttpGet("requests/{id:guid}")]
+    public async Task<ActionResult<CropPlanRequestResponse>> GetRequest(Guid id, CancellationToken cancellationToken) =>
+        Ok(await cropPlanningService.GetCropPlanRequestAsync(id, cancellationToken));
+
     [HttpPost("requests")]
     [Authorize(Roles = $"{nameof(ApplicationRole.Farmer)},{nameof(ApplicationRole.Admin)}")]
     public async Task<ActionResult<CropPlanRequestResponse>> CreateRequest(CropPlanRequestCreate request, CancellationToken cancellationToken) =>

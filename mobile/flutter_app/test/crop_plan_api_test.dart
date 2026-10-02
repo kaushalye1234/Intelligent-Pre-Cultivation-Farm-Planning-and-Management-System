@@ -47,4 +47,43 @@ void main() {
       expect(body['budget'], 180000);
     },
   );
+
+  test(
+    'single crop-plan refresh parses the authoritative lifecycle projection',
+    () async {
+      final client = ApiClient(
+        httpClient: MockClient((request) async {
+          expect(request.method, 'GET');
+          expect(request.url.path, '/api/crop-planning/requests/plan-1');
+          return http.Response(
+            jsonEncode({
+              'id': 'plan-1',
+              'farmId': 'farm-1',
+              'cropTypeId': 'crop-1',
+              'objective': 'Grow rice',
+              'status': 3,
+              'statusCode': 'preliminary_plan_ready',
+              'statusLabel': 'Preliminary Plan Ready',
+              'overallStatusCode': 'in_progress',
+              'overallStatusLabel': 'In Progress',
+              'preferredStartDate': '2026-10-15',
+              'preferredEndDate': '2027-02-15',
+              'budget': 180000,
+              'createdAt': '2026-10-02T00:00:00Z',
+            }),
+            200,
+          );
+        }),
+        baseUrl: 'https://api.example.test/api',
+      );
+
+      final plan = await client.cropPlanRequest('plan-1');
+
+      expect(plan.statusCode, 'preliminary_plan_ready');
+      expect(plan.statusLabel, 'Preliminary Plan Ready');
+      expect(plan.overallStatusCode, 'in_progress');
+      expect(plan.overallStatusLabel, 'In Progress');
+      expect(plan.isLifecycleStable, isTrue);
+    },
+  );
 }

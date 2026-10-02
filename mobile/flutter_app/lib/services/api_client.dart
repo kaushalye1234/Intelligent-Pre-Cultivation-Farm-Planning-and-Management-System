@@ -217,14 +217,9 @@ class ApiClient {
     return response['id'] as String;
   }
 
-  Future<CropPlanningWorkflowStart> startCropPlanningWorkflow(
-    String cropPlanRequestId,
-  ) async {
-    final response = await _post(
-      '/crop-plans/$cropPlanRequestId/start-ai-workflow',
-      {},
-    );
-    return CropPlanningWorkflowStart.fromJson(response);
+  Future<CropPlanRecord> cropPlanRequest(String cropPlanRequestId) async {
+    final response = await _get('/crop-planning/requests/$cropPlanRequestId');
+    return CropPlanRecord.fromJson(response);
   }
 
   Future<CropPlanningWorkflowStatus> cropPlanningWorkflowStatus(

@@ -17,6 +17,26 @@ CropPlanRecord plan(String id, int status) => CropPlanRecord(
   cropTypeId: 'crop-1',
   objective: 'Grow $id',
   status: status,
+  statusCode: switch (status) {
+    4 => 'approved',
+    5 => 'rejected',
+    _ => 'pending',
+  },
+  statusLabel: switch (status) {
+    4 => 'Approved',
+    5 => 'Rejected',
+    _ => 'Pending',
+  },
+  overallStatusCode: switch (status) {
+    4 => 'approved',
+    5 => 'rejected',
+    _ => 'in_progress',
+  },
+  overallStatusLabel: switch (status) {
+    4 => 'Approved',
+    5 => 'Rejected',
+    _ => 'In Progress',
+  },
   preferredStartDate: '2026-10-01',
   preferredEndDate: '2027-01-01',
   budget: 25000,
@@ -84,6 +104,10 @@ void main() {
           cropPlanRequestId: 'approved',
           status: 4,
           currentStep: 'Approved',
+          statusCode: 'approved',
+          statusLabel: 'Approved',
+          overallStatusCode: 'approved',
+          overallStatusLabel: 'Approved',
           warnings: [],
         ),
       }

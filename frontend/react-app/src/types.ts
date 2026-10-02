@@ -134,6 +134,10 @@ export type CropPlan = {
   budget: number
   objective: string
   status: number
+  statusCode: string
+  statusLabel: string
+  overallStatusCode: string
+  overallStatusLabel: string
   createdAt: string
 }
 
@@ -493,6 +497,10 @@ export type CropPlanningWorkflowStatus = {
   cropPlanRequestId: string
   status: number
   currentStep: string
+  statusCode: string
+  statusLabel: string
+  overallStatusCode: string
+  overallStatusLabel: string
   createdAt: string
   completedAt?: string
   steps: AgentStepStatus[]

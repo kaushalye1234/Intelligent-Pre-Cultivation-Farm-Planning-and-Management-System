@@ -183,20 +183,20 @@ class _PlanCard extends StatelessWidget {
       crop?.name ?? 'Crop',
       if (variety != null) variety.name,
     ].join(' - ');
-    final status = workflow?.statusLabel ?? plan.statusLabel;
-    final tone = workflow != null
-        ? switch (workflow!.status) {
-            4 => JourneyTone.success,
-            5 || 9 => JourneyTone.danger,
-            7 || 8 || 10 || 11 => JourneyTone.warning,
-            _ => JourneyTone.neutral,
-          }
-        : switch (plan.status) {
-            4 => JourneyTone.success,
-            5 => JourneyTone.danger,
-            6 => JourneyTone.neutral,
-            _ => JourneyTone.warning,
-          };
+    final status = plan.statusLabel;
+    final tone = switch (plan.statusCode) {
+      'approved' ||
+      'preliminary_plan_ready' ||
+      'candidate_ready' => JourneyTone.success,
+      'rejected' ||
+      'ai_planning_failed' ||
+      'field_analysis_failed' ||
+      'weather_resource_analysis_failed' ||
+      'scheduling_validation_failed' ||
+      'workflow_failed' => JourneyTone.danger,
+      'cancelled' => JourneyTone.neutral,
+      _ => JourneyTone.warning,
+    };
 
     void openDetail() {
       Navigator.of(context).push(

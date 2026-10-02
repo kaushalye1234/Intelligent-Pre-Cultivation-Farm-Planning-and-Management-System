@@ -324,6 +324,10 @@ class CropPlanRecord {
     required this.preferredEndDate,
     required this.budget,
     required this.createdAt,
+    this.statusCode = 'unknown',
+    this.statusLabel = 'Status unavailable',
+    this.overallStatusCode = 'unknown',
+    this.overallStatusLabel = 'Status unavailable',
     this.fieldId,
     this.cropVarietyId,
     this.cultivationSeason = 0,
@@ -336,6 +340,10 @@ class CropPlanRecord {
   final String? cropVarietyId;
   final String objective;
   final int status;
+  final String statusCode;
+  final String statusLabel;
+  final String overallStatusCode;
+  final String overallStatusLabel;
   final int cultivationSeason;
   final String preferredStartDate;
   final String preferredEndDate;
@@ -350,6 +358,11 @@ class CropPlanRecord {
     cropVarietyId: json['cropVarietyId'] as String?,
     objective: json['objective'] as String? ?? '',
     status: json['status'] as int? ?? 0,
+    statusCode: json['statusCode'] as String? ?? 'unknown',
+    statusLabel: json['statusLabel'] as String? ?? 'Status unavailable',
+    overallStatusCode: json['overallStatusCode'] as String? ?? 'unknown',
+    overallStatusLabel:
+        json['overallStatusLabel'] as String? ?? 'Status unavailable',
     cultivationSeason: json['cultivationSeason'] as int? ?? 0,
     preferredStartDate: json['preferredStartDate'] as String? ?? '',
     preferredEndDate: json['preferredEndDate'] as String? ?? '',
@@ -357,15 +370,18 @@ class CropPlanRecord {
     createdAt: json['createdAt'] as String? ?? '',
   );
 
-  String get statusLabel => switch (status) {
-    1 => 'Draft',
-    2 => 'Submitted',
-    3 => 'Preliminary plan',
-    4 => 'Approved',
-    5 => 'Rejected',
-    6 => 'Cancelled',
-    _ => 'Unknown',
-  };
+  bool get isLifecycleActive => const {
+    'pending',
+    'ai_planning',
+    'field_analysis_running',
+    'weather_resource_analysis_running',
+    'scheduling_validation_running',
+  }.contains(statusCode);
+
+  bool get isLifecycleFinal =>
+      const {'approved', 'rejected', 'cancelled'}.contains(overallStatusCode);
+
+  bool get isLifecycleStable => !isLifecycleActive && !isLifecycleFinal;
 }
 
 class CropPlanningStepStatus {
@@ -522,6 +538,10 @@ class CropPlanningWorkflowStatus {
     required this.status,
     required this.currentStep,
     required this.warnings,
+    this.statusCode = 'unknown',
+    this.statusLabel = 'Status unavailable',
+    this.overallStatusCode = 'unknown',
+    this.overallStatusLabel = 'Status unavailable',
     this.steps = const [],
   });
 
@@ -529,6 +549,10 @@ class CropPlanningWorkflowStatus {
   final String cropPlanRequestId;
   final int status;
   final String currentStep;
+  final String statusCode;
+  final String statusLabel;
+  final String overallStatusCode;
+  final String overallStatusLabel;
   final List<String> warnings;
   final List<CropPlanningStepStatus> steps;
 
@@ -539,56 +563,16 @@ class CropPlanningWorkflowStatus {
       cropPlanRequestId: json['cropPlanRequestId'] as String? ?? '',
       status: json['status'] as int? ?? 0,
       currentStep: json['currentStep'] as String? ?? '',
+      statusCode: json['statusCode'] as String? ?? 'unknown',
+      statusLabel: json['statusLabel'] as String? ?? 'Status unavailable',
+      overallStatusCode: json['overallStatusCode'] as String? ?? 'unknown',
+      overallStatusLabel:
+          json['overallStatusLabel'] as String? ?? 'Status unavailable',
       warnings: warnings.map((item) => item.toString()).toList(),
       steps: (json['steps'] as List<dynamic>? ?? const [])
           .cast<Map<String, dynamic>>()
           .map(CropPlanningStepStatus.fromJson)
           .toList(),
-    );
-  }
-
-  String get statusLabel {
-    return switch (status) {
-      1 => 'Not started',
-      2 => 'Pending',
-      3 => 'Running',
-      4 => 'Completed',
-      5 => 'Failed',
-      6 => 'Cancelled',
-      7 => 'Candidate ready',
-      8 => 'Awaiting officer approval',
-      9 => 'Rejected',
-      10 => 'Revision requested',
-      11 => 'Waiting for required data',
-      12 => 'Candidate blocked',
-      _ => 'Unknown',
-    };
-  }
-}
-
-class CropPlanningWorkflowStart {
-  const CropPlanningWorkflowStart({
-    required this.workflowId,
-    required this.cropPlanRequestId,
-    required this.status,
-    required this.requiresHumanReview,
-    required this.warnings,
-  });
-
-  final String workflowId;
-  final String cropPlanRequestId;
-  final String status;
-  final bool requiresHumanReview;
-  final List<String> warnings;
-
-  factory CropPlanningWorkflowStart.fromJson(Map<String, dynamic> json) {
-    final warnings = json['warnings'] as List<dynamic>? ?? const [];
-    return CropPlanningWorkflowStart(
-      workflowId: json['workflowId'] as String? ?? '',
-      cropPlanRequestId: json['cropPlanRequestId'] as String? ?? '',
-      status: json['status'] as String? ?? 'Unknown',
-      requiresHumanReview: json['requiresHumanReview'] as bool? ?? false,
-      warnings: warnings.map((item) => item.toString()).toList(),
     );
   }
 }
@@ -647,7 +631,8 @@ class StockRecord {
   final num lowStockThreshold;
 
   bool get isOutOfStock => availableQuantity <= 0;
-  bool get isLowStock => !isOutOfStock && availableQuantity <= lowStockThreshold;
+  bool get isLowStock =>
+      !isOutOfStock && availableQuantity <= lowStockThreshold;
 
   factory StockRecord.fromJson(Map<String, dynamic> json) {
     return StockRecord(

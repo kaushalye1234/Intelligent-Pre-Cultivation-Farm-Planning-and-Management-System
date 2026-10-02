@@ -44,7 +44,9 @@ public sealed record CropPlanRequestUpdate(DateOnly PreferredStartDate, DateOnly
 public sealed record CropPlanRequestResponse(
     Guid Id, Guid FarmId, Guid? FieldId, Guid CropTypeId, Guid RequestedByUserId,
     DateOnly PreferredStartDate, DateOnly PreferredEndDate, decimal Budget, string Objective,
-    CropPlanRequestStatus Status, DateTime CreatedAt, Guid? CropVarietyId = null,
+    CropPlanRequestStatus Status, DateTime CreatedAt,
+    string StatusCode, string StatusLabel, string OverallStatusCode, string OverallStatusLabel,
+    Guid? CropVarietyId = null,
     CultivationSeason CultivationSeason = CultivationSeason.NotSure,
     Guid? PreviousCropTypeId = null, IReadOnlyList<string>? PreviousKnownProblems = null);
 public sealed record CropPlanHistoryResponse(Guid Id, Guid CropPlanRequestId, CropPlanRequestStatus FromStatus, CropPlanRequestStatus ToStatus, string Note, Guid ChangedByUserId, DateTime CreatedAt);
