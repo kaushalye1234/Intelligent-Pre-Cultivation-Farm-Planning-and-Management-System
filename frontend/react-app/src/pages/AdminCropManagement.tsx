@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { FormEvent } from 'react'
-import { BookOpenCheck, Loader2, Pencil, Plus, Power, Search, Sparkles, Sprout, Trash2 } from 'lucide-react'
+import type { FormEvent, ReactNode } from 'react'
+import { BookOpenCheck, ExternalLink, Eye, Loader2, Pencil, Plus, Power, Search, Sparkles, Sprout, Trash2 } from 'lucide-react'
 import { api, getErrorMessage } from '../api/client'
 import { FindingSummary, ReferenceDiscoveryReview, SuggestionReview } from '../components/CropFindingReview'
 import { SelectInput, TextAreaInput, TextInput } from '../components/FormControls'
 import { DataTable } from '../components/DataTable'
+import { ErrorState, LoadingState } from '../components/States'
 import { StatusPill } from '../components/StatusPill'
 import { Button, Modal, Notice, Tabs } from '../components/Ui'
-import { formatDate } from '../format'
+import { formatDate, formatDateTime } from '../format'
 import type { CropFindingSuggestion, CropSuggestionsResponse, ReferenceDiscoveryResponse, ReferenceDraftItem, ReviewDecision, VarietySuggestionsResponse } from '../cropFinding'
-import type { CropReferenceProfile, CropType, CropVariety, PagedResult } from '../types'
+import type { CropReferenceProfile, CropReferenceProfileDetails, CropType, CropVariety, PagedResult } from '../types'
 import './AdminCropManagement.css'
 
 type AdminTab = 'crops' | 'varieties' | 'references'
@@ -27,6 +28,12 @@ type ReferenceSnapshot = {
   form: ReturnType<typeof emptyReferenceForm>
   stages: StageForm[]
   rules: RuleForm[]
+}
+type ReferenceDetailsState = {
+  profile: CropReferenceProfile
+  details: CropReferenceProfileDetails | null
+  loading: boolean
+  error: string
 }
 
 const emptyCropForm = () => ({ id: '', name: '', description: '', isActive: true })
@@ -93,6 +100,7 @@ export function AdminCropManagement() {
   const [primarySourceId, setPrimarySourceId] = useState('')
   const [referenceSnapshot, setReferenceSnapshot] = useState<ReferenceSnapshot | null>(null)
   const [pendingPartial, setPendingPartial] = useState<PendingPartial>(null)
+  const [referenceDetails, setReferenceDetails] = useState<ReferenceDetailsState | null>(null)
 
   async function load() {
     const [nextCrops, nextVarieties, nextProfiles] = await Promise.all([
@@ -118,6 +126,20 @@ export function AdminCropManagement() {
 
     void initialize()
   }, [])
+
+  async function openReferenceDetails(profile: CropReferenceProfile) {
+    setReferenceDetails({ profile, details: null, loading: true, error: '' })
+    try {
+      const response = await api.get<CropReferenceProfileDetails>(`/crop-planning/crop-reference-profiles/${profile.id}`)
+      setReferenceDetails((current) => current?.profile.id === profile.id
+        ? { ...current, details: response.data, loading: false }
+        : current)
+    } catch (cause) {
+      setReferenceDetails((current) => current?.profile.id === profile.id
+        ? { ...current, error: getErrorMessage(cause), loading: false }
+        : current)
+    }
+  }
 
   async function run(action: () => Promise<void>, message: string, errorTarget: 'page' | 'dialog' = 'page') {
     setBusy(true)
@@ -548,7 +570,7 @@ export function AdminCropManagement() {
             { header: 'Verified', render: (profile) => formatDate(profile.verifiedAt) },
             { header: 'Evidence', render: (profile) => `${profile.stageCount} stages · ${profile.ruleCount} rules` },
             { header: 'State', render: (profile) => <StatusPill label={profile.isActive ? 'Active' : 'Inactive'} tone={profile.isActive ? 'good' : 'bad'} /> },
-            { header: 'Actions', render: (profile) => <Button variant="secondary" disabled={busy} onClick={() => void run(async () => { await api.put(`/crop-planning/crop-reference-profiles/${profile.id}/active`, !profile.isActive, { headers: { 'Content-Type': 'application/json' } }) }, 'Reference state updated.')}>{profile.isActive ? 'Deactivate' : 'Activate'}</Button> },
+            { header: 'Actions', className: 'crop-admin-actions-column', render: (profile) => <div className="crop-admin-actions"><Button variant="secondary" icon={<Eye size={15} />} onClick={() => void openReferenceDetails(profile)}>View details</Button><Button variant="ghost" disabled={busy} onClick={() => void run(async () => { await api.put(`/crop-planning/crop-reference-profiles/${profile.id}/active`, !profile.isActive, { headers: { 'Content-Type': 'application/json' } }) }, 'Reference state updated.')}>{profile.isActive ? 'Deactivate' : 'Activate'}</Button></div> },
           ]} />
           <form className="crop-reference-form" onSubmit={(event) => void saveReference(event)}>
             <div className="crop-reference-form-heading"><h3>Create verified version</h3><p>Add a traceable source and at least one growth stage or structured rule.</p></div>
@@ -609,6 +631,7 @@ export function AdminCropManagement() {
       <CropDialog open={cropDialogOpen} form={cropForm} error={dialogError} busy={busy} onChange={setCropForm} onClose={() => setCropDialogOpen(false)} onSubmit={saveCrop} />
       <VarietyDialog open={varietyDialogOpen} form={varietyForm} cropOptions={varietyCropOptions} error={dialogError} busy={busy} onChange={setVarietyForm} onClose={() => setVarietyDialogOpen(false)} onSubmit={saveVariety} />
       <DeleteDialog target={deleteTarget} error={dialogError} busy={busy} onCancel={() => setDeleteTarget(null)} onConfirm={confirmDelete} />
+      <ReferenceDetailsDialog state={referenceDetails} onClose={() => setReferenceDetails(null)} onRetry={(profile) => void openReferenceDetails(profile)} />
       <Modal open={Boolean(pendingPartial)} title="Use partially supported value?" description="The source does not fully support the exact crop, variety, region, or value." onClose={() => setPendingPartial(null)} footer={<><Button variant="secondary" onClick={() => setPendingPartial(null)}>Cancel</Button><Button onClick={confirmPartialUse}>Use with warning</Button></>}>
         <Notice tone="warning">Check the original evidence before continuing. The warning remains in this review session, and the value is not verified until you submit the existing Admin form.</Notice>
       </Modal>
@@ -625,6 +648,70 @@ function ManagementToolbar({ searchLabel, search, onSearch, placeholder, status,
 
 function PrimaryCell({ title, detail }: { title: string; detail: string }) {
   return <div className="crop-admin-primary-cell"><strong>{title}</strong><span>{detail}</span></div>
+}
+
+function ReferenceDetailsDialog({ state, onClose, onRetry }: { state: ReferenceDetailsState | null; onClose: () => void; onRetry: (profile: CropReferenceProfile) => void }) {
+  const details = state?.details
+  const title = details ? `${details.cropName} reference` : 'Verified reference details'
+
+  return <Modal
+    open={Boolean(state)}
+    title={title}
+    description="Read-only persisted evidence from this verified reference."
+    onClose={onClose}
+    footer={<Button variant="secondary" onClick={onClose}>Close</Button>}
+  >
+    {state?.loading ? <LoadingState label="Loading reference details" /> : null}
+    {state?.error ? <div className="crop-reference-details-error"><ErrorState message={state.error} /><Button variant="secondary" onClick={() => onRetry(state.profile)}>Retry</Button></div> : null}
+    {details ? <div className="crop-reference-details">
+      <section className="crop-reference-details-grid" aria-label="Reference source details">
+        <DetailItem label="Crop" value={details.cropName} />
+        <DetailItem label="Variety" value={details.varietyName || 'All varieties'} />
+        <DetailItem label="Region" value={details.region || 'Not specified'} />
+        <DetailItem label="Source name" value={details.sourceName} />
+        <DetailItem label="Source version" value={details.sourceVersion} />
+        <DetailItem label="Verified at" value={formatDateTime(details.verifiedAt)} />
+        <div className="crop-reference-detail-item"><span>State</span><StatusPill label={details.isActive ? 'Active' : 'Inactive'} tone={details.isActive ? 'good' : 'bad'} /></div>
+        <div className="crop-reference-detail-item crop-reference-detail-wide"><span>Source URL</span>{details.sourceUrl
+          ? <a href={details.sourceUrl} target="_blank" rel="noreferrer">Open original source <ExternalLink size={14} aria-hidden="true" /></a>
+          : <strong>Not provided</strong>}</div>
+      </section>
+
+      <ReferenceDetailSection title="Growth stages" emptyMessage="No growth stages were recorded for this reference.">
+        {details.stages.map((stage) => <article className="crop-reference-detail-card" key={stage.id}>
+          <header><strong>{stage.sequence}. {stage.stageName}</strong></header>
+          <dl className="crop-reference-detail-metrics">
+            <div><dt>Minimum days</dt><dd>{stage.typicalMinDays ?? 'Not specified'}</dd></div>
+            <div><dt>Maximum days</dt><dd>{stage.typicalMaxDays ?? 'Not specified'}</dd></div>
+          </dl>
+          <p><span>Evidence notes</span>{stage.notes || 'No notes recorded.'}</p>
+        </article>)}
+      </ReferenceDetailSection>
+
+      <ReferenceDetailSection title="Structured rules" emptyMessage="No structured rules were recorded for this reference.">
+        {details.rules.map((rule) => <article className="crop-reference-detail-card" key={rule.id}>
+          <header><strong>{rule.ruleType}</strong><span>{rule.ruleKey}</span></header>
+          <pre><code>{formatStructuredJson(rule.structuredValueJson)}</code></pre>
+        </article>)}
+      </ReferenceDetailSection>
+    </div> : null}
+  </Modal>
+}
+
+function DetailItem({ label, value }: { label: string; value: string }) {
+  return <div className="crop-reference-detail-item"><span>{label}</span><strong>{value}</strong></div>
+}
+
+function ReferenceDetailSection({ title, emptyMessage, children }: { title: string; emptyMessage: string; children: ReactNode[] }) {
+  return <section className="crop-reference-detail-section"><h3>{title}</h3>{children.length ? <div className="crop-reference-detail-list">{children}</div> : <p>{emptyMessage}</p>}</section>
+}
+
+function formatStructuredJson(value: string) {
+  try {
+    return JSON.stringify(JSON.parse(value), null, 2)
+  } catch {
+    return value
+  }
 }
 
 function CropDialog({ open, form, error, busy, onChange, onClose, onSubmit }: { open: boolean; form: ReturnType<typeof emptyCropForm>; error: string; busy: boolean; onChange: (value: ReturnType<typeof emptyCropForm>) => void; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {

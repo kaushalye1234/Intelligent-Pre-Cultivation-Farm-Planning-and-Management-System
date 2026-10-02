@@ -144,11 +144,33 @@ public sealed class CropPlanningAiWorkflowTests
         Assert.Equal("ADMIN_REQUIRED", forbidden.Code);
 
         var profile = await admin.CreateReferenceProfileAsync(new CropReferenceProfileRequest(
-            cropId, active.Id, "Sri Lanka", "Verified source", null, "1", DateTime.UtcNow.AddDays(-1),
-            [new CropReferenceStageRequest("Establishment", 1, 1, 30, "Source verified")], []), CancellationToken.None);
+            cropId, active.Id, "Sri Lanka", "Verified source", "https://example.test/rice", "1", DateTime.UtcNow.AddDays(-1),
+            [new CropReferenceStageRequest("Establishment", 1, 1, 30, "Source verified")],
+            [new CropReferenceRuleRequest("Season", "planting-window", "{\"season\":\"Maha\"}")]), CancellationToken.None);
         Assert.Equal("Bg 352", profile.VarietyName);
         Assert.Equal(1, profile.StageCount);
         Assert.Equal(1, (await admin.SearchReferenceProfilesAsync(new PagedQuery(), cropId, CancellationToken.None)).TotalCount);
+
+        await admin.SetReferenceProfileActiveAsync(profile.Id, false, CancellationToken.None);
+        var details = await admin.GetReferenceProfileAsync(profile.Id, CancellationToken.None);
+        Assert.Equal("Rice", details.CropName);
+        Assert.Equal("Bg 352", details.VarietyName);
+        Assert.Equal("Sri Lanka", details.Region);
+        Assert.Equal("https://example.test/rice", details.SourceUrl);
+        Assert.False(details.IsActive);
+        var stage = Assert.Single(details.Stages);
+        Assert.Equal("Establishment", stage.StageName);
+        Assert.Equal(1, stage.TypicalMinDays);
+        Assert.Equal(30, stage.TypicalMaxDays);
+        Assert.Equal("Source verified", stage.Notes);
+        var rule = Assert.Single(details.Rules);
+        Assert.Equal("Season", rule.RuleType);
+        Assert.Equal("planting-window", rule.RuleKey);
+        Assert.Equal("{\"season\":\"Maha\"}", rule.StructuredValueJson);
+
+        var detailsForbidden = await Assert.ThrowsAsync<ApiException>(() =>
+            farmer.GetReferenceProfileAsync(profile.Id, CancellationToken.None));
+        Assert.Equal("ADMIN_REQUIRED", detailsForbidden.Code);
     }
 
     [Fact]

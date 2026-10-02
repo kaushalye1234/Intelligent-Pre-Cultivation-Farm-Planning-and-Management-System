@@ -92,6 +92,37 @@ export type CropReferenceProfile = {
   ruleCount: number
 }
 
+export type CropReferenceStage = {
+  id: string
+  stageName: string
+  sequence: number
+  typicalMinDays?: number | null
+  typicalMaxDays?: number | null
+  notes?: string | null
+}
+
+export type CropReferenceRule = {
+  id: string
+  ruleType: string
+  ruleKey: string
+  structuredValueJson: string
+}
+
+export type CropReferenceProfileDetails = {
+  id: string
+  cropTypeId: string
+  cropName: string
+  varietyName?: string | null
+  region?: string | null
+  sourceName: string
+  sourceUrl?: string | null
+  sourceVersion: string
+  verifiedAt: string
+  isActive: boolean
+  stages: CropReferenceStage[]
+  rules: CropReferenceRule[]
+}
+
 export type CropPlan = {
   id: string
   farmId: string

@@ -26,6 +26,7 @@ public interface ICropPlanningService
     Task<CropVarietyResponse> UpdateCropVarietyAsync(Guid id, CropVarietyRequest request, CancellationToken cancellationToken);
     Task DeleteCropVarietyAsync(Guid id, CancellationToken cancellationToken);
     Task<PagedResult<CropReferenceProfileResponse>> SearchReferenceProfilesAsync(PagedQuery query, Guid? cropTypeId, CancellationToken cancellationToken);
+    Task<CropReferenceProfileDetailsResponse> GetReferenceProfileAsync(Guid id, CancellationToken cancellationToken);
     Task<CropReferenceProfileResponse> CreateReferenceProfileAsync(CropReferenceProfileRequest request, CancellationToken cancellationToken);
     Task<CropReferenceProfileResponse> SetReferenceProfileActiveAsync(Guid id, bool isActive, CancellationToken cancellationToken);
 

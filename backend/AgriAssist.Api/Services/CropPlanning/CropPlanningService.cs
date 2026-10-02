@@ -405,6 +405,38 @@ public sealed class CropPlanningService(
         return new PagedResult<CropReferenceProfileResponse>(items, query.Page, query.PageSize, total);
     }
 
+    public async Task<CropReferenceProfileDetailsResponse> GetReferenceProfileAsync(Guid id, CancellationToken cancellationToken)
+    {
+        RequireAdmin();
+        var profile = await dbContext.CropReferenceProfiles.AsNoTracking()
+            .Include(item => item.CropType)
+            .Include(item => item.Stages)
+            .Include(item => item.Rules)
+            .SingleOrDefaultAsync(item => item.Id == id && !item.IsDeleted, cancellationToken)
+            ?? throw NotFound("Crop reference profile");
+        var cropName = profile.CropType?.Name ?? throw NotFound("Crop type");
+
+        return new CropReferenceProfileDetailsResponse(
+            profile.Id,
+            profile.CropTypeId,
+            cropName,
+            profile.VarietyName,
+            profile.Region,
+            profile.SourceName,
+            profile.SourceUrl,
+            profile.SourceVersion,
+            profile.VerifiedAt,
+            profile.IsActive,
+            profile.Stages.OrderBy(item => item.Sequence)
+                .Select(item => new CropReferenceStageResponse(
+                    item.Id, item.StageName, item.Sequence, item.TypicalMinDays, item.TypicalMaxDays, item.Notes))
+                .ToArray(),
+            profile.Rules.OrderBy(item => item.RuleType).ThenBy(item => item.RuleKey)
+                .Select(item => new CropReferenceRuleResponse(
+                    item.Id, item.RuleType, item.RuleKey, item.StructuredValueJson))
+                .ToArray());
+    }
+
     public async Task<CropReferenceProfileResponse> CreateReferenceProfileAsync(CropReferenceProfileRequest request, CancellationToken cancellationToken)
     {
         RequireAdmin();
