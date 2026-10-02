@@ -12,7 +12,7 @@ namespace AgriAssist.Api.Controllers.CropPlanning;
 public sealed class CropPlansWorkflowController(ICropPlanningService cropPlanningService) : ControllerBase
 {
     [HttpPost("{id:guid}/start-ai-workflow")]
-    [Authorize(Roles = $"{nameof(ApplicationRole.Farmer)},{nameof(ApplicationRole.Admin)},{nameof(ApplicationRole.AgriculturalOfficer)}")]
+    [Authorize(Roles = nameof(ApplicationRole.Admin))]
     public async Task<ActionResult<CropPlanningWorkflowStartResponse>> StartAiWorkflow(Guid id, CancellationToken cancellationToken) =>
         Ok(await cropPlanningService.StartAiWorkflowAsync(id, cancellationToken));
 

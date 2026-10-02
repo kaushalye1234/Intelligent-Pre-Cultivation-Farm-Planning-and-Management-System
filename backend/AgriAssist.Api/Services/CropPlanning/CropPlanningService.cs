@@ -532,8 +532,24 @@ public sealed class CropPlanningService(
 
         requests = query.SortDirection == "desc" ? requests.OrderByDescending(item => item.CreatedAt) : requests.OrderBy(item => item.CreatedAt);
         var total = await requests.CountAsync(cancellationToken);
-        var items = await requests.Skip((query.Page - 1) * query.PageSize).Take(query.PageSize).Select(item => MapRequest(item)).ToListAsync(cancellationToken);
+        var entities = await requests.Skip((query.Page - 1) * query.PageSize).Take(query.PageSize).ToListAsync(cancellationToken);
+        var latestWorkflows = await LoadLatestWorkflowsAsync(entities.Select(item => item.Id), cancellationToken);
+        var items = entities
+            .Select(item => MapRequest(item, latestWorkflows.GetValueOrDefault(item.Id)))
+            .ToList();
         return new PagedResult<CropPlanRequestResponse>(items, query.Page, query.PageSize, total);
+    }
+
+    public async Task<CropPlanRequestResponse> GetCropPlanRequestAsync(Guid requestId, CancellationToken cancellationToken)
+    {
+        var request = await ApplyPlanRequestAccess(dbContext.CropPlanRequests.AsNoTracking())
+            .SingleOrDefaultAsync(item => item.Id == requestId, cancellationToken)
+            ?? throw NotFound("Crop plan request");
+        var workflow = await LatestWorkflowQuery(requestId)
+            .AsNoTracking()
+            .Include(item => item.Steps)
+            .SingleOrDefaultAsync(cancellationToken);
+        return MapRequest(request, workflow);
     }
 
     public async Task<CropPlanRequestResponse> CreateCropPlanRequestAsync(CropPlanRequestCreate request, CancellationToken cancellationToken)
@@ -578,7 +594,14 @@ public sealed class CropPlanningService(
 
     public async Task<CropPlanningWorkflowStartResponse> StartAiWorkflowAsync(Guid requestId, CancellationToken cancellationToken)
     {
-        var request = await ApplyPlanRequestAccess(dbContext.CropPlanRequests)
+        await using var startTransaction = UsesPostgreSql
+            ? await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+        var requestSource = UsesPostgreSql
+            ? dbContext.CropPlanRequests.FromSqlInterpolated(
+                $@"SELECT * FROM ""CropPlanRequests"" WHERE ""Id"" = {requestId} FOR UPDATE")
+            : dbContext.CropPlanRequests;
+        var request = await ApplyPlanRequestAccess(requestSource)
             .Include(item => item.Farm)
             .Include(item => item.Field)
             .Include(item => item.CropType)
@@ -587,9 +610,27 @@ public sealed class CropPlanningService(
             .SingleOrDefaultAsync(item => item.Id == requestId, cancellationToken)
             ?? throw NotFound("Crop plan request");
 
-        if (request.Status is CropPlanRequestStatus.Rejected or CropPlanRequestStatus.Cancelled or CropPlanRequestStatus.Approved)
+        if (request.Status == CropPlanRequestStatus.PreliminaryGenerated)
         {
-            throw new ApiException(HttpStatusCode.BadRequest, "CROP_PLAN_STATE_NOT_ALLOWED", "Only submitted or preliminary crop plan requests can start AI planning.");
+            throw new ApiException(HttpStatusCode.Conflict, "AI_WORKFLOW_ALREADY_COMPLETED", "Member 1 AI planning has already completed for this crop plan request.");
+        }
+        if (request.Status != CropPlanRequestStatus.Submitted)
+        {
+            throw new ApiException(HttpStatusCode.BadRequest, "CROP_PLAN_STATE_NOT_ALLOWED", "Only a submitted crop plan request can start or retry AI planning.");
+        }
+
+        var latestWorkflow = await LatestWorkflowQuery(requestId)
+            .AsNoTracking()
+            .Include(item => item.Steps)
+            .SingleOrDefaultAsync(cancellationToken);
+        var lifecycle = CropPlanLifecycleProjector.Project(request.Status, latestWorkflow);
+        if (lifecycle.StatusCode == CropPlanLifecycleProjector.AiPlanning)
+        {
+            throw new ApiException(HttpStatusCode.Conflict, "AI_WORKFLOW_ALREADY_ACTIVE", "Member 1 AI planning is already active for this crop plan request.");
+        }
+        if (lifecycle.StatusCode is not (CropPlanLifecycleProjector.Pending or CropPlanLifecycleProjector.AiPlanningFailed))
+        {
+            throw new ApiException(HttpStatusCode.Conflict, "CROP_PLAN_STATE_NOT_ALLOWED", "The latest crop plan workflow state cannot start or retry Member 1 AI planning.");
         }
 
         await EnsureCropTypeAsync(request.CropTypeId, cancellationToken);
@@ -598,15 +639,6 @@ public sealed class CropPlanningService(
             throw new ApiException(HttpStatusCode.BadRequest, "FIELD_FARM_MISMATCH", "The selected active field must belong to the selected farm.");
         if (request.CropVarietyId.HasValue && (request.CropVariety is null || !request.CropVariety.IsActive || request.CropVariety.IsDeleted || request.CropVariety.CropTypeId != request.CropTypeId))
             throw new ApiException(HttpStatusCode.BadRequest, "INVALID_CROP_VARIETY", "Selected variety is not active for this crop.");
-
-        var hasRunningWorkflow = await dbContext.AgentWorkflows.AsNoTracking().AnyAsync(workflow =>
-            workflow.CropPlanRequestId == request.Id &&
-            (workflow.Status == AgentWorkflowStatus.Pending || workflow.Status == AgentWorkflowStatus.Running),
-            cancellationToken);
-        if (hasRunningWorkflow)
-        {
-            throw new ApiException(HttpStatusCode.Conflict, "AI_WORKFLOW_ALREADY_ACTIVE", "An AI workflow is already active for this crop plan request.");
-        }
 
         var userId = RequireUser();
         var cropCycleId = request.FieldId.HasValue
@@ -661,6 +693,7 @@ public sealed class CropPlanningService(
         dbContext.AgentWorkflows.Add(workflow);
         dbContext.AgentSteps.Add(step);
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (startTransaction is not null) await startTransaction.CommitAsync(cancellationToken);
 
         try
         {
@@ -1188,7 +1221,11 @@ public sealed class CropPlanningService(
     }
     public async Task<CropPlanningWorkflowStatusResponse> GetWorkflowStatusAsync(Guid requestId, CancellationToken cancellationToken)
     {
-        await EnsurePlanRequestAccessAsync(requestId, cancellationToken);
+        var requestStatus = await ApplyPlanRequestAccess(dbContext.CropPlanRequests.AsNoTracking())
+            .Where(item => item.Id == requestId)
+            .Select(item => (CropPlanRequestStatus?)item.Status)
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw NotFound("Crop plan request");
         var workflow = await LatestWorkflowQuery(requestId)
             .Include(item => item.Steps)
             .SingleOrDefaultAsync(cancellationToken)
@@ -1199,8 +1236,12 @@ public sealed class CropPlanningService(
             .OrderBy(step => step.Sequence)
             .Select(step => new AgentStepStatusResponse(step.Id, step.AgentName, step.StepName, step.Sequence, step.Status, step.StartedAt, step.CompletedAt, step.ErrorCode, step.ErrorMessageSafe))
             .ToList();
+        var lifecycle = CropPlanLifecycleProjector.Project(requestStatus, workflow);
 
-        return new CropPlanningWorkflowStatusResponse(workflow.Id, requestId, workflow.Status, workflow.CurrentStep, workflow.CreatedAt, workflow.CompletedAt, steps, warnings);
+        return new CropPlanningWorkflowStatusResponse(
+            workflow.Id, requestId, workflow.Status, workflow.CurrentStep,
+            lifecycle.StatusCode, lifecycle.StatusLabel, lifecycle.OverallStatusCode, lifecycle.OverallStatusLabel,
+            workflow.CreatedAt, workflow.CompletedAt, steps, warnings);
     }
 
     public async Task<CropPlanningResultResponse> GetPlanningResultAsync(Guid requestId, CancellationToken cancellationToken)
@@ -2002,11 +2043,40 @@ public sealed class CropPlanningService(
         new(profile.Id, profile.CropTypeId, profile.VarietyName, profile.Region, profile.SourceName, profile.SourceUrl,
             profile.SourceVersion, profile.VerifiedAt, profile.IsActive, profile.Stages.Count, profile.Rules.Count);
     private static CropCycleResponse MapCycle(CropCycle cycle) => new(cycle.Id, cycle.FieldId, cycle.CropTypeId, cycle.PlannedStartDate, cycle.PlannedEndDate, cycle.Status);
-    private static CropPlanRequestResponse MapRequest(CropPlanRequest request) =>
-        new(request.Id, request.FarmId, request.FieldId, request.CropTypeId, request.RequestedByUserId,
+    private async Task<IReadOnlyDictionary<Guid, AgentWorkflow>> LoadLatestWorkflowsAsync(
+        IEnumerable<Guid> requestIds,
+        CancellationToken cancellationToken)
+    {
+        var ids = requestIds.Distinct().ToArray();
+        if (ids.Length == 0) return new Dictionary<Guid, AgentWorkflow>();
+
+        var workflows = await dbContext.AgentWorkflows.AsNoTracking()
+            .Where(workflow => workflow.CropPlanRequestId.HasValue
+                && ids.Contains(workflow.CropPlanRequestId.Value)
+                && !workflow.IsDeleted)
+            .Include(workflow => workflow.Steps)
+            .ToListAsync(cancellationToken);
+
+        return workflows
+            .GroupBy(workflow => workflow.CropPlanRequestId!.Value)
+            .ToDictionary(
+                group => group.Key,
+                group => group.OrderByDescending(workflow => workflow.CreatedAt)
+                    .ThenByDescending(workflow => workflow.Id)
+                    .First());
+    }
+
+    private static CropPlanRequestResponse MapRequest(CropPlanRequest request, AgentWorkflow? workflow = null)
+    {
+        var lifecycle = CropPlanLifecycleProjector.Project(request.Status, workflow);
+        return new(
+            request.Id, request.FarmId, request.FieldId, request.CropTypeId, request.RequestedByUserId,
             request.PreferredStartDate, request.PreferredEndDate, request.Budget, request.Objective,
-            request.Status, request.CreatedAt, request.CropVarietyId, request.CultivationSeason,
+            request.Status, request.CreatedAt,
+            lifecycle.StatusCode, lifecycle.StatusLabel, lifecycle.OverallStatusCode, lifecycle.OverallStatusLabel,
+            request.CropVarietyId, request.CultivationSeason,
             request.PreviousCropTypeId, JsonSerializer.Deserialize<List<string>>(request.PreviousKnownProblemsJson, JsonOptions) ?? []);
+    }
 }
 
 

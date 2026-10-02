@@ -64,6 +64,10 @@ public sealed class CropPlanningAiWorkflowTests
             }, CancellationToken.None);
 
         Assert.Equal(CropPlanRequestStatus.Submitted, created.Status);
+        Assert.Equal("pending", created.StatusCode);
+        Assert.Equal("Pending", created.StatusLabel);
+        Assert.Equal("in_progress", created.OverallStatusCode);
+        Assert.Equal("In Progress", created.OverallStatusLabel);
         Assert.Equal(variety.Id, created.CropVarietyId);
         Assert.Equal(CultivationSeason.Maha, created.CultivationSeason);
         Assert.Equal(previous.Id, created.PreviousCropTypeId);
@@ -606,7 +610,7 @@ public sealed class CropPlanningAiWorkflowTests
     public async Task Start_workflow_persists_missing_reference_state_without_downstream_steps()
     {
         await using var db = NewDbContext();
-        var data = await SeedPlanAsync(db, CropPlanRequestStatus.PreliminaryGenerated);
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.Submitted);
         var service = NewService(db, data.Farmer.Id, new MissingReferenceAiClient());
 
         var started = await service.StartAiWorkflowAsync(data.Request.Id, CancellationToken.None);
@@ -617,6 +621,136 @@ public sealed class CropPlanningAiWorkflowTests
         Assert.Equal("Unavailable", result.ReferenceDataStatus);
         Assert.Empty(result.Steps);
         Assert.Single(await db.AgentSteps.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Failed_member_1_attempt_can_retry_the_same_request_and_latest_success_wins()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.Submitted);
+        var failing = NewService(db, data.Farmer.Id, new ThrowingAiClient());
+
+        await failing.StartAiWorkflowAsync(data.Request.Id, CancellationToken.None);
+        var failed = await failing.GetCropPlanRequestAsync(data.Request.Id, CancellationToken.None);
+        Assert.Equal("ai_planning_failed", failed.StatusCode);
+        Assert.Equal(data.Request.Id, failed.Id);
+
+        var retry = NewService(db, data.Farmer.Id, new PlannedAiClient());
+        var result = await retry.StartAiWorkflowAsync(data.Request.Id, CancellationToken.None);
+        var completed = await retry.GetCropPlanRequestAsync(data.Request.Id, CancellationToken.None);
+
+        Assert.Equal("Planned", result.Status);
+        Assert.Equal(data.Request.Id, result.CropPlanRequestId);
+        Assert.Equal("preliminary_plan_ready", completed.StatusCode);
+        Assert.Equal("in_progress", completed.OverallStatusCode);
+        Assert.Equal(2, await db.AgentWorkflows.CountAsync(item => item.CropPlanRequestId == data.Request.Id));
+    }
+
+    [Fact]
+    public async Task Latest_member_1_attempt_is_authoritative_over_an_older_failure()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.Submitted);
+        var older = new AgentWorkflow
+        {
+            CropPlanRequestId = data.Request.Id,
+            InitiatedByUserId = data.Farmer.Id,
+            Objective = data.Request.Objective,
+            Status = AgentWorkflowStatus.Failed,
+            CurrentStep = "SafeFailure",
+            CreatedAt = DateTime.UtcNow.AddMinutes(-1),
+            CreatedByUserId = data.Farmer.Id
+        };
+        older.Steps.Add(new AgentStep
+        {
+            AgentWorkflowId = older.Id,
+            AgentName = "CropPlanningCoordinatorAgent",
+            StepName = "CropPlanningCoordinator",
+            Sequence = 1,
+            Status = AgentStepStatus.Failed,
+            CreatedByUserId = data.Farmer.Id
+        });
+        var newer = new AgentWorkflow
+        {
+            CropPlanRequestId = data.Request.Id,
+            InitiatedByUserId = data.Farmer.Id,
+            Objective = data.Request.Objective,
+            Status = AgentWorkflowStatus.Running,
+            CurrentStep = "CropPlanningCoordinatorAgent",
+            CreatedAt = DateTime.UtcNow,
+            CreatedByUserId = data.Farmer.Id
+        };
+        newer.Steps.Add(new AgentStep
+        {
+            AgentWorkflowId = newer.Id,
+            AgentName = "CropPlanningCoordinatorAgent",
+            StepName = "CropPlanningCoordinator",
+            Sequence = 1,
+            Status = AgentStepStatus.Running,
+            CreatedByUserId = data.Farmer.Id
+        });
+        db.AddRange(older, newer);
+        await db.SaveChangesAsync();
+
+        var response = await NewService(db, data.Farmer.Id, new PlannedAiClient())
+            .GetCropPlanRequestAsync(data.Request.Id, CancellationToken.None);
+
+        Assert.Equal("ai_planning", response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData(CropPlanRequestStatus.Approved, "approved", "Approved")]
+    [InlineData(CropPlanRequestStatus.Rejected, "rejected", "Rejected")]
+    [InlineData(CropPlanRequestStatus.Cancelled, "cancelled", "Cancelled")]
+    public async Task Final_request_state_overrides_intermediate_workflow_state(
+        CropPlanRequestStatus finalStatus,
+        string expectedCode,
+        string expectedLabel)
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, finalStatus);
+        var workflow = new AgentWorkflow
+        {
+            CropPlanRequestId = data.Request.Id,
+            InitiatedByUserId = data.Farmer.Id,
+            Objective = data.Request.Objective,
+            Status = AgentWorkflowStatus.Running,
+            CurrentStep = "CropPlanningCoordinatorAgent",
+            CreatedByUserId = data.Farmer.Id
+        };
+        workflow.Steps.Add(new AgentStep
+        {
+            AgentWorkflowId = workflow.Id,
+            AgentName = "CropPlanningCoordinatorAgent",
+            StepName = "CropPlanningCoordinator",
+            Sequence = 1,
+            Status = AgentStepStatus.Running,
+            CreatedByUserId = data.Farmer.Id
+        });
+        db.Add(workflow);
+        await db.SaveChangesAsync();
+
+        var response = await NewService(db, data.Farmer.Id, new PlannedAiClient())
+            .GetCropPlanRequestAsync(data.Request.Id, CancellationToken.None);
+
+        Assert.Equal(expectedCode, response.StatusCode);
+        Assert.Equal(expectedLabel, response.StatusLabel);
+        Assert.Equal(expectedCode, response.OverallStatusCode);
+        Assert.Equal(expectedLabel, response.OverallStatusLabel);
+    }
+
+    [Fact]
+    public async Task Completed_member_1_request_cannot_start_again()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.PreliminaryGenerated);
+
+        var error = await Assert.ThrowsAsync<ApiException>(() =>
+            NewService(db, data.Farmer.Id, new PlannedAiClient())
+                .StartAiWorkflowAsync(data.Request.Id, CancellationToken.None));
+
+        Assert.Equal("AI_WORKFLOW_ALREADY_COMPLETED", error.Code);
+        Assert.Empty(await db.AgentWorkflows.ToListAsync());
     }
 
     [Fact]

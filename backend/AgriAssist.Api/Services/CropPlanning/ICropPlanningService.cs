@@ -34,6 +34,7 @@ public interface ICropPlanningService
     Task<CropCycleResponse> CreateCropCycleAsync(CropCycleRequest request, CancellationToken cancellationToken);
 
     Task<PagedResult<CropPlanRequestResponse>> SearchCropPlanRequestsAsync(PagedQuery query, CancellationToken cancellationToken);
+    Task<CropPlanRequestResponse> GetCropPlanRequestAsync(Guid requestId, CancellationToken cancellationToken);
     Task<CropPlanRequestResponse> CreateCropPlanRequestAsync(CropPlanRequestCreate request, CancellationToken cancellationToken);
     Task<CropPlanRequestResponse> UpdateCropPlanRequestAsync(Guid id, CropPlanRequestUpdate request, CancellationToken cancellationToken);
     Task<CropPlanRequestResponse> GeneratePreliminaryRequestAsync(CropPlanRequestCreate request, CancellationToken cancellationToken);
