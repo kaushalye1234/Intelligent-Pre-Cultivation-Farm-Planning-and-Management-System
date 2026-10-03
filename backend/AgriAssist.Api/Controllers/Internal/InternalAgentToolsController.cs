@@ -6,6 +6,7 @@ using System.Text.Json;
 using AgriAssist.Api.Data;
 using AgriAssist.Api.Dtos.CropPlanning;
 using AgriAssist.Api.Dtos.Resources;
+using AgriAssist.Api.ExternalServices.Cloudinary;
 using AgriAssist.Api.ExternalServices.Weather;
 using AgriAssist.Api.Models.Inspections;
 using AgriAssist.Api.Models.Shared;
@@ -22,7 +23,9 @@ public sealed class InternalAgentToolsController(
     AppDbContext dbContext,
     IConfiguration configuration,
     ICropResourceRequirementService requirementService,
-    IWeatherResourceToolService weatherResourceTools) : ControllerBase
+    IWeatherResourceToolService weatherResourceTools,
+    ICloudinaryService cloudinaryService,
+    ILogger<InternalAgentToolsController> logger) : ControllerBase
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -421,6 +424,52 @@ public sealed class InternalAgentToolsController(
                 return await AsToolErrorAsync(() => weatherResourceTools.GetWeatherForecastAsync(workflowId!.Value, cancellationToken));
             },
             cancellationToken);
+
+    [HttpGet("inspection-image-analysis/{analysisId:guid}/image-bytes")]
+    public async Task<ActionResult<AgentInspectionImageBytesResponse>> GetInspectionImageAnalysisBytes(
+        Guid analysisId,
+        CancellationToken cancellationToken)
+    {
+        if (!HasValidToolToken()) return Unauthorized();
+
+        var analysis = await dbContext.InspectionImageAnalyses.AsNoTracking()
+            .Include(item => item.InspectionImage)
+            .SingleOrDefaultAsync(item => item.Id == analysisId, cancellationToken);
+        if (analysis?.InspectionImage is null || analysis.Status != InspectionImageAnalysisStatus.Running)
+            return NotFound();
+
+        try
+        {
+            var image = analysis.InspectionImage;
+            var retrieved = await cloudinaryService.RetrieveInspectionImageAsync(
+                image.PublicId,
+                image.StorageVersion,
+                image.DeliveryType,
+                cancellationToken);
+            var actualHash = Convert.ToHexString(SHA256.HashData(retrieved.Bytes)).ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(image.ContentSha256) ||
+                !CryptographicOperations.FixedTimeEquals(
+                    Encoding.ASCII.GetBytes(image.ContentSha256.ToLowerInvariant()),
+                    Encoding.ASCII.GetBytes(actualHash)))
+            {
+                logger.LogWarning("Inspection image integrity check failed for analysis {AnalysisId}", analysisId);
+                return Conflict(new { code = "IMAGE_INTEGRITY_FAILED", message = "Stored inspection image integrity verification failed." });
+            }
+
+            logger.LogInformation("Retrieved verified inspection image for analysis {AnalysisId}", analysisId);
+            return Ok(new AgentInspectionImageBytesResponse(
+                analysis.Id,
+                image.Id,
+                retrieved.ContentType,
+                actualHash,
+                Convert.ToBase64String(retrieved.Bytes)));
+        }
+        catch (ApiException exception)
+        {
+            logger.LogWarning("Inspection image retrieval failed for analysis {AnalysisId}: {FailureCategory}", analysisId, exception.Code);
+            return StatusCode((int)exception.StatusCode, new { code = exception.Code, message = exception.Message });
+        }
+    }
 
     private async Task RequireWorkflowScopeAsync(Guid? workflowId, Guid cropPlanRequestId, CancellationToken cancellationToken)
     {

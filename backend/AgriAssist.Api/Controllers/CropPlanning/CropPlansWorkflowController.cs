@@ -9,7 +9,9 @@ namespace AgriAssist.Api.Controllers.CropPlanning;
 [ApiController]
 [Route("api/crop-plans")]
 [Authorize]
-public sealed class CropPlansWorkflowController(ICropPlanningService cropPlanningService) : ControllerBase
+public sealed class CropPlansWorkflowController(
+    ICropPlanningService cropPlanningService,
+    AgriAssist.Api.Services.Inspections.IInspectionService inspectionService) : ControllerBase
 {
     [HttpPost("{id:guid}/start-ai-workflow")]
     [Authorize(Roles = nameof(ApplicationRole.Admin))]
@@ -40,6 +42,14 @@ public sealed class CropPlansWorkflowController(ICropPlanningService cropPlannin
         Guid id,
         CancellationToken cancellationToken) =>
         Ok(await cropPlanningService.SubmitPrePlantingAssessmentAsync(id, cancellationToken));
+
+    [HttpPut("{id:guid}/pre-planting-assessment/representative-image/{imageId:guid}")]
+    [Authorize(Roles = nameof(ApplicationRole.FieldOfficer))]
+    public async Task<ActionResult<AgriAssist.Api.Dtos.Inspections.InspectionImageResponse>> SelectRepresentativeImage(
+        Guid id,
+        Guid imageId,
+        CancellationToken cancellationToken) =>
+        Ok(await inspectionService.SelectRepresentativeImageAsync(id, imageId, cancellationToken));
 
     [HttpPost("{id:guid}/run-field-analysis")]
     [Authorize(Roles = nameof(ApplicationRole.FieldOfficer))]

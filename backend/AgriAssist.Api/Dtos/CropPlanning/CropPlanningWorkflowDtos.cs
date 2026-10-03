@@ -174,7 +174,8 @@ public sealed record PrePlantingAssessmentImageResponse(
     Guid Id,
     string Url,
     string ContentType,
-    long SizeBytes);
+    long SizeBytes,
+    bool IsRepresentativeForAi);
 
 public sealed record PrePlantingAssessmentResponse
 {

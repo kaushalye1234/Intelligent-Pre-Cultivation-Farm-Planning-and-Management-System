@@ -107,7 +107,7 @@ builder.Services.AddScoped<IRequestValidator<FieldInspectionRequest>, FieldInspe
 builder.Services.AddScoped<IRequestValidator<ObservationRequest>, ObservationRequestValidator>();
 builder.Services.AddScoped<IRequestValidator<CropIssueRequest>, CropIssueRequestValidator>();
 builder.Services.AddScoped<IRequestValidator<FollowUpRecommendationRequest>, FollowUpRecommendationRequestValidator>();
-builder.Services.AddScoped<ICloudinaryService, CloudinaryService>();
+builder.Services.AddHttpClient<ICloudinaryService, CloudinaryService>();
 builder.Services.AddScoped<IInspectionService, InspectionService>();
 builder.Services.AddScoped<IRequestValidator<ResourceCategoryRequest>, ResourceCategoryRequestValidator>();
 builder.Services.AddScoped<IRequestValidator<SupplierRequest>, SupplierRequestValidator>();

@@ -105,3 +105,10 @@ public sealed record AgentInspectionImageMetadataResponse(
     string ContentType,
     long SizeBytes,
     DateTime CreatedAt);
+
+public sealed record AgentInspectionImageBytesResponse(
+    Guid AnalysisId,
+    Guid InspectionImageId,
+    string ContentType,
+    string ContentSha256,
+    string ImageBase64);

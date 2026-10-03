@@ -1543,7 +1543,12 @@ public sealed class CropPlanningService(
         var images = await dbContext.InspectionImages.AsNoTracking()
             .Where(item => item.FieldInspectionId == assessment.Id && !item.IsDeleted)
             .OrderBy(item => item.CreatedAt)
-            .Select(item => new PrePlantingAssessmentImageResponse(item.Id, item.Url, item.ContentType, item.SizeBytes))
+            .Select(item => new PrePlantingAssessmentImageResponse(
+                item.Id,
+                $"/api/inspections/{item.FieldInspectionId}/images/{item.Id}/content",
+                item.ContentType,
+                item.SizeBytes,
+                item.IsRepresentativeForAi))
             .ToListAsync(cancellationToken);
 
         return new PrePlantingAssessmentResponse

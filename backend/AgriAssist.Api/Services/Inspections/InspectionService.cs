@@ -1,4 +1,6 @@
 ﻿using System.Net;
+using System.Data;
+using System.Security.Cryptography;
 using AgriAssist.Api.Data;
 using AgriAssist.Api.Dtos.Inspections;
 using AgriAssist.Api.Dtos.Shared;
@@ -277,7 +279,19 @@ public sealed class InspectionService(
             ?? throw NotFound("Inspection");
         RequirePrePlantingDraftMutation(inspection);
         var upload = await cloudinaryService.UploadInspectionImageAsync(file, cancellationToken);
-        var image = new InspectionImage { FieldInspectionId = inspectionId, Url = upload.Url, PublicId = upload.PublicId, ContentType = upload.ContentType, SizeBytes = upload.SizeBytes, CreatedByUserId = currentUser.UserId };
+        var image = new InspectionImage
+        {
+            FieldInspectionId = inspectionId,
+            Url = upload.Url,
+            PublicId = upload.PublicId,
+            AssetId = upload.AssetId,
+            StorageVersion = upload.StorageVersion,
+            DeliveryType = upload.DeliveryType,
+            ContentType = upload.ContentType,
+            SizeBytes = upload.SizeBytes,
+            ContentSha256 = upload.ContentSha256,
+            CreatedByUserId = currentUser.UserId
+        };
         dbContext.InspectionImages.Add(image);
         await dbContext.SaveChangesAsync(cancellationToken);
         return MapImage(image);
@@ -291,6 +305,45 @@ public sealed class InspectionService(
             .OrderByDescending(item => item.CreatedAt)
             .Select(item => MapImage(item))
             .ToListAsync(cancellationToken);
+    }
+
+    public async Task<InspectionImageContent> GetInspectionImageContentAsync(Guid inspectionId, Guid imageId, CancellationToken cancellationToken)
+    {
+        await EnsureInspectionVisibleAsync(inspectionId, cancellationToken);
+        var image = await dbContext.InspectionImages.AsNoTracking()
+            .SingleOrDefaultAsync(item => item.Id == imageId && item.FieldInspectionId == inspectionId && !item.IsDeleted, cancellationToken)
+            ?? throw NotFound("Inspection image");
+        var retrieved = await cloudinaryService.RetrieveInspectionImageAsync(image.PublicId, image.StorageVersion, image.DeliveryType, cancellationToken);
+        VerifyStoredHash(image, retrieved.Bytes);
+        return new InspectionImageContent(retrieved.Bytes, retrieved.ContentType);
+    }
+
+    public async Task<InspectionImageResponse> SelectRepresentativeImageAsync(Guid cropPlanRequestId, Guid imageId, CancellationToken cancellationToken)
+    {
+        RequireInspectionStaff();
+        await using var transaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+        var inspectionQuery = dbContext.Database.IsNpgsql()
+            ? dbContext.FieldInspections.FromSqlInterpolated($@"SELECT * FROM ""FieldInspections"" WHERE ""CropPlanRequestId"" = {cropPlanRequestId} FOR UPDATE")
+            : dbContext.FieldInspections;
+        var inspection = await inspectionQuery.SingleOrDefaultAsync(
+            item => item.CropPlanRequestId == cropPlanRequestId && item.Purpose == InspectionPurpose.PrePlanting && !item.IsDeleted,
+            cancellationToken) ?? throw NotFound("Pre-planting assessment");
+        RequirePrePlantingDraftMutation(inspection);
+        var selected = await dbContext.InspectionImages.SingleOrDefaultAsync(
+            item => item.Id == imageId && item.FieldInspectionId == inspection.Id && !item.IsDeleted,
+            cancellationToken) ?? throw NotFound("Inspection image");
+        var current = await dbContext.InspectionImages
+            .Where(item => item.FieldInspectionId == inspection.Id && item.IsRepresentativeForAi && !item.IsDeleted)
+            .ToListAsync(cancellationToken);
+        foreach (var item in current) item.IsRepresentativeForAi = false;
+        selected.IsRepresentativeForAi = true;
+        selected.UpdatedAt = DateTime.UtcNow;
+        selected.UpdatedByUserId = currentUser.UserId;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+        return MapImage(selected);
     }
 
     private async Task<FieldInspectionResponse> SetInspectionStatusAsync(Guid id, InspectionStatus status, CancellationToken cancellationToken)
@@ -396,11 +449,34 @@ public sealed class InspectionService(
     }
 
     private Guid RequireUser() => currentUser.UserId ?? throw new ApiException(HttpStatusCode.Unauthorized, "AUTH_REQUIRED", "Authentication is required.");
+    private static void VerifyStoredHash(InspectionImage image, byte[] bytes)
+    {
+        if (string.IsNullOrWhiteSpace(image.ContentSha256)) return;
+        byte[] expected;
+        try
+        {
+            expected = Convert.FromHexString(image.ContentSha256);
+        }
+        catch (FormatException)
+        {
+            throw new ApiException(HttpStatusCode.Conflict, "IMAGE_INTEGRITY_METADATA_INVALID", "Stored image integrity metadata is invalid.");
+        }
+
+        var actual = SHA256.HashData(bytes);
+        if (expected.Length != actual.Length || !CryptographicOperations.FixedTimeEquals(expected, actual))
+            throw new ApiException(HttpStatusCode.Conflict, "IMAGE_INTEGRITY_FAILED", "Stored inspection image integrity verification failed.");
+    }
     private static ApiException NotFound(string name) => new(HttpStatusCode.NotFound, "NOT_FOUND", $"{name} was not found.");
     private static void Validate(IReadOnlyList<string> errors) { if (errors.Count > 0) throw new ApiException(HttpStatusCode.BadRequest, "VALIDATION_ERROR", string.Join(" ", errors)); }
     private static FieldInspectionResponse MapInspection(FieldInspection item) => new(item.Id, item.FieldId, item.InspectorUserId, item.ScheduledAt, item.CompletedAt, item.Status, item.Summary);
     private static ObservationResponse MapObservation(InspectionObservation item) => new(item.Id, item.FieldInspectionId, item.ObservationType, item.Notes);
     private static CropIssueResponse MapIssue(CropIssue item) => new(item.Id, item.FieldInspectionId, item.Title, item.Description, item.Severity, item.Status, item.EscalatedAt);
     private static FollowUpRecommendationResponse MapRecommendation(FollowUpRecommendation item) => new(item.Id, item.CropIssueId, item.Recommendation, item.DueAt, item.IsCompleted);
-    private static InspectionImageResponse MapImage(InspectionImage item) => new(item.Id, item.FieldInspectionId, item.Url, item.PublicId, item.ContentType, item.SizeBytes);
+    private static InspectionImageResponse MapImage(InspectionImage item) => new(
+        item.Id,
+        item.FieldInspectionId,
+        $"/api/inspections/{item.FieldInspectionId}/images/{item.Id}/content",
+        item.ContentType,
+        item.SizeBytes,
+        item.IsRepresentativeForAi);
 }
