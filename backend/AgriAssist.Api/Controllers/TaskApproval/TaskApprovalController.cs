@@ -15,17 +15,17 @@ public sealed class TaskApprovalController(
     IWorkflowApprovalService workflowApprovalService) : ControllerBase
 {
     [HttpGet("workflows")]
-    [Authorize(Roles = $"{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.FieldOfficer)},{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
     public async Task<ActionResult<PagedResult<WorkflowSummaryResponse>>> SearchWorkflows([FromQuery] WorkflowApprovalQuery query, CancellationToken cancellationToken) =>
         Ok(await workflowApprovalService.SearchAsync(query, cancellationToken));
 
     [HttpGet("workflows/{id:guid}")]
-    [Authorize(Roles = $"{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.FieldOfficer)},{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
     public async Task<ActionResult<WorkflowReviewResponse>> GetWorkflow(Guid id, CancellationToken cancellationToken) =>
         Ok(await workflowApprovalService.GetAsync(id, cancellationToken));
 
     [HttpGet("workflows/{id:guid}/history")]
-    [Authorize(Roles = $"{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.FieldOfficer)},{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
     public async Task<ActionResult<WorkflowHistoryResponse>> GetWorkflowHistory(Guid id, CancellationToken cancellationToken) =>
         Ok(await workflowApprovalService.GetHistoryAsync(id, cancellationToken));
 

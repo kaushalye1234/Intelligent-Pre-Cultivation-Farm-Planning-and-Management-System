@@ -353,6 +353,11 @@ public sealed record FarmerApprovedPlanResponse(
     string? VarietyName,
     DateOnly PreferredStartDate,
     DateOnly PreferredEndDate,
+    DateTime ApprovedAt,
+    string? FieldSummary,
+    string? WeatherSummary,
+    IReadOnlyList<string> Warnings,
+    IReadOnlyList<string> Recommendations,
     IReadOnlyList<FarmerApprovedTaskResponse> ApprovedTasks,
     IReadOnlyList<FarmerApprovedIrrigationResponse> ApprovedIrrigationSchedules,
     FarmerApprovedCropHealthResponse? CropHealth);

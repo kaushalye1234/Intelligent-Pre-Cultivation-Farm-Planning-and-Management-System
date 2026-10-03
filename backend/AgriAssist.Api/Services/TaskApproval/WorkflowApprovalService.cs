@@ -1022,8 +1022,11 @@ public sealed class WorkflowApprovalService(
 
     private IQueryable<AgentWorkflow> ApplyAccess(IQueryable<AgentWorkflow> query)
     {
-        if (currentUser.Role != ApplicationRole.Farmer) return query;
         var userId = RequireUser();
+        if (currentUser.Role == ApplicationRole.FieldOfficer)
+            return query.Where(item => item.CropPlanRequestId.HasValue && dbContext.FieldInspections.Any(inspection =>
+                inspection.CropPlanRequestId == item.CropPlanRequestId && inspection.InspectorUserId == userId && !inspection.IsDeleted));
+        if (currentUser.Role != ApplicationRole.Farmer) return query;
         return query.Where(item => item.CropPlanRequest != null &&
             (item.CropPlanRequest.RequestedByUserId == userId || item.CropPlanRequest.Farm!.OwnerUserId == userId));
     }

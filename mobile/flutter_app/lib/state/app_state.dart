@@ -210,8 +210,8 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<ApprovedWorkflowDetail> approvedWorkflowDetail(String workflowId) =>
-      _apiClient.approvedWorkflowDetail(workflowId);
+  Future<FarmerApprovedPlan> farmerApprovedPlan(String cropPlanRequestId) =>
+      _apiClient.farmerApprovedPlan(cropPlanRequestId);
 
   Future<void> _loadAuthenticatedLanding() async {
     if (user == null || !isMobileRole(user!.role)) {

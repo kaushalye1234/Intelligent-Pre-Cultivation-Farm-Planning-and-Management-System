@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { api } from '../api/client'
@@ -99,7 +99,7 @@ const submittedAssessment: PrePlantingAssessment = {
   ...savedAssessment,
   status: 3,
   completedAt: '2026-09-23T08:20:00Z',
-  images: [{ id: 'image-1', url: 'https://example.test/field.jpg', contentType: 'image/jpeg', sizeBytes: 2048 }],
+  images: [{ id: 'image-1', url: 'https://example.test/field.jpg', contentType: 'image/jpeg', sizeBytes: 2048, isRepresentativeForAi: false }],
 }
 
 const fieldResult: FieldAnalysisResult = {
@@ -146,6 +146,46 @@ describe('PrePlantingAssessmentPanel', () => {
 
     expect(await screen.findByDisplayValue('Moist loam.')).toBeInTheDocument()
     expect(screen.getByDisplayValue('Canal')).toBeInTheDocument()
+  })
+
+  it('keeps note suggestions transient and applies only the explicitly accepted field', async () => {
+    mockLoads(savedAssessment)
+    const put = vi.spyOn(api, 'put')
+    const post = vi.spyOn(api, 'post').mockResolvedValue({
+      data: {
+        contractVersion: 1,
+        status: 'Succeeded',
+        suggestions: {
+          soilNotes: 'Moist loamy soil was observed.',
+          waterConcerns: 'Canal water was reported as adequate and reliable.',
+          drainageNotes: null,
+          generalFieldNotes: null,
+          riskNotes: null,
+          officerNotes: null,
+        },
+        contradictionWarnings: ['Verify the reported moisture before submission.'],
+        missingDataWarnings: ['No drainage note was supplied.'],
+      },
+    } as never)
+    const user = userEvent.setup()
+
+    render(<PrePlantingAssessmentPanel review={review} role={Roles.FieldOfficer} onWorkflowChanged={vi.fn()} />)
+
+    await user.click(await screen.findByRole('button', { name: /suggest notes/i }))
+    const soilSuggestion = await screen.findByLabelText('Soil notes AI Suggested Draft')
+    expect(screen.getByLabelText('Soil notes')).toHaveValue('Moist loam.')
+    expect(screen.getByText(/contradiction to verify/i)).toBeInTheDocument()
+    expect(screen.getByText(/missing data/i)).toBeInTheDocument()
+
+    await user.click(within(soilSuggestion).getByRole('button', { name: 'Accept' }))
+
+    expect(screen.getByLabelText('Soil notes')).toHaveValue('Moist loamy soil was observed.')
+    expect(screen.getByLabelText('Water concerns')).toHaveValue('')
+    expect(put).not.toHaveBeenCalled()
+    expect(post).toHaveBeenCalledWith(
+      '/crop-plans/plan-1/pre-planting-assessment/note-suggestions',
+      expect.objectContaining({ soilType: 'Loamy', identifiedRisks: [] }),
+    )
   })
 
   it('does not crash when optional assessment fields and images are null', async () => {

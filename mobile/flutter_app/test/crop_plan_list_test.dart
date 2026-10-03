@@ -44,7 +44,7 @@ CropPlanRecord plan(String id, int status) => CropPlanRecord(
 );
 
 void main() {
-  testWidgets('filters plans and opens only the approved workflow detail', (
+  testWidgets('filters plans and opens the farmer-safe approved plan', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1000, 1500);
@@ -54,27 +54,43 @@ void main() {
 
     final api = ApiClient(
       httpClient: MockClient((request) async {
-        expect(request.url.path, '/api/task-approval/workflows/wf-approved');
+        expect(
+          request.url.path,
+          '/api/crop-planning/requests/approved/approved-plan',
+        );
         return http.Response(
           jsonEncode({
-            'workflow': {'id': 'wf-approved', 'status': 4},
-            'decisions': [
-              {'decision': 1, 'createdAt': '2026-09-24T09:00:00Z'},
-            ],
-            'steps': [
+            'contractVersion': 1,
+            'cropPlanRequestId': 'approved',
+            'objective': 'Grow approved',
+            'cropName': 'Rice',
+            'varietyName': null,
+            'preferredStartDate': '2026-10-01',
+            'preferredEndDate': '2027-01-01',
+            'approvedAt': '2026-09-24T09:00:00Z',
+            'fieldSummary': 'Soil is ready.',
+            'weatherSummary': 'Rain is expected.',
+            'warnings': <String>[],
+            'recommendations': <String>[],
+            'approvedTasks': [
               {
-                'agentName': 'CropFieldAnalysisAgent',
-                'status': 3,
-                'output': {
-                  'fieldCondition': {'summary': 'Soil is ready.'},
-                },
-              },
-              {
-                'agentName': 'WeatherResourceAgent',
-                'status': 3,
-                'output': {'weatherSummary': 'Rain is expected.'},
+                'id': 'task-1',
+                'title': 'Linked task',
+                'description': 'Prepare field',
+                'dueAt': '2026-10-01T00:00:00Z',
+                'status': 'Approved',
               },
             ],
+            'approvedIrrigationSchedules': [
+              {
+                'id': 'schedule-1',
+                'scheduledAt': '2026-10-02T00:00:00Z',
+                'durationMinutes': 30,
+                'notes': 'Morning',
+                'status': 'Approved',
+              },
+            ],
+            'cropHealth': null,
           }),
           200,
         );
@@ -111,35 +127,8 @@ void main() {
           warnings: [],
         ),
       }
-      ..tasks = const [
-        FarmTaskRecord(
-          id: 'task-1',
-          title: 'Linked task',
-          description: 'Prepare field',
-          dueAt: '2026-10-01T00:00:00Z',
-          status: 3,
-          generatedByWorkflowId: 'wf-approved',
-        ),
-        FarmTaskRecord(
-          id: 'task-2',
-          title: 'Other task',
-          description: '',
-          dueAt: '',
-          status: 3,
-          generatedByWorkflowId: 'wf-other',
-        ),
-      ]
-      ..irrigationSchedules = const [
-        IrrigationScheduleRecord(
-          id: 'schedule-1',
-          fieldId: 'field-1',
-          scheduledAt: '2026-10-02T00:00:00Z',
-          durationMinutes: 30,
-          notes: 'Morning',
-          status: 2,
-          generatedByWorkflowId: 'wf-approved',
-        ),
-      ];
+      ..tasks = const []
+      ..irrigationSchedules = const [];
 
     await tester.pumpWidget(
       ChangeNotifierProvider.value(

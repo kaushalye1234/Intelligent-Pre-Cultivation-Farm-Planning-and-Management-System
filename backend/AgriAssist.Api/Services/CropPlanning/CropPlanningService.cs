@@ -13,6 +13,7 @@ using AgriAssist.Api.Models.TaskApproval;
 using AgriAssist.Api.Services.Shared;
 using AgriAssist.Api.Services.Inspections;
 using AgriAssist.Api.Dtos.TaskApproval;
+using AgriAssist.Api.Dtos.Resources;
 using AgriAssist.Api.Validators.CropPlanning;
 using AgriAssist.Api.Validators.Shared;
 using Microsoft.EntityFrameworkCore;
@@ -1458,6 +1459,22 @@ public sealed class CropPlanningService(
                 proposal.CropHealthGuidance.WhyThisIsRecommended);
         }
 
+        var fieldStep = workflow.Steps.OrderBy(item => item.Sequence)
+            .LastOrDefault(item => item.AgentName == FieldAnalysisAgentName && item.Status == AgentStepStatus.Completed);
+        var fieldAnalysis = fieldStep is null
+            ? null
+            : ReadFieldAnalysisOutput(fieldStep.OutputJson, workflow.Id, []);
+        WeatherResourceOutput? weather = null;
+        var weatherStep = workflow.Steps.OrderBy(item => item.Sequence)
+            .LastOrDefault(item => item.AgentName == WeatherResourceAgentName && item.Status == AgentStepStatus.Completed);
+        if (weatherStep is not null)
+        {
+            try { weather = JsonSerializer.Deserialize<WeatherResourceOutput>(weatherStep.OutputJson, JsonOptions); }
+            catch (JsonException) { weather = null; }
+        }
+        var warnings = (fieldAnalysis?.Warnings ?? []).Concat(weather?.Warnings ?? [])
+            .Where(item => !string.IsNullOrWhiteSpace(item)).Distinct(StringComparer.Ordinal).ToArray();
+
         return new FarmerApprovedPlanResponse(
             1,
             request.Id,
@@ -1466,6 +1483,11 @@ public sealed class CropPlanningService(
             request.CropVariety?.Name,
             request.PreferredStartDate,
             request.PreferredEndDate,
+            workflow.CompletedAt ?? workflow.UpdatedAt,
+            fieldAnalysis?.FieldCondition.Summary,
+            weather?.WeatherSummary,
+            warnings,
+            weather?.Recommendations ?? [],
             tasks,
             irrigation,
             cropHealth);
