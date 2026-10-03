@@ -14,7 +14,7 @@
 
 - Keep the backend tool surface GET-only; do not add a write endpoint for this feature.
 - Keep every model action on a fixed allowlist with strict typed arguments; trusted graph state supplies workflow, step, and candidate revision context.
-- Retrieval limits: at most 3 model turns, at most 5 total tool calls, one 45-second overall retrieval deadline, and at most 16 KiB of serialized observation per call.
+- Retrieval is disabled by default. When enabled, limits are at most 3 model turns, at most 5 total tool calls, one 45-second overall retrieval deadline, and at most 16 KiB of serialized observation per call.
 - A complete evidence request must not call the model or backend retrieval tools.
 - Never synthesize or replace Member 1–3 completion status, warnings, conclusions, or source provenance.
 - Do not generate candidates from an unverified, mismatched, stale, malformed, timed-out, or partially accepted retrieval.
@@ -37,7 +37,7 @@
 
 | File | Responsibility |
 | --- | --- |
-| Create: `ai-service/schemas/tool_calling.py` | Provider-neutral typed tool definitions, model tool calls, and turn result with strict argument shape. |
+| Create: `ai-service/schemas/tool_calling.py` | Provider-neutral typed tool definitions, model tool calls, turn result, trace entry, and strict argument shape. |
 | Modify: `ai-service/providers/base_llm_provider.py` | Add the typed tool-turn contract and safe unsupported-provider behavior without changing generate_json. |
 | Modify: `ai-service/providers/openai_provider.py` | Translate the typed contract to constrained OpenAI function calls and parse response into the shared type. |
 | Modify: `ai-service/config.py` | Add validated retrieval limits with the exact defaults in Global Constraints. |
@@ -65,12 +65,12 @@ Do not modify InternalAgentToolsController or add endpoints unless implementatio
 - Create: `ai-service/tests/test_scheduling_evidence_retriever.py`
 
 **Interfaces:**
-- Produce `ToolCall(id: str, name: str, arguments: dict[str, object])`, `ToolTurn(text: str | None, tool_calls: list[ToolCall])`, and `EvidenceRetrievalResult(request: SchedulingValidationInput, safe_stop_reason: str | None, tool_trace: list[ToolTraceEntry])`.
-- Produce a deterministic gap classifier that distinguishes supported persisted evidence gaps from missing/incomplete Member 1–3 analysis. Only supporting crop-profile metadata and a stock snapshot already referenced by valid Member 3 requirements are refreshable in the first release.
+- Produce `ToolCall(id: str, name: str, arguments: dict[str, object])`, `ToolTurn(text: str | None, tool_calls: list[ToolCall])`, `ToolTraceEntry(tool_name: str, source_ids: list[str], source_version: str | None, result_class: str, elapsed_ms: int)`, and `EvidenceRetrievalResult(request: SchedulingValidationInput, safe_stop_reason: str | None, tool_trace: list[ToolTraceEntry])`.
+- Produce a deterministic gap classifier that distinguishes supported persisted evidence gaps from missing/incomplete Member 1–3 analysis. Only supporting crop-profile metadata and a stock snapshot already referenced by valid Member 3 requirements are refreshable in the first release. A profile is stale if its verification time is in the future or its source/version/entity does not match the persisted request; no age threshold is invented. A mismatch in Member 1–3 output itself blocks for upstream reanalysis.
 - A missing or unsuccessful coordinator/field/weather-resource output is never refreshable by this retrieval layer. Do not include weather forecast retrieval: reading a forecast does not recompute Member 3's risk analysis.
-- Strict call arguments must reject unknown fields. The tool-turn schema must allow a terminal response with no tool calls.
+- Strict call arguments must reject unknown fields. The tool-turn schema must allow a terminal response with no tool calls. Do not invent an age-based freshness TTL: reject future verification timestamps and source/version or entity mismatches; GET availability is a fresh read snapshot, while any mismatch in persisted Member 1–3 analysis requires safe reanalysis/review.
 
-- [ ] **Step 1: Write tests** named `test_tool_call_schema_rejects_unknown_fields`, `test_tool_turn_accepts_terminal_text_without_calls`, `test_missing_upstream_analysis_is_not_refreshable`, and `test_only_profile_or_referenced_stock_gaps_are_refreshable`.
+- [ ] **Step 1: Write tests** named `test_tool_call_schema_rejects_unknown_fields`, `test_tool_turn_accepts_terminal_text_without_calls`, `test_missing_upstream_analysis_is_not_refreshable`, and `test_only_profile_or_referenced_stock_gaps_are_refreshable`, and `test_future_verified_at_or_source_version_mismatch_is_stale`.
 - [ ] **Step 2: Run** `cd ai-service; python -m pytest tests/test_tool_calling_contract.py tests/test_scheduling_evidence_retriever.py -q`; confirm the new tests fail because the schemas/classifier do not exist.
 - [ ] **Step 3: Implement** the typed Pydantic contract and pure gap classifier. Include a reason code and required trusted entity IDs for each refreshable gap; never ask the LLM to classify it.
 - [ ] **Step 4: Run the same tests** and confirm they pass; add assertions that input request objects remain unchanged during classification.
@@ -100,7 +100,7 @@ Do not modify InternalAgentToolsController or add endpoints unless implementatio
 - Create: `ai-service/tests/test_scheduling_evidence_tools.py`
 
 **Interfaces:**
-- Add settings `scheduling_retrieval_max_rounds=3`, `scheduling_retrieval_max_tool_calls=5`, `scheduling_retrieval_timeout_seconds=45`, and `scheduling_retrieval_max_observation_bytes=16384`, each with environment aliases, bounds, and tests.
+- Add `scheduling_retrieval_enabled=False`, `scheduling_retrieval_max_rounds=3`, `scheduling_retrieval_max_tool_calls=5`, `scheduling_retrieval_timeout_seconds=45`, and `scheduling_retrieval_max_observation_bytes=16384`, each with environment aliases, bounds, and tests. No provider or tool is constructed for scheduling while disabled.
 - Define `SchedulingEvidenceTools.execute(name: str, arguments: dict[str, object], *, workflow_id: UUID, agent_step_id: UUID, request: SchedulingValidationInput) -> object`.
 - Expose only: `GetCropPlanContext`, `GetCropReferenceProfile`, and `GetResourceAvailability`. For resource availability, IDs must be derived from validated Member 3 requirement rows, never accepted from model arguments. All tool calls use existing BackendToolClient-backed typed wrappers and GET endpoints.
 - Bind workflow/step IDs from trusted graph state; bind crop-plan, crop-type, profile, field, and resource IDs from validated request or prior typed tool results. The dispatcher rejects extra arguments and emits no arbitrary URL/path mechanism.
@@ -143,7 +143,7 @@ Do not modify InternalAgentToolsController or add endpoints unless implementatio
 **Interfaces:**
 - Extend `SchedulingValidationAgent.__init__(retriever: SchedulingEvidenceRetriever | None = None)`. Preserve `check_dependencies`, `propose`, `assess_risk`, and direct deterministic behavior.
 - The graph inserts a retrieval node before `validate_evidence`; it then runs the existing dependency validation, candidate, and risk nodes unchanged. Pass workflow/step/revision from trusted request/graph context, never model arguments.
-- Construct the read-only tool wrappers and configured provider only for the scheduling endpoint. If no tool-call-capable provider or backend token is configured, keep the existing dependency output and deterministic fast path behavior.
+- Construct the read-only tool wrappers and configured provider only for the scheduling endpoint when `scheduling_retrieval_enabled` is true. The feature setting defaults false. If disabled, or if no tool-call-capable provider or backend token is configured, keep existing dependency output and deterministic fast-path behavior.
 - Preserve the HTTP route, auth dependency, response model, workflow ID, candidate revision, and approval flags.
 
 - [ ] **Step 1: Write graph/API tests** `test_graph_fast_path_does_not_call_retriever`, `test_graph_retrieves_before_dependency_validation`, `test_graph_safe_stop_skips_candidate_generation`, and `test_scheduling_api_keeps_existing_auth_and_response_contract`.
