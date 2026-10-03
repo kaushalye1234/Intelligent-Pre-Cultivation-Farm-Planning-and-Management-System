@@ -1,0 +1,24 @@
+{
+  "contractVersion": 1,
+  "analysisId": "44444444-4444-4444-4444-444444444444",
+  "inspectionImageId": "33333333-3333-3333-3333-333333333333",
+  "visibleFindings": ["Brown lesions and surrounding yellowing are visible."],
+  "possibleConcerns": ["Possible fungal-type crop-health issue"],
+  "severity": "Moderate",
+  "uncertainty": "Requires further assessment; this is not a confirmed diagnosis.",
+  "actions": [
+    { "actionType": "RemoveAffectedResidue", "order": 0, "origin": "AiSuggested", "sourcePolicyIds": ["doa-rice"] },
+    { "actionType": "InspectNearbyPlants", "order": 1, "origin": "OfficerAdded", "sourcePolicyIds": [] }
+  ],
+  "sourceReferences": [
+    {
+      "sourcePolicyId": "doa-rice",
+      "organization": "Sri Lanka Department of Agriculture",
+      "title": "Rice crop-health guidance",
+      "url": "https://doa.gov.lk/rice/health",
+      "sourceStage": "Stage1"
+    }
+  ],
+  "requiresFurtherAssessment": true,
+  "officerEditedFields": ["visibleFindings", "actions"]
+}

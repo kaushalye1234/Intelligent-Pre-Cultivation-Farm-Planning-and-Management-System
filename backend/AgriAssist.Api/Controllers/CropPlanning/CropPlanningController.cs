@@ -154,4 +154,9 @@ public sealed class CropPlanningController(ICropPlanningService cropPlanningServ
     [HttpGet("requests/{id:guid}/history")]
     public async Task<ActionResult<IReadOnlyList<CropPlanHistoryResponse>>> GetHistory(Guid id, CancellationToken cancellationToken) =>
         Ok(await cropPlanningService.GetCropPlanHistoryAsync(id, cancellationToken));
+
+    [HttpGet("requests/{id:guid}/approved-plan")]
+    [Authorize(Roles = nameof(ApplicationRole.Farmer))]
+    public async Task<ActionResult<FarmerApprovedPlanResponse>> GetApprovedPlan(Guid id, CancellationToken cancellationToken) =>
+        Ok(await cropPlanningService.GetApprovedPlanAsync(id, cancellationToken));
 }

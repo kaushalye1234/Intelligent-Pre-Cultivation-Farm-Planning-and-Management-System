@@ -24,5 +24,7 @@ public enum ApprovalDecisionType
     Approved = 1,
     Rejected = 2,
     RevisionRequested = 3,
-    Cancelled = 4
+    Cancelled = 4,
+    GuidanceIncluded = 5,
+    GuidanceRejected = 6
 }

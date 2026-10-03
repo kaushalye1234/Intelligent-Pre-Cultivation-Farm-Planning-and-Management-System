@@ -167,4 +167,68 @@ describe('WorkflowReviewPage', () => {
       idempotencyKey: expect.any(String),
     })))
   })
+
+  it('requires an explicit crop-health guidance decision before approval', async () => {
+    const pendingGuidance: WorkflowReview = {
+      ...review,
+      steps: [{
+        id: 'scheduling-1',
+        agentName: 'SchedulingValidationAgent',
+        stepName: 'Scheduling',
+        sequence: 4,
+        candidateRevision: 2,
+        status: 3,
+        input: {},
+        output: {
+          contractVersion: 2,
+          status: 'CandidateReady',
+          warnings: [],
+          constraints: [],
+          candidateTasks: [],
+          candidateIrrigation: [],
+          candidateReservations: [],
+          cropHealthCandidateTasks: [],
+          cropHealthGuidance: {
+            cropHealthObservation: 'Yellowing was visible on the submitted leaf image.',
+            possibleConcern: 'This may indicate a crop-health issue.',
+            uncertaintyGuidance: 'One image does not confirm a diagnosis.',
+            prePlantingActions: ['Complete field sanitation before planting.'],
+            monitoringActions: ['Monitor the crop for recurring symptoms during early growth.'],
+            escalationGuidance: 'Request further assessment if symptoms spread.',
+            whyThisIsRecommended: 'The guidance is based on reviewed inspection evidence.',
+            decision: 'PendingDecision',
+          },
+        },
+      }],
+    }
+    vi.spyOn(api, 'get').mockImplementation(async (url) => {
+      if (url === '/task-approval/workflows/workflow-1') return { data: pendingGuidance } as never
+      if (url === '/crop-plans/plan-1/pre-planting-assessment') return { data: null } as never
+      throw new Error('Unexpected GET ' + url)
+    })
+    const post = vi.spyOn(api, 'post').mockResolvedValue({ data: pendingGuidance } as never)
+
+    render(
+      <MemoryRouter initialEntries={['/task-approval/workflows/workflow-1']}>
+        <AuthContext.Provider value={{ user: officer, token: 'token', isAuthenticated: true, isLoading: false, passwordChangeUser: null, hasPasswordChangeSession: false, login: vi.fn(), changeTemporaryPassword: vi.fn(), logout: vi.fn() }}>
+          <Routes><Route path="/task-approval/workflows/:id" element={<WorkflowReviewPage />} /></Routes>
+        </AuthContext.Provider>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('Yellowing was visible on the submitted leaf image.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /approve workflow/i })).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: /include guidance/i }))
+    await userEvent.click(screen.getByRole('button', { name: /confirm guidance decision/i }))
+
+    await waitFor(() => expect(post).toHaveBeenCalledWith(
+      '/task-approval/workflows/workflow-1/crop-health-guidance-decision',
+      expect.objectContaining({
+        candidateRevision: 2,
+        expectedWorkflowVersion: 7,
+        decision: 'Included',
+        rejectionReason: null,
+      }),
+    ))
+  })
 })

@@ -659,6 +659,9 @@ namespace AgriAssist.Api.Migrations
                     b.Property<Guid>("FieldId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("FrozenImageAnalysisReviewId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("InspectorUserId")
                         .HasColumnType("uuid");
 
@@ -698,6 +701,8 @@ namespace AgriAssist.Api.Migrations
                         .HasFilter("\"CropPlanRequestId\" IS NOT NULL AND \"Purpose\" = 'PrePlanting'");
 
                     b.HasIndex("FieldId");
+
+                    b.HasIndex("FrozenImageAnalysisReviewId");
 
                     b.HasIndex("InspectorUserId");
 
@@ -758,6 +763,14 @@ namespace AgriAssist.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("AssetId")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("ContentSha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<string>("ContentType")
                         .IsRequired()
                         .HasMaxLength(80)
@@ -769,11 +782,23 @@ namespace AgriAssist.Api.Migrations
                     b.Property<Guid?>("CreatedByUserId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("DeliveryType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasDefaultValue("upload");
+
                     b.Property<Guid>("FieldInspectionId")
                         .HasColumnType("uuid");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
+
+                    b.Property<bool>("IsRepresentativeForAi")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
 
                     b.Property<string>("PublicId")
                         .IsRequired()
@@ -781,6 +806,9 @@ namespace AgriAssist.Api.Migrations
                         .HasColumnType("character varying(240)");
 
                     b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("StorageVersion")
                         .HasColumnType("bigint");
 
                     b.Property<DateTime>("UpdatedAt")
@@ -796,9 +824,184 @@ namespace AgriAssist.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("FieldInspectionId");
+                    b.HasIndex("FieldInspectionId")
+                        .IsUnique()
+                        .HasFilter("\"IsRepresentativeForAi\" = TRUE");
 
                     b.ToTable("InspectionImages");
+                });
+
+            modelBuilder.Entity("AgriAssist.Api.Models.Inspections.InspectionImageAnalysis", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AnalysisFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("CropTypeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("CropVarietyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EvidencePacketJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("FailureCategory")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("FailureMessageSafe")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid>("FieldInspectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("FinalResultJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<int>("ImagePreprocessingVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("InputSnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<Guid>("InspectionImageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Model")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("Pass1ResultJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<int>("PromptContractVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<int>("RelevanceRuleVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SchemaVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SourcePolicyHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("SourcePolicyVersion")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1);
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FieldInspectionId");
+
+                    b.HasIndex("InspectionImageId");
+
+                    b.HasIndex("InspectionImageId", "AnalysisFingerprint")
+                        .IsUnique()
+                        .HasFilter("\"Status\" IN ('Running', 'Succeeded')");
+
+                    b.ToTable("InspectionImageAnalyses");
+                });
+
+            modelBuilder.Entity("AgriAssist.Api.Models.Inspections.InspectionImageAnalysisReview", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Disposition")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("EditedFieldsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<Guid>("InspectionImageAnalysisId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("ReviewedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ReviewedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ReviewedProjectionJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("StaffNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReviewedByUserId");
+
+                    b.HasIndex("InspectionImageAnalysisId", "ReviewedAt");
+
+                    b.ToTable("InspectionImageAnalysisReviews");
                 });
 
             modelBuilder.Entity("AgriAssist.Api.Models.Inspections.InspectionObservation", b =>
@@ -1833,6 +2036,11 @@ namespace AgriAssist.Api.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("AgriAssist.Api.Models.Inspections.InspectionImageAnalysisReview", "FrozenImageAnalysisReview")
+                        .WithMany()
+                        .HasForeignKey("FrozenImageAnalysisReviewId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("AgriAssist.Api.Models.Shared.AppUser", "InspectorUser")
                         .WithMany()
                         .HasForeignKey("InspectorUserId")
@@ -1842,6 +2050,8 @@ namespace AgriAssist.Api.Migrations
                     b.Navigation("CropPlanRequest");
 
                     b.Navigation("Field");
+
+                    b.Navigation("FrozenImageAnalysisReview");
 
                     b.Navigation("InspectorUser");
                 });
@@ -1866,6 +2076,44 @@ namespace AgriAssist.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("FieldInspection");
+                });
+
+            modelBuilder.Entity("AgriAssist.Api.Models.Inspections.InspectionImageAnalysis", b =>
+                {
+                    b.HasOne("AgriAssist.Api.Models.Inspections.FieldInspection", "FieldInspection")
+                        .WithMany()
+                        .HasForeignKey("FieldInspectionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AgriAssist.Api.Models.Inspections.InspectionImage", "InspectionImage")
+                        .WithMany()
+                        .HasForeignKey("InspectionImageId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("FieldInspection");
+
+                    b.Navigation("InspectionImage");
+                });
+
+            modelBuilder.Entity("AgriAssist.Api.Models.Inspections.InspectionImageAnalysisReview", b =>
+                {
+                    b.HasOne("AgriAssist.Api.Models.Inspections.InspectionImageAnalysis", "InspectionImageAnalysis")
+                        .WithMany()
+                        .HasForeignKey("InspectionImageAnalysisId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AgriAssist.Api.Models.Shared.AppUser", "ReviewedByUser")
+                        .WithMany()
+                        .HasForeignKey("ReviewedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("InspectionImageAnalysis");
+
+                    b.Navigation("ReviewedByUser");
                 });
 
             modelBuilder.Entity("AgriAssist.Api.Models.Inspections.InspectionObservation", b =>

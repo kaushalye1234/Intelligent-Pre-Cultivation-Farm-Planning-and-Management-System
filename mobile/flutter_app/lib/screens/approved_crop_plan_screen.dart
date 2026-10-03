@@ -8,22 +8,17 @@ import '../ui/journey_date.dart';
 import '../ui/journey_widgets.dart';
 
 class ApprovedCropPlanScreen extends StatelessWidget {
-  const ApprovedCropPlanScreen({
-    super.key,
-    required this.plan,
-    required this.workflowId,
-  });
+  const ApprovedCropPlanScreen({super.key, required this.plan});
 
   final CropPlanRecord plan;
-  final String workflowId;
 
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     return Scaffold(
       appBar: AppBar(title: const Text('Final crop plan')),
-      body: FutureBuilder<ApprovedWorkflowDetail>(
-        future: state.approvedWorkflowDetail(workflowId),
+      body: FutureBuilder<FarmerApprovedPlan>(
+        future: state.farmerApprovedPlan(plan.id),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
             return ListView(
@@ -42,9 +37,9 @@ class ApprovedCropPlanScreen extends StatelessWidget {
             return const Center(child: CircularProgressIndicator());
           }
           final detail = snapshot.data!;
-          if (detail.status != 4 ||
-              detail.approvedAt == null ||
-              detail.workflowId != workflowId) {
+          if (detail.contractVersion != 1 ||
+              detail.approvedAt.isEmpty ||
+              detail.cropPlanRequestId != plan.id) {
             return ListView(
               padding: const EdgeInsets.all(20),
               children: [
@@ -70,16 +65,14 @@ class ApprovedCropPlanScreen extends StatelessWidget {
           final farm = state.farms
               .where((item) => item.id == plan.farmId)
               .firstOrNull;
-          final workflow = state.planWorkflows[plan.id];
-          final tasks = state.tasks
-              .where((item) => item.generatedByWorkflowId == workflowId)
-              .toList();
-          final schedules = state.irrigationSchedules
-              .where((item) => item.generatedByWorkflowId == workflowId)
-              .toList();
+          final tasks = detail.approvedTasks;
+          final schedules = detail.approvedIrrigationSchedules;
           final title = [
-            crop?.name ?? 'Crop',
-            if (variety != null) variety.name,
+            detail.cropName.isNotEmpty ? detail.cropName : crop?.name ?? 'Crop',
+            if (detail.varietyName != null)
+              detail.varietyName!
+            else if (variety != null)
+              variety.name,
           ].join(' - ');
 
           return ListView(
@@ -113,7 +106,7 @@ class ApprovedCropPlanScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 3),
                           Text(
-                            'Approved ${journeyDate(detail.approvedAt!)}',
+                            'Approved ${journeyDate(detail.approvedAt)}',
                             style: Theme.of(context).textTheme.bodyMedium,
                           ),
                         ],
@@ -269,6 +262,91 @@ class ApprovedCropPlanScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 9),
               ],
+              if (detail.cropHealth != null) ...[
+                const SizedBox(height: 24),
+                const JourneySectionHeading(
+                  title: 'Crop Health Guidance',
+                  subtitle:
+                      'Reviewed by field staff and approved for this plan.',
+                ),
+                const SizedBox(height: 12),
+                JourneyCard(
+                  color: AgriColors.sage,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Crop Health Observation',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(detail.cropHealth!.cropHealthObservation),
+                      const Divider(height: 26),
+                      Text(
+                        'Possible Concern',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(detail.cropHealth!.possibleConcern),
+                      const SizedBox(height: 8),
+                      JourneyNotice(
+                        message: detail.cropHealth!.uncertaintyGuidance,
+                      ),
+                      if (detail
+                          .cropHealth!
+                          .approvedPrePlantingActions
+                          .isNotEmpty) ...[
+                        const Divider(height: 26),
+                        Text(
+                          'Before Planting',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 6),
+                        for (final action
+                            in detail.cropHealth!.approvedPrePlantingActions)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 5),
+                            child: Text('• $action'),
+                          ),
+                      ],
+                      if (detail
+                          .cropHealth!
+                          .approvedMonitoringActions
+                          .isNotEmpty) ...[
+                        const Divider(height: 26),
+                        Text(
+                          'During Early Growth',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 6),
+                        for (final action
+                            in detail.cropHealth!.approvedMonitoringActions)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 5),
+                            child: Text('• $action'),
+                          ),
+                      ],
+                      if (detail.cropHealth!.escalationGuidance?.isNotEmpty ==
+                          true) ...[
+                        const Divider(height: 26),
+                        Text(
+                          'When to Ask for Help',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(detail.cropHealth!.escalationGuidance!),
+                      ],
+                      const Divider(height: 26),
+                      Text(
+                        'Why This Is Recommended',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(detail.cropHealth!.whyThisIsRecommended),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 24),
               const JourneySectionHeading(
                 title: 'Tasks',
@@ -296,10 +374,8 @@ class ApprovedCropPlanScreen extends StatelessWidget {
                             ),
                           ),
                           JourneyStatusPill(
-                            task.statusLabel,
-                            tone: task.status == 3 || task.status == 6
-                                ? JourneyTone.success
-                                : JourneyTone.warning,
+                            task.status,
+                            tone: JourneyTone.success,
                           ),
                         ],
                       ),
@@ -355,10 +431,8 @@ class ApprovedCropPlanScreen extends StatelessWidget {
                             ),
                           ),
                           JourneyStatusPill(
-                            schedule.statusLabel,
-                            tone: schedule.status == 2 || schedule.status == 5
-                                ? JourneyTone.success
-                                : JourneyTone.warning,
+                            schedule.status,
+                            tone: JourneyTone.success,
                           ),
                         ],
                       ),
@@ -380,7 +454,7 @@ class ApprovedCropPlanScreen extends StatelessWidget {
                 const SizedBox(height: 9),
               ],
               const SizedBox(height: 24),
-              const JourneySectionHeading(title: 'Approval / Workflow'),
+              const JourneySectionHeading(title: 'Approval'),
               const SizedBox(height: 12),
               JourneyCard(
                 child: Column(
@@ -392,21 +466,14 @@ class ApprovedCropPlanScreen extends StatelessWidget {
                     ),
                     JourneyInfoRow(
                       label: 'Approved on',
-                      value: journeyDate(detail.approvedAt!),
+                      value: journeyDate(detail.approvedAt),
                       icon: Icons.event_available_outlined,
                     ),
-                    JourneyInfoRow(
-                      label: 'Workflow status',
-                      value: workflow?.status == 4
-                          ? workflow!.statusLabel
-                          : 'Completed',
-                      icon: Icons.account_tree_outlined,
+                    const JourneyInfoRow(
+                      label: 'Plan source',
+                      value: 'Approved farmer plan',
+                      icon: Icons.verified_user_outlined,
                     ),
-                    if (workflow?.currentStep.isNotEmpty == true)
-                      JourneyInfoRow(
-                        label: 'Latest stage',
-                        value: workflow!.currentStep,
-                      ),
                   ],
                 ),
               ),

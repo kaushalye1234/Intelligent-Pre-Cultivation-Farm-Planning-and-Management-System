@@ -15,14 +15,17 @@ public sealed class TaskApprovalController(
     IWorkflowApprovalService workflowApprovalService) : ControllerBase
 {
     [HttpGet("workflows")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.FieldOfficer)},{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
     public async Task<ActionResult<PagedResult<WorkflowSummaryResponse>>> SearchWorkflows([FromQuery] WorkflowApprovalQuery query, CancellationToken cancellationToken) =>
         Ok(await workflowApprovalService.SearchAsync(query, cancellationToken));
 
     [HttpGet("workflows/{id:guid}")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.FieldOfficer)},{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
     public async Task<ActionResult<WorkflowReviewResponse>> GetWorkflow(Guid id, CancellationToken cancellationToken) =>
         Ok(await workflowApprovalService.GetAsync(id, cancellationToken));
 
     [HttpGet("workflows/{id:guid}/history")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.FieldOfficer)},{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
     public async Task<ActionResult<WorkflowHistoryResponse>> GetWorkflowHistory(Guid id, CancellationToken cancellationToken) =>
         Ok(await workflowApprovalService.GetHistoryAsync(id, cancellationToken));
 
@@ -30,6 +33,16 @@ public sealed class TaskApprovalController(
     [Authorize(Roles = $"{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
     public async Task<ActionResult<WorkflowReviewResponse>> GenerateWorkflowCandidate(Guid id, CancellationToken cancellationToken) =>
         Ok(await workflowApprovalService.GenerateCandidateAsync(id, cancellationToken));
+
+    [HttpPost("workflows/{id:guid}/crop-health-guidance-decision")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
+    public async Task<ActionResult<WorkflowReviewResponse>> DecideCropHealthGuidance(Guid id, CropHealthGuidanceDecisionRequest request, CancellationToken cancellationToken) =>
+        Ok(await workflowApprovalService.DecideCropHealthGuidanceAsync(id, request, cancellationToken));
+
+    [HttpPut("workflows/{id:guid}/crop-health-actions/{actionKey}")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
+    public async Task<ActionResult<WorkflowReviewResponse>> UpdateCropHealthAction(Guid id, string actionKey, CropHealthCandidateOperationalRequest request, CancellationToken cancellationToken) =>
+        Ok(await workflowApprovalService.UpdateCropHealthCandidateAsync(id, actionKey, request, cancellationToken));
 
     [HttpPost("workflows/{id:guid}/approve")]
     [Authorize(Roles = $"{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]

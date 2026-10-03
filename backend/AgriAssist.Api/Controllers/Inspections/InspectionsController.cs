@@ -99,4 +99,12 @@ public sealed class InspectionsController(IInspectionService inspectionService) 
     [Authorize(Roles = $"{nameof(ApplicationRole.FieldOfficer)},{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
     public async Task<ActionResult<InspectionImageResponse>> UploadImage(Guid id, IFormFile file, CancellationToken cancellationToken) =>
         Ok(await inspectionService.UploadImageAsync(id, file, cancellationToken));
+
+    [HttpGet("{id:guid}/images/{imageId:guid}/content")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.FieldOfficer)},{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
+    public async Task<IActionResult> ImageContent(Guid id, Guid imageId, CancellationToken cancellationToken)
+    {
+        var image = await inspectionService.GetInspectionImageContentAsync(id, imageId, cancellationToken);
+        return File(image.Bytes, image.ContentType);
+    }
 }

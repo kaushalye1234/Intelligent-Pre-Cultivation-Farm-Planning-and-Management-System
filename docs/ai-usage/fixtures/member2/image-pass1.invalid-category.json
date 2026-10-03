@@ -1,0 +1,9 @@
+{
+  "contractVersion": 1,
+  "visibleFindings": ["A mark is visible."],
+  "possibleIssueCategories": ["ConfirmedBlastDisease"],
+  "severityIndicators": [],
+  "uncertainty": "Cause is unknown.",
+  "requiresFurtherAssessment": true,
+  "searchIntents": []
+}

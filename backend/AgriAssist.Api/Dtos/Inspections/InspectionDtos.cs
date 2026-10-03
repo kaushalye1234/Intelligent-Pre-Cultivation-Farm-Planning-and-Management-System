@@ -30,4 +30,11 @@ public sealed record FollowUpRecommendationRequest(Guid CropIssueId, string Reco
 public sealed record FollowUpRecommendationUpdateRequest(bool IsCompleted);
 public sealed record FollowUpRecommendationResponse(Guid Id, Guid CropIssueId, string Recommendation, DateTime? DueAt, bool IsCompleted);
 
-public sealed record InspectionImageResponse(Guid Id, Guid FieldInspectionId, string Url, string PublicId, string ContentType, long SizeBytes);
+public sealed record InspectionImageResponse(
+    Guid Id,
+    Guid FieldInspectionId,
+    string Url,
+    string ContentType,
+    long SizeBytes,
+    bool IsRepresentativeForAi);
+public sealed record InspectionImageContent(byte[] Bytes, string ContentType);

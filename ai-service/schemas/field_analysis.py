@@ -5,6 +5,33 @@ from uuid import UUID
 from pydantic import ConfigDict, Field, field_validator
 
 from schemas.common import AgentEnvelope, CamelModel
+from schemas.inspection_image_analysis import CropHealthActionType, ValidatedSourceReference
+
+CROP_FIELD_ANALYSIS_CONTRACT_VERSION = 2
+REVIEWED_IMAGE_ANALYSIS_CONTRACT_VERSION = 1
+
+
+class ReviewedCropHealthActionInput(CamelModel):
+    model_config = ConfigDict(extra="forbid")
+    action_type: CropHealthActionType = Field(alias="actionType")
+    order: int = Field(ge=0, le=6)
+    origin: Literal["AiSuggested", "OfficerAdded"]
+    source_policy_ids: list[str] = Field(alias="sourcePolicyIds", max_length=3)
+
+
+class ReviewedImageAnalysisInputProjection(CamelModel):
+    model_config = ConfigDict(extra="forbid")
+    contract_version: Literal[1] = Field(default=REVIEWED_IMAGE_ANALYSIS_CONTRACT_VERSION, alias="contractVersion")
+    analysis_id: UUID = Field(alias="analysisId")
+    inspection_image_id: UUID = Field(alias="inspectionImageId")
+    visible_findings: list[str] = Field(alias="visibleFindings", max_length=8)
+    possible_concerns: list[str] = Field(alias="possibleConcerns", max_length=5)
+    severity: Literal["Low", "Moderate", "High", "Unknown"]
+    uncertainty: str = Field(max_length=600)
+    actions: list[ReviewedCropHealthActionInput] = Field(max_length=7)
+    source_references: list[ValidatedSourceReference] = Field(alias="sourceReferences", max_length=3)
+    requires_further_assessment: bool = Field(alias="requiresFurtherAssessment")
+    officer_edited_fields: list[str] = Field(alias="officerEditedFields", max_length=6)
 
 
 class FieldAnalysisInput(CamelModel):
@@ -16,6 +43,7 @@ class FieldAnalysisInput(CamelModel):
     requested_analysis: list[str] = Field(default_factory=list, alias="requestedAnalysis")
     crop_reference_profile_id: UUID | None = Field(default=None, alias="cropReferenceProfileId")
     agent_step_id: UUID | None = Field(default=None, alias="agentStepId")
+    reviewed_image_analysis: ReviewedImageAnalysisInputProjection | None = Field(default=None, alias="reviewedImageAnalysis")
 
     @field_validator("requested_analysis")
     @classmethod
@@ -45,6 +73,7 @@ class OpenIssueSummary(CamelModel):
 class CropFieldAnalysisOutput(AgentEnvelope):
     model_config = ConfigDict(extra="forbid")
 
+    contract_version: Literal[2] = Field(default=CROP_FIELD_ANALYSIS_CONTRACT_VERSION, alias="contractVersion")
     status: Literal["Analyzed", "SafeFailure"]
     field_condition: FieldCondition = Field(alias="fieldCondition")
     open_issues: list[OpenIssueSummary] = Field(default_factory=list, alias="openIssues")

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Security.Cryptography;
 using AgriAssist.Api.Data;
 using AgriAssist.Api.Dtos.Inspections;
 using AgriAssist.Api.Dtos.Shared;
@@ -77,7 +78,11 @@ public sealed class InspectionWorkflowTests
         var image = await service.UploadImageAsync(inspection.Id, CreateFormFile(), CancellationToken.None);
         var images = await service.GetInspectionImagesAsync(inspection.Id, CancellationToken.None);
 
-        Assert.Equal("agriassist/inspection.jpg", image.PublicId);
+        var stored = await db.InspectionImages.SingleAsync(item => item.Id == image.Id);
+        Assert.Equal("agriassist/inspection", stored.PublicId);
+        Assert.Equal("authenticated", stored.DeliveryType);
+        Assert.NotEmpty(stored.ContentSha256!);
+        Assert.Equal($"/api/inspections/{inspection.Id}/images/{image.Id}/content", image.Url);
         Assert.Single(images);
         Assert.Equal("image/jpeg", images[0].ContentType);
     }
@@ -268,12 +273,26 @@ public sealed class InspectionWorkflowTests
     private sealed class SuccessfulCloudinaryService : ICloudinaryService
     {
         public Task<CloudinaryUploadResult> UploadInspectionImageAsync(IFormFile file, CancellationToken cancellationToken) =>
-            Task.FromResult(new CloudinaryUploadResult("https://res.cloudinary.test/inspection.jpg", "agriassist/inspection.jpg", file.ContentType, file.Length));
+            Task.FromResult(new CloudinaryUploadResult(
+                "https://res.cloudinary.test/inspection.jpg",
+                "agriassist/inspection",
+                "asset-1",
+                1,
+                "authenticated",
+                file.ContentType,
+                file.Length,
+                Convert.ToHexString(SHA256.HashData([0xff, 0xd8, 0xff, 0xd9])).ToLowerInvariant()));
+
+        public Task<CloudinaryRetrievedAsset> RetrieveInspectionImageAsync(string publicId, long? storageVersion, string deliveryType, CancellationToken cancellationToken) =>
+            Task.FromResult(new CloudinaryRetrievedAsset([0xff, 0xd8, 0xff, 0xd9], "image/jpeg"));
     }
 
     private sealed class ThrowingCloudinaryService : ICloudinaryService
     {
         public Task<CloudinaryUploadResult> UploadInspectionImageAsync(IFormFile file, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Cloudinary unavailable.");
+
+        public Task<CloudinaryRetrievedAsset> RetrieveInspectionImageAsync(string publicId, long? storageVersion, string deliveryType, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("Cloudinary unavailable.");
     }
 }

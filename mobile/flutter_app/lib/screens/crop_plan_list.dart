@@ -202,10 +202,7 @@ class _PlanCard extends StatelessWidget {
       Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => canOpenFinal
-              ? ApprovedCropPlanScreen(
-                  plan: plan,
-                  workflowId: workflow!.workflowId,
-                )
+              ? ApprovedCropPlanScreen(plan: plan)
               : PlanningProgressScreen(planId: plan.id),
         ),
       );

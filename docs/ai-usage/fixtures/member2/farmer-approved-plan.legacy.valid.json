@@ -1,0 +1,17 @@
+{
+  "contractVersion": 1,
+  "cropPlanRequestId": "77777777-7777-7777-7777-777777777777",
+  "objective": "Grow rice safely.",
+  "cropName": "Rice",
+  "varietyName": null,
+  "preferredStartDate": "2026-10-01",
+  "preferredEndDate": "2027-01-01",
+  "approvedAt": "2026-09-30T08:00:00Z",
+  "fieldSummary": "The field is ready with minor preparation.",
+  "weatherSummary": "Seasonal rain is expected.",
+  "warnings": [],
+  "recommendations": [],
+  "approvedTasks": [],
+  "approvedIrrigationSchedules": [],
+  "cropHealth": null
+}

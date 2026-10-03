@@ -1,9 +1,12 @@
 from datetime import date, datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import Field, field_validator
 
 from schemas.common import AgentEnvelope, CamelModel
+
+MEMBER3_CROP_HEALTH_CONSIDERATION_CONTRACT_VERSION = 1
 
 SUFFICIENT = "Sufficient"
 INSUFFICIENT = "Insufficient"
@@ -109,6 +112,16 @@ class Member2FieldAnalysisContext(CamelModel):
     priority: str
     warnings: list[str] = Field(default_factory=list)
     requires_human_review: bool = Field(alias="requiresHumanReview")
+    reviewed_crop_issue_actions: list["Member2CropHealthActionContext"] = Field(
+        default_factory=list, alias="reviewedCropIssueActions", max_length=20
+    )
+
+
+class Member2CropHealthActionContext(CamelModel):
+    action_key: str = Field(alias="actionKey", min_length=1, max_length=80)
+    action_type: str = Field(alias="actionType", min_length=1, max_length=80)
+    order: int = Field(ge=0, le=20)
+    timing_category: str = Field(alias="timingCategory", min_length=1, max_length=80)
 
 
 class WeatherResourceInput(CamelModel):
@@ -167,6 +180,16 @@ class ResourceRequirementAssessment(CamelModel):
     reason: str | None = None
 
 
+class CropHealthWeatherResourceConsideration(CamelModel):
+    contract_version: Literal[1] = Field(
+        default=MEMBER3_CROP_HEALTH_CONSIDERATION_CONTRACT_VERSION,
+        alias="contractVersion",
+    )
+    action_key: str = Field(alias="actionKey", min_length=1, max_length=80)
+    consideration_type: str = Field(alias="considerationType", min_length=1, max_length=80)
+    note: str = Field(min_length=1, max_length=500)
+
+
 class WeatherResourceOutput(AgentEnvelope):
     weather_risk: str = Field(alias="weatherRisk")
     weather_summary: str = Field(alias="weatherSummary")
@@ -177,3 +200,6 @@ class WeatherResourceOutput(AgentEnvelope):
     requirement_source: RequirementSource | None = Field(default=None, alias="requirementSource")
     reason: str | None = None
     tools_used: list[str] = Field(default_factory=list, alias="toolsUsed")
+    crop_health_considerations: list[CropHealthWeatherResourceConsideration] = Field(
+        default_factory=list, alias="cropHealthConsiderations", max_length=20
+    )

@@ -9,7 +9,10 @@ namespace AgriAssist.Api.Controllers.CropPlanning;
 [ApiController]
 [Route("api/crop-plans")]
 [Authorize]
-public sealed class CropPlansWorkflowController(ICropPlanningService cropPlanningService) : ControllerBase
+public sealed class CropPlansWorkflowController(
+    ICropPlanningService cropPlanningService,
+    AgriAssist.Api.Services.Inspections.IInspectionService inspectionService,
+    AgriAssist.Api.Services.Inspections.IInspectionImageAnalysisService imageAnalysisService) : ControllerBase
 {
     [HttpPost("{id:guid}/start-ai-workflow")]
     [Authorize(Roles = nameof(ApplicationRole.Admin))]
@@ -26,6 +29,14 @@ public sealed class CropPlansWorkflowController(ICropPlanningService cropPlannin
     public async Task<ActionResult<PrePlantingContextResponse>> GetPrePlantingContext(Guid id, CancellationToken cancellationToken) =>
         Ok(await cropPlanningService.GetPrePlantingContextAsync(id, cancellationToken));
 
+    [HttpPost("{id:guid}/pre-planting-assessment/note-suggestions")]
+    [Authorize(Roles = nameof(ApplicationRole.FieldOfficer))]
+    public async Task<ActionResult<InspectionNoteAssistanceResponse>> GenerateNoteSuggestions(
+        Guid id,
+        InspectionNoteAssistanceRequest request,
+        CancellationToken cancellationToken) =>
+        Ok(await cropPlanningService.GenerateInspectionNoteSuggestionsAsync(id, request, cancellationToken));
+
     [HttpPut("{id:guid}/pre-planting-assessment")]
     [Authorize(Roles = nameof(ApplicationRole.FieldOfficer))]
     public async Task<ActionResult<PrePlantingAssessmentResponse>> SavePrePlantingAssessment(
@@ -40,6 +51,43 @@ public sealed class CropPlansWorkflowController(ICropPlanningService cropPlannin
         Guid id,
         CancellationToken cancellationToken) =>
         Ok(await cropPlanningService.SubmitPrePlantingAssessmentAsync(id, cancellationToken));
+
+    [HttpPut("{id:guid}/pre-planting-assessment/representative-image/{imageId:guid}")]
+    [Authorize(Roles = nameof(ApplicationRole.FieldOfficer))]
+    public async Task<ActionResult<AgriAssist.Api.Dtos.Inspections.InspectionImageResponse>> SelectRepresentativeImage(
+        Guid id,
+        Guid imageId,
+        CancellationToken cancellationToken) =>
+        Ok(await inspectionService.SelectRepresentativeImageAsync(id, imageId, cancellationToken));
+
+    [HttpPost("{id:guid}/pre-planting-assessment/image-analysis")]
+    [Authorize(Roles = nameof(ApplicationRole.FieldOfficer))]
+    public async Task<ActionResult<AgriAssist.Api.Dtos.Inspections.InspectionImageAnalysisStateResponse>> AnalyzeRepresentativeImage(
+        Guid id,
+        CancellationToken cancellationToken) =>
+        Ok(await imageAnalysisService.AnalyzeAsync(id, cancellationToken));
+
+    [HttpGet("{id:guid}/pre-planting-assessment/image-analysis")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.FieldOfficer)},{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
+    public async Task<ActionResult<AgriAssist.Api.Dtos.Inspections.InspectionImageAnalysisStateResponse>> GetRepresentativeImageAnalysis(
+        Guid id,
+        CancellationToken cancellationToken) =>
+        Ok(await imageAnalysisService.GetCurrentAsync(id, cancellationToken));
+
+    [HttpGet("{id:guid}/pre-planting-assessment/image-analysis/history")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.FieldOfficer)},{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
+    public async Task<ActionResult<IReadOnlyList<AgriAssist.Api.Dtos.Inspections.InspectionImageAnalysisAuditItemResponse>>> GetRepresentativeImageAnalysisHistory(
+        Guid id,
+        CancellationToken cancellationToken) =>
+        Ok(await imageAnalysisService.GetHistoryAsync(id, cancellationToken));
+
+    [HttpPost("{id:guid}/pre-planting-assessment/image-analysis/review")]
+    [Authorize(Roles = nameof(ApplicationRole.FieldOfficer))]
+    public async Task<ActionResult<AgriAssist.Api.Dtos.Inspections.InspectionImageAnalysisReviewResponse>> ReviewRepresentativeImageAnalysis(
+        Guid id,
+        AgriAssist.Api.Dtos.Inspections.InspectionImageAnalysisReviewRequest request,
+        CancellationToken cancellationToken) =>
+        Ok(await imageAnalysisService.ReviewAsync(id, request, cancellationToken));
 
     [HttpPost("{id:guid}/run-field-analysis")]
     [Authorize(Roles = nameof(ApplicationRole.FieldOfficer))]

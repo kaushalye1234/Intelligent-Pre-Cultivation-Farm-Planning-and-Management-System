@@ -2,10 +2,14 @@
 using AgriAssist.Api.Dtos.CropPlanning;
 using System.Text.Json;
 using AgriAssist.Api.Dtos.Shared;
+using AgriAssist.Api.Dtos.Inspections;
+using AgriAssist.Api.Dtos.TaskApproval;
 using AgriAssist.Api.ExternalServices.AgenticAI;
 using AgriAssist.Api.Models.CropPlanning;
 using AgriAssist.Api.Models.Inspections;
 using AgriAssist.Api.Models.Shared;
+using AgriAssist.Api.Models.TaskApproval;
+using AgriAssist.Api.Services.Inspections;
 using AgriAssist.Api.Services.CropPlanning;
 using AgriAssist.Api.Services.Shared;
 using AgriAssist.Api.Validators.CropPlanning;
@@ -769,6 +773,125 @@ public sealed class CropPlanningAiWorkflowTests
         Assert.Equal(AgentStepStatus.Failed, workflow.Steps.Single().Status);
         Assert.Equal("AI_SERVICE_UNAVAILABLE", workflow.Steps.Single().ErrorCode);
         Assert.False((await db.AgentValidationResults.SingleAsync()).IsValid);
+    }
+
+    [Fact]
+    public async Task Farmer_approved_plan_keeps_legacy_or_no_image_plan_valid_without_crop_health()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.Approved);
+        var workflow = ApprovedWorkflow(data, new SchedulingValidationOutput(
+            Guid.Empty, 1, "CandidateReady", true, true, [], [], [], [], null, [], 1));
+        workflow.Steps.Single().OutputJson = JsonSerializer.Serialize(
+            JsonSerializer.Deserialize<SchedulingValidationOutput>(workflow.Steps.Single().OutputJson)! with { WorkflowId = workflow.Id });
+        db.Add(workflow);
+        await db.SaveChangesAsync();
+
+        var result = await NewService(db, data.Farmer.Id, new PlannedAiClient())
+            .GetApprovedPlanAsync(data.Request.Id, CancellationToken.None);
+
+        Assert.Equal(Member2CropHealthContractVersions.FarmerApprovedPlan, result.ContractVersion);
+        Assert.Null(result.CropHealth);
+        Assert.Equal(data.Request.Objective, result.Objective);
+    }
+
+    [Theory]
+    [InlineData(CropHealthGuidanceDecision.Included, true)]
+    [InlineData(CropHealthGuidanceDecision.Rejected, false)]
+    public async Task Farmer_approved_plan_includes_only_explicitly_approved_crop_health_guidance(
+        CropHealthGuidanceDecision decision,
+        bool expectedCropHealth)
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.Approved);
+        var workflow = new AgentWorkflow
+        {
+            CropPlanRequest = data.Request,
+            InitiatedByUser = data.Farmer,
+            Objective = data.Request.Objective,
+            Status = AgentWorkflowStatus.Completed,
+            CurrentStep = "Completed",
+            CompletedAt = DateTime.UtcNow
+        };
+        var candidate = new CropHealthCandidateTask(
+            CropHealthActionCatalog.ActionKey(Guid.NewGuid(), 0),
+            CropHealthActionType.MonitorSymptoms,
+            "EarlyGrowthMonitoringTask",
+            CropHealthActionCatalog.Get(CropHealthActionType.MonitorSymptoms).Title,
+            CropHealthActionCatalog.Get(CropHealthActionType.MonitorSymptoms).Description,
+            "EarlyGrowth",
+            DateTime.UtcNow.AddDays(14),
+            data.Farmer.Id,
+            true,
+            null,
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid());
+        var proposal = new SchedulingValidationOutput(
+            workflow.Id,
+            1,
+            "CandidateReady",
+            true,
+            true,
+            [],
+            [],
+            [],
+            [],
+            null,
+            [],
+            Member2CropHealthContractVersions.Member4Proposal,
+            [candidate],
+            new CropHealthGuidanceCandidate(
+                "Yellowing was visible on the submitted crop image.",
+                "The visible symptoms may indicate a crop-health issue.",
+                "The exact cause was not confirmed from one image.",
+                [],
+                [CropHealthActionCatalog.Get(CropHealthActionType.MonitorSymptoms).Description],
+                null,
+                "This guidance uses reviewed field inspection evidence.",
+                decision));
+        workflow.Steps.Add(new AgentStep
+        {
+            AgentWorkflow = workflow,
+            AgentName = "SchedulingValidationAgent",
+            StepName = "Scheduling",
+            Sequence = 4,
+            Status = AgentStepStatus.Completed,
+            OutputJson = JsonSerializer.Serialize(proposal)
+        });
+        db.Add(workflow);
+        await db.SaveChangesAsync();
+
+        var result = await NewService(db, data.Farmer.Id, new PlannedAiClient())
+            .GetApprovedPlanAsync(data.Request.Id, CancellationToken.None);
+
+        Assert.Equal(expectedCropHealth, result.CropHealth is not null);
+        if (expectedCropHealth)
+            Assert.Contains("Monitor the crop", Assert.Single(result.CropHealth!.ApprovedMonitoringActions));
+    }
+
+    private static AgentWorkflow ApprovedWorkflow(SeededPlan data, SchedulingValidationOutput proposal)
+    {
+        var workflow = new AgentWorkflow
+        {
+            CropPlanRequest = data.Request,
+            InitiatedByUser = data.Farmer,
+            Objective = data.Request.Objective,
+            Status = AgentWorkflowStatus.Completed,
+            CurrentStep = "Completed",
+            CompletedAt = DateTime.UtcNow
+        };
+        workflow.Steps.Add(new AgentStep
+        {
+            AgentWorkflow = workflow,
+            AgentName = "SchedulingValidationAgent",
+            StepName = "Scheduling",
+            Sequence = 4,
+            Status = AgentStepStatus.Completed,
+            OutputJson = JsonSerializer.Serialize(proposal)
+        });
+        return workflow;
     }
 
     private static AppDbContext NewDbContext() =>

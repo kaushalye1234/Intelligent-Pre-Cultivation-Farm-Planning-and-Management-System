@@ -1,0 +1,17 @@
+{
+  "contractVersion": 99,
+  "cropPlanRequestId": "77777777-7777-7777-7777-777777777777",
+  "objective": "Unsupported contract.",
+  "cropName": "Rice",
+  "varietyName": null,
+  "preferredStartDate": "2026-10-01",
+  "preferredEndDate": "2027-01-01",
+  "approvedAt": "2026-09-30T08:00:00Z",
+  "fieldSummary": null,
+  "weatherSummary": null,
+  "warnings": [],
+  "recommendations": [],
+  "approvedTasks": [],
+  "approvedIrrigationSchedules": [],
+  "cropHealth": null
+}

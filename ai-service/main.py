@@ -11,6 +11,8 @@ from fastapi import HTTPException
 from agents.crop_field_analysis_agent import CropFieldAnalysisAgent
 from agents.crop_finding_agent import CropFindingAgent
 from agents.crop_planning_coordinator_agent import CropPlanningCoordinatorAgent
+from agents.inspection_note_assistant_agent import InspectionNoteAssistantAgent
+from agents.inspection_image_analysis_agent import InspectionImageAnalysisAgent
 from agents.weather_resource_agent import WeatherResourceAgent
 from agents.scheduling_validation_agent import SchedulingValidationAgent
 from auth import require_service_token
@@ -28,12 +30,24 @@ from schemas.crop_finding import (
 )
 from schemas.crop_planning import CoordinatorInput, CropPlanningCoordinatorOutput
 from schemas.field_analysis import CropFieldAnalysisOutput, FieldAnalysisInput
+from schemas.inspection_note_assistance import InspectionNoteAssistanceInput, InspectionNoteAssistanceOutput
+from schemas.inspection_image_analysis import (
+    IMAGE_PREPROCESSING_VERSION,
+    INSPECTION_IMAGE_ANALYSIS_CONTRACT_VERSION,
+    INSPECTION_IMAGE_PROMPT_CONTRACT_VERSION,
+    InspectionImageAnalysisCapabilityResponse,
+    InspectionImageAnalysisInput,
+    InspectionImageAnalysisOperationResponse,
+)
 from schemas.weather_resource import WeatherResourceInput, WeatherResourceOutput
 from schemas.scheduling_validation import SchedulingValidationInput, SchedulingValidationOutput
 from tools.backend_tool_client import BackendToolClient
 from tools.crop_planning_tools import CropPlanningTools
 from tools.crop_finding_tools import CropFindingTools
 from tools.inspection_tools import InspectionTools
+from tools.inspection_image_analysis_tools import InspectionImageAnalysisTools
+from tools.crop_health_evidence_adapter import CropHealthEvidenceAdapter, RELEVANCE_RULE_VERSION
+from tools.crop_finding_tools import CropFindingTools, SourcePolicy
 from tools.weather_resource_tools import WeatherResourceTools
 
 app = FastAPI(title="AgriAssist AI Service", version="0.1.0")
@@ -245,6 +259,73 @@ async def run_crop_field_analysis(
     graph = build_field_analysis_graph(agent)
     state = await graph.ainvoke({"request": request, "output": None})
     return state["output"]
+
+
+@app.post(
+    "/workflows/crop-planning/inspection-note-assistance",
+    response_model=InspectionNoteAssistanceOutput,
+    dependencies=[Depends(require_service_token)],
+)
+async def run_inspection_note_assistance(
+    request: InspectionNoteAssistanceInput,
+    settings: Settings = Depends(get_settings),
+) -> InspectionNoteAssistanceOutput:
+    return await InspectionNoteAssistantAgent(
+        provider=create_provider(settings),
+        timeout_seconds=min(settings.provider_timeout_seconds, 30),
+    ).run(request)
+
+
+@app.get(
+    "/workflows/crop-planning/inspection-image-analysis/capability",
+    response_model=InspectionImageAnalysisCapabilityResponse,
+    dependencies=[Depends(require_service_token)],
+)
+async def get_inspection_image_analysis_capability(
+    settings: Settings = Depends(get_settings),
+) -> InspectionImageAnalysisCapabilityResponse:
+    policy = SourcePolicy.load_default()
+    return InspectionImageAnalysisCapabilityResponse(
+        contractVersion=INSPECTION_IMAGE_ANALYSIS_CONTRACT_VERSION,
+        imagePreprocessingVersion=IMAGE_PREPROCESSING_VERSION,
+        promptContractVersion=INSPECTION_IMAGE_PROMPT_CONTRACT_VERSION,
+        relevanceRuleVersion=RELEVANCE_RULE_VERSION,
+        sourcePolicyVersion=policy.version,
+        sourcePolicyHash=policy.content_hash,
+        provider=settings.ai_provider,
+        model=settings.ai_model or "unavailable",
+    )
+
+
+@app.post(
+    "/workflows/crop-planning/inspection-image-analysis",
+    response_model=InspectionImageAnalysisOperationResponse,
+    dependencies=[Depends(require_service_token)],
+)
+async def run_inspection_image_analysis(
+    request: InspectionImageAnalysisInput,
+    settings: Settings = Depends(get_settings),
+) -> InspectionImageAnalysisOperationResponse:
+    source_policy = SourcePolicy.load_default()
+    agent = InspectionImageAnalysisAgent(
+        tools=InspectionImageAnalysisTools(BackendToolClient(settings)),
+        provider=create_provider(settings),
+        evidence_adapter=CropHealthEvidenceAdapter(
+            settings,
+            tools=CropFindingTools(settings, source_policy=source_policy),
+            source_policy=source_policy,
+        ),
+        pass1_timeout_seconds=settings.inspection_image_pass1_timeout_seconds,
+        pass2_timeout_seconds=settings.inspection_image_pass2_timeout_seconds,
+    )
+    try:
+        return await asyncio.wait_for(agent.run(request), timeout=settings.inspection_image_overall_timeout_seconds)
+    except asyncio.TimeoutError:
+        return agent._failure(
+            "operation_timeout",
+            "Image analysis exceeded its bounded operation time.",
+            status="TimedOut",
+        )
 
 @app.post(
     "/workflows/crop-planning/weather-resource",

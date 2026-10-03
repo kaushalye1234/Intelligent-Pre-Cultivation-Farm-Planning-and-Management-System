@@ -166,11 +166,13 @@ class ApiClient {
     return items.map(CropPlanRecord.fromJson).toList();
   }
 
-  Future<ApprovedWorkflowDetail> approvedWorkflowDetail(
-    String workflowId,
+  Future<FarmerApprovedPlan> farmerApprovedPlan(
+    String cropPlanRequestId,
   ) async {
-    final response = await _get('/task-approval/workflows/$workflowId');
-    return ApprovedWorkflowDetail.fromJson(response);
+    final response = await _get(
+      '/crop-planning/requests/$cropPlanRequestId/approved-plan',
+    );
+    return FarmerApprovedPlan.fromJson(response);
   }
 
   Future<List<FarmTaskRecord>> tasks() async {

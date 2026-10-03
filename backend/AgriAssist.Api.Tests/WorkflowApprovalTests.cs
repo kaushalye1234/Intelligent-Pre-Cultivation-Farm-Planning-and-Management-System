@@ -2,6 +2,8 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using AgriAssist.Api.Data;
 using AgriAssist.Api.Dtos.TaskApproval;
+using AgriAssist.Api.Dtos.CropPlanning;
+using AgriAssist.Api.Dtos.Inspections;
 using AgriAssist.Api.ExternalServices.AgenticAI;
 using AgriAssist.Api.Models.CropPlanning;
 using AgriAssist.Api.Models.Resources;
@@ -19,6 +21,81 @@ namespace AgriAssist.Api.Tests;
 public sealed class WorkflowApprovalTests
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    [Fact]
+    public async Task Crop_health_guidance_requires_explicit_decision_and_catalog_task_semantics_stay_locked()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedAsync(db);
+        var inspectionId = Guid.NewGuid();
+        var imageId = Guid.NewGuid();
+        var analysisId = Guid.NewGuid();
+        var reviewId = Guid.NewGuid();
+        var fieldStep = data.Workflow.Steps.Single(item => item.AgentName == "CropFieldAnalysisAgent");
+        fieldStep.OutputJson = JsonSerializer.Serialize(new FieldAnalysisOutput(
+            data.Workflow.Id,
+            "Analyzed",
+            true,
+            [],
+            new FieldAnalysisFieldConditionResponse("Reviewed field evidence.", []),
+            [],
+            "Medium",
+            FieldPreparationRequirements: [],
+            IdentifiedRisks: [],
+            RecommendedPrePlantingActions: [],
+            ReviewedCropIssueActions:
+            [
+                new ReviewedCropIssueActionResponse(
+                    CropHealthActionType.FieldSanitation,
+                    0,
+                    "ignored",
+                    "ignored",
+                    "BeforePlanting",
+                    "Farmer",
+                    "AiSuggested",
+                    inspectionId,
+                    imageId,
+                    analysisId,
+                    reviewId,
+                    [])
+            ],
+            ReviewedCropHealthGuidance: new ReviewedCropHealthGuidanceSource(
+                ["Yellowing is visible on several leaf areas."],
+                ["possible stress-related crop-health issue"],
+                "Moderate",
+                "The exact cause is uncertain.",
+                true,
+                inspectionId,
+                imageId,
+                analysisId,
+                reviewId)), JsonOptions);
+        await db.SaveChangesAsync();
+        var service = NewService(db, data.Approver.Id, Candidate);
+
+        var review = await service.GenerateCandidateAsync(data.Workflow.Id, CancellationToken.None);
+        var proposal = review.Steps.Single(item => item.AgentName == "SchedulingValidationAgent").Output;
+
+        Assert.Equal("PendingDecision", proposal.GetProperty("cropHealthGuidance").GetProperty("decision").GetString());
+        var cropTask = Assert.Single(proposal.GetProperty("cropHealthCandidateTasks").EnumerateArray());
+        Assert.Equal("Complete field sanitation", cropTask.GetProperty("title").GetString());
+        Assert.Equal("PrePlantingCandidateTask", cropTask.GetProperty("taskCategory").GetString());
+
+        var pending = await Assert.ThrowsAsync<ApiException>(() => service.ApproveAsync(data.Workflow.Id,
+            new WorkflowDecisionRequest(review.Workflow.CandidateRevision, review.Workflow.Version, "approve-pending-guidance", ""),
+            CancellationToken.None));
+        Assert.Equal("CROP_HEALTH_GUIDANCE_DECISION_REQUIRED", pending.Code);
+
+        review = await service.DecideCropHealthGuidanceAsync(data.Workflow.Id,
+            new CropHealthGuidanceDecisionRequest(review.Workflow.CandidateRevision, review.Workflow.Version,
+                CropHealthGuidanceDecision.Included, "include-guidance", null), CancellationToken.None);
+        var approved = await service.ApproveAsync(data.Workflow.Id,
+            new WorkflowDecisionRequest(review.Workflow.CandidateRevision, review.Workflow.Version, "approve-with-guidance", "Approved."),
+            CancellationToken.None);
+
+        Assert.Equal(AgentWorkflowStatus.Completed, approved.Status);
+        Assert.Contains(await db.FarmTasks.ToListAsync(), task => task.Title == "Complete field sanitation"
+            && task.Description == "Clean the field and remove visibly affected crop material before planting.");
+    }
 
     [Fact]
     public async Task Generate_persists_valid_candidate_for_human_approval()

@@ -1,6 +1,7 @@
 ﻿using AgriAssist.Api.Models.Inspections;
 using AgriAssist.Api.Models.Shared;
 using AgriAssist.Api.Models.CropPlanning;
+using AgriAssist.Api.Dtos.Inspections;
 using System.Text.Json.Serialization;
 
 namespace AgriAssist.Api.Dtos.CropPlanning;
@@ -85,7 +86,8 @@ public sealed record FieldAnalysisInput(
     Guid? CropCycleId,
     IReadOnlyList<string> RequestedAnalysis,
     Guid? CropReferenceProfileId,
-    Guid? AgentStepId);
+    Guid? AgentStepId,
+    ReviewedImageAnalysisProjection? ReviewedImageAnalysis = null);
 
 [JsonConverter(typeof(JsonStringEnumConverter<PrePlantingSoilType>))]
 public enum PrePlantingSoilType { Sandy, Clay, Loamy, Silty, Mixed, Unknown, Other }
@@ -174,7 +176,8 @@ public sealed record PrePlantingAssessmentImageResponse(
     Guid Id,
     string Url,
     string ContentType,
-    long SizeBytes);
+    long SizeBytes,
+    bool IsRepresentativeForAi);
 
 public sealed record PrePlantingAssessmentResponse
 {
@@ -254,7 +257,35 @@ public sealed record FieldAnalysisOutput(
     IReadOnlyList<string>? FieldPreparationRequirements = null,
     string PlantingReadiness = "Unknown",
     IReadOnlyList<PrePlantingRisk>? IdentifiedRisks = null,
-    IReadOnlyList<string>? RecommendedPrePlantingActions = null);
+    IReadOnlyList<string>? RecommendedPrePlantingActions = null,
+    IReadOnlyList<ReviewedCropIssueActionResponse>? ReviewedCropIssueActions = null,
+    ReviewedCropHealthGuidanceSource? ReviewedCropHealthGuidance = null,
+    int ContractVersion = Member2CropHealthContractVersions.CropFieldAnalysis);
+
+public sealed record ReviewedCropIssueActionResponse(
+    CropHealthActionType ActionType,
+    int Order,
+    string Title,
+    string Description,
+    string TimingCategory,
+    string ResponsibleRole,
+    string Origin,
+    Guid InspectionId,
+    Guid InspectionImageId,
+    Guid AnalysisId,
+    Guid ReviewId,
+    IReadOnlyList<ImageAnalysisSourceReference> SourceReferences);
+
+public sealed record ReviewedCropHealthGuidanceSource(
+    IReadOnlyList<string> VisibleFindings,
+    IReadOnlyList<string> PossibleConcerns,
+    string Severity,
+    string Uncertainty,
+    bool RequiresFurtherAssessment,
+    Guid InspectionId,
+    Guid InspectionImageId,
+    Guid AnalysisId,
+    Guid ReviewId);
 
 public sealed record FieldAnalysisRunResponse(
     Guid WorkflowId,
@@ -283,4 +314,52 @@ public sealed record Member3HandoffResponse(
     IReadOnlyList<string> FieldPreparationRequirements,
     string PlantingReadiness,
     IReadOnlyList<PrePlantingRisk> IdentifiedRisks,
-    IReadOnlyList<string> RecommendedPrePlantingActions);
+    IReadOnlyList<string> RecommendedPrePlantingActions,
+    IReadOnlyList<Member3CropHealthActionContext>? ReviewedCropIssueActions = null,
+    int ContractVersion = Member2CropHealthContractVersions.Member3Consideration);
+
+public sealed record Member3CropHealthActionContext(
+    string ActionKey,
+    CropHealthActionType ActionType,
+    int Order,
+    string TimingCategory);
+
+public sealed record FarmerApprovedTaskResponse(
+    Guid Id,
+    string Title,
+    string Description,
+    DateTime DueAt,
+    string Status);
+
+public sealed record FarmerApprovedIrrigationResponse(
+    Guid Id,
+    DateTime ScheduledAt,
+    int DurationMinutes,
+    string Notes,
+    string Status);
+
+public sealed record FarmerApprovedCropHealthResponse(
+    string CropHealthObservation,
+    string PossibleConcern,
+    string UncertaintyGuidance,
+    IReadOnlyList<string> ApprovedPrePlantingActions,
+    IReadOnlyList<string> ApprovedMonitoringActions,
+    string? EscalationGuidance,
+    string WhyThisIsRecommended);
+
+public sealed record FarmerApprovedPlanResponse(
+    int ContractVersion,
+    Guid CropPlanRequestId,
+    string Objective,
+    string CropName,
+    string? VarietyName,
+    DateOnly PreferredStartDate,
+    DateOnly PreferredEndDate,
+    DateTime ApprovedAt,
+    string? FieldSummary,
+    string? WeatherSummary,
+    IReadOnlyList<string> Warnings,
+    IReadOnlyList<string> Recommendations,
+    IReadOnlyList<FarmerApprovedTaskResponse> ApprovedTasks,
+    IReadOnlyList<FarmerApprovedIrrigationResponse> ApprovedIrrigationSchedules,
+    FarmerApprovedCropHealthResponse? CropHealth);

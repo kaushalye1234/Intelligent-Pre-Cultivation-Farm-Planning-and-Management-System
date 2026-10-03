@@ -288,6 +288,113 @@ export type PrePlantingAssessmentImage = {
   url: string
   contentType: string
   sizeBytes: number
+  isRepresentativeForAi: boolean
+}
+
+export type InspectionNoteSuggestions = {
+  soilNotes: string | null
+  waterConcerns: string | null
+  drainageNotes: string | null
+  generalFieldNotes: string | null
+  riskNotes: string | null
+  officerNotes: string | null
+}
+
+export type InspectionNoteAssistanceResponse = {
+  contractVersion: number
+  status: 'Available' | 'Unavailable'
+  suggestions: InspectionNoteSuggestions | null
+  contradictionWarnings: string[]
+  missingDataWarnings: string[]
+  failureCategory?: string | null
+}
+
+export type CropHealthActionType =
+  | 'FieldSanitation'
+  | 'RemoveAffectedResidue'
+  | 'SeparateAffectedMaterial'
+  | 'InspectNearbyPlants'
+  | 'MonitorSymptoms'
+  | 'PrePlantingCleanup'
+  | 'RequestFurtherAssessment'
+
+export type ImageAnalysisSourceReference = {
+  sourcePolicyId: string
+  organization: string
+  title: string
+  url: string
+  sourceStage: 'Stage1' | 'Stage2'
+}
+
+export type InspectionImageAnalysisResult = {
+  contractVersion: number
+  visibleFindings: string[]
+  possibleIssueCategory: string
+  possibleIssues: string[]
+  severity: 'Low' | 'Moderate' | 'High' | 'Unknown'
+  uncertainty: string
+  validatedSourceReferences: ImageAnalysisSourceReference[]
+  recommendedNonChemicalActions: CropHealthActionType[]
+  requiresFurtherAssessment: boolean
+  groundingStatus: 'Grounded' | 'Unavailable'
+}
+
+export type ReviewedImageAnalysisProjection = {
+  contractVersion: 1
+  analysisId: string
+  inspectionImageId: string
+  visibleFindings: string[]
+  possibleConcerns: string[]
+  severity: 'Low' | 'Moderate' | 'High' | 'Unknown'
+  uncertainty: string
+  actions: Array<{ actionType: CropHealthActionType; order: number; origin: string; sourcePolicyIds: string[] }>
+  sourceReferences: ImageAnalysisSourceReference[]
+  requiresFurtherAssessment: boolean
+  officerEditedFields: string[]
+}
+
+export type InspectionImageAnalysisReview = {
+  reviewId: string
+  analysisId: string
+  disposition: 'Accepted' | 'Edited' | 'Rejected'
+  projection: ReviewedImageAnalysisProjection | null
+  officerEditedFields: string[]
+  staffNote?: string | null
+  reviewedAt: string
+}
+
+export type InspectionImageAnalysisState = {
+  analysisId?: string | null
+  status: string
+  isCurrent: boolean
+  isReviewable: boolean
+  isFrozen: boolean
+  result: InspectionImageAnalysisResult | null
+  effectiveReview: InspectionImageAnalysisReview | null
+  failureCategory?: string | null
+  message?: string | null
+}
+
+export type InspectionImageAnalysisAuditItem = {
+  analysisId: string
+  inspectionImageId: string
+  status: string
+  isCurrent: boolean
+  isFrozen: boolean
+  isSuperseded: boolean
+  pass1Result?: unknown
+  evidencePacket: unknown[]
+  result: InspectionImageAnalysisResult | null
+  reviews: Array<{
+    reviewId: string
+    disposition: 'Accepted' | 'Edited' | 'Rejected'
+    reviewedAt: string
+    officerEditedFields: string[]
+  }>
+  failureCategory?: string | null
+  failureMessage?: string | null
+  createdAt: string
+  completedAt?: string | null
 }
 
 export type PrePlantingAssessment = PrePlantingAssessmentInput & {

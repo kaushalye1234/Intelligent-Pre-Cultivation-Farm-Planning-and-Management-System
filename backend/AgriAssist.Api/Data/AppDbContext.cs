@@ -24,6 +24,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<InspectionObservation> InspectionObservations => Set<InspectionObservation>();
     public DbSet<CropIssue> CropIssues => Set<CropIssue>();
     public DbSet<InspectionImage> InspectionImages => Set<InspectionImage>();
+    public DbSet<InspectionImageAnalysis> InspectionImageAnalyses => Set<InspectionImageAnalysis>();
+    public DbSet<InspectionImageAnalysisReview> InspectionImageAnalysisReviews => Set<InspectionImageAnalysisReview>();
     public DbSet<FollowUpRecommendation> FollowUpRecommendations => Set<FollowUpRecommendation>();
     public DbSet<ResourceCategory> ResourceCategories => Set<ResourceCategory>();
     public DbSet<Supplier> Suppliers => Set<Supplier>();
@@ -175,12 +177,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.HasOne(inspection => inspection.Field).WithMany().HasForeignKey(inspection => inspection.FieldId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(inspection => inspection.CropPlanRequest).WithMany().HasForeignKey(inspection => inspection.CropPlanRequestId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(inspection => inspection.InspectorUser).WithMany().HasForeignKey(inspection => inspection.InspectorUserId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(inspection => inspection.FrozenImageAnalysisReview).WithMany().HasForeignKey(inspection => inspection.FrozenImageAnalysisReviewId).OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(inspection => inspection.FieldId);
             entity.HasIndex(inspection => inspection.CropPlanRequestId)
                 .IsUnique()
                 .HasFilter("\"CropPlanRequestId\" IS NOT NULL AND \"Purpose\" = 'PrePlanting'");
             entity.HasIndex(inspection => inspection.Status);
             entity.HasIndex(inspection => inspection.ScheduledAt);
+            entity.HasIndex(inspection => inspection.FrozenImageAnalysisReviewId);
         });
 
         modelBuilder.Entity<InspectionObservation>(entity =>
@@ -206,9 +210,51 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             entity.Property(image => image.Url).IsRequired().HasMaxLength(1000);
             entity.Property(image => image.PublicId).IsRequired().HasMaxLength(240);
+            entity.Property(image => image.AssetId).HasMaxLength(120);
+            entity.Property(image => image.DeliveryType).IsRequired().HasMaxLength(40).HasDefaultValue("upload");
             entity.Property(image => image.ContentType).IsRequired().HasMaxLength(80);
+            entity.Property(image => image.ContentSha256).HasMaxLength(64);
+            entity.Property(image => image.IsRepresentativeForAi).HasDefaultValue(false);
             entity.HasOne(image => image.FieldInspection).WithMany().HasForeignKey(image => image.FieldInspectionId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(image => image.FieldInspectionId);
+            entity.HasIndex(image => image.FieldInspectionId)
+                .IsUnique()
+                .HasFilter("\"IsRepresentativeForAi\" = TRUE");
+        });
+
+        modelBuilder.Entity<InspectionImageAnalysis>(entity =>
+        {
+            entity.Property(analysis => analysis.AnalysisFingerprint).IsRequired().HasMaxLength(64);
+            entity.Property(analysis => analysis.Status).HasConversion<string>().HasMaxLength(40);
+            entity.Property(analysis => analysis.InputSnapshotJson).IsRequired().HasColumnType("jsonb");
+            entity.Property(analysis => analysis.Provider).IsRequired().HasMaxLength(40);
+            entity.Property(analysis => analysis.Model).IsRequired().HasMaxLength(120);
+            entity.Property(analysis => analysis.SourcePolicyVersion).IsRequired().HasMaxLength(80);
+            entity.Property(analysis => analysis.SourcePolicyHash).IsRequired().HasMaxLength(64);
+            entity.Property(analysis => analysis.Pass1ResultJson).HasColumnType("jsonb");
+            entity.Property(analysis => analysis.EvidencePacketJson).HasColumnType("jsonb");
+            entity.Property(analysis => analysis.FinalResultJson).HasColumnType("jsonb");
+            entity.Property(analysis => analysis.FailureCategory).HasMaxLength(80);
+            entity.Property(analysis => analysis.FailureMessageSafe).HasMaxLength(1000);
+            entity.Property(analysis => analysis.Version).IsConcurrencyToken().HasDefaultValue(1);
+            entity.HasOne(analysis => analysis.FieldInspection).WithMany().HasForeignKey(analysis => analysis.FieldInspectionId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(analysis => analysis.InspectionImage).WithMany().HasForeignKey(analysis => analysis.InspectionImageId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(analysis => analysis.FieldInspectionId);
+            entity.HasIndex(analysis => analysis.InspectionImageId);
+            entity.HasIndex(analysis => new { analysis.InspectionImageId, analysis.AnalysisFingerprint })
+                .IsUnique()
+                .HasFilter("\"Status\" IN ('Running', 'Succeeded')");
+        });
+
+        modelBuilder.Entity<InspectionImageAnalysisReview>(entity =>
+        {
+            entity.Property(review => review.Disposition).HasConversion<string>().HasMaxLength(40);
+            entity.Property(review => review.ReviewedProjectionJson).HasColumnType("jsonb");
+            entity.Property(review => review.EditedFieldsJson).IsRequired().HasColumnType("jsonb");
+            entity.Property(review => review.StaffNote).HasMaxLength(1000);
+            entity.HasOne(review => review.InspectionImageAnalysis).WithMany().HasForeignKey(review => review.InspectionImageAnalysisId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(review => review.ReviewedByUser).WithMany().HasForeignKey(review => review.ReviewedByUserId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(review => new { review.InspectionImageAnalysisId, review.ReviewedAt });
         });
 
         modelBuilder.Entity<FollowUpRecommendation>(entity =>

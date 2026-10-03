@@ -66,6 +66,8 @@ export function WorkflowReviewPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [decision, setDecision] = useState<DecisionKind | null>(null)
   const [comment, setComment] = useState('')
+  const [guidanceDecision, setGuidanceDecision] = useState<'Included' | 'Rejected' | null>(null)
+  const [guidanceReason, setGuidanceReason] = useState('')
 
   const canDecide = isDecisionRole(user?.role)
 
@@ -132,6 +134,56 @@ export function WorkflowReviewPage() {
     }
   }
 
+  async function submitGuidanceDecision(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!id || !review || !guidanceDecision) return
+    if (guidanceDecision === 'Rejected' && !guidanceReason.trim()) {
+      setError('A staff-only reason is required to reject crop-health guidance.')
+      return
+    }
+    setIsSubmitting(true)
+    setError('')
+    try {
+      const response = await api.post<WorkflowReview>(`/task-approval/workflows/${id}/crop-health-guidance-decision`, {
+        candidateRevision: review.workflow.candidateRevision,
+        expectedWorkflowVersion: review.workflow.version,
+        decision: guidanceDecision,
+        idempotencyKey: crypto.randomUUID(),
+        rejectionReason: guidanceDecision === 'Rejected' ? guidanceReason.trim() : null,
+      })
+      setReview(response.data)
+      setGuidanceDecision(null)
+      setGuidanceReason('')
+      setSuccess(`Crop-health guidance ${guidanceDecision.toLowerCase()}.`)
+    } catch (err) {
+      setError(getErrorMessage(err))
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  async function toggleCropHealthAction(actionKey: string, included: boolean, dueAt: string, assignedToUserId: string, schedulingNote?: string) {
+    if (!id || !review) return
+    setIsSubmitting(true)
+    setError('')
+    try {
+      const response = await api.put<WorkflowReview>(`/task-approval/workflows/${id}/crop-health-actions/${actionKey}`, {
+        candidateRevision: review.workflow.candidateRevision,
+        expectedWorkflowVersion: review.workflow.version,
+        included,
+        dueAt,
+        assignedToUserId,
+        schedulingNote: schedulingNote ?? null,
+      })
+      setReview(response.data)
+      setSuccess(included ? 'Crop-health action included.' : 'Crop-health action excluded from approved work.')
+    } catch (err) {
+      setError(getErrorMessage(err))
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   if (isLoading) return <LoadingState />
   if (!review) return <ErrorState message={error || 'Workflow review is unavailable.'} />
 
@@ -139,6 +191,7 @@ export function WorkflowReviewPage() {
   const schedulingStep = [...review.steps].reverse().find((step) => step.agentName === 'SchedulingValidationAgent' &&
     step.candidateRevision === review.workflow.candidateRevision)
   const proposal = parseSchedulingOutput(schedulingStep?.output)
+  const guidanceDecisionPending = proposal?.cropHealthGuidance?.decision === 'PendingDecision'
   const canGenerate = canDecide
     && (review.workflow.currentStep === 'SchedulingValidationAgent' || review.workflow.status === 10)
     && ![3, 4, 6, 8, 9].includes(review.workflow.status)
@@ -163,7 +216,7 @@ export function WorkflowReviewPage() {
         <div className="row-actions">
           {canGenerate ? <Button icon={<Play size={15} aria-hidden="true" />} onClick={() => void generateCandidate()} disabled={isSubmitting}>Generate Candidate</Button> : null}
           {canDecide && pendingApproval ? <>
-            <Button icon={<Check size={15} aria-hidden="true" />} onClick={() => setDecision('approve')}>Approve Workflow</Button>
+            <Button icon={<Check size={15} aria-hidden="true" />} disabled={guidanceDecisionPending} onClick={() => setDecision('approve')}>Approve Workflow</Button>
             <Button variant="secondary" icon={<RotateCcw size={15} aria-hidden="true" />} onClick={() => setDecision('request-revision')}>Request Revision</Button>
             <Button variant="danger" icon={<X size={15} aria-hidden="true" />} onClick={() => setDecision('reject')}>Reject Workflow</Button>
           </> : null}
@@ -185,6 +238,34 @@ export function WorkflowReviewPage() {
         <p className="muted-text">These are candidate items only. Farm work is created after officer approval.</p>
         {proposal.blocking.map((message, index) => <Notice key={`block-${index}`} tone="error">{message}</Notice>)}
         {proposal.warnings.map((message, index) => <Notice key={`warning-${index}`} tone="info">{message}</Notice>)}
+        {proposal.cropHealthGuidance && proposal.cropHealthGuidance.decision !== 'NotApplicable' ? <section className="work-section" aria-label="Locked crop-health guidance">
+          <div className="row-actions"><h3>Crop-health guidance</h3><StatusPill label={proposal.cropHealthGuidance.decision} tone={proposal.cropHealthGuidance.decision === 'Included' ? 'good' : proposal.cropHealthGuidance.decision === 'Rejected' ? 'bad' : 'warn'} /></div>
+          <Notice tone="info">This wording is locked to the reviewed Member 2 evidence. It cannot be rewritten into a diagnosis or chemical treatment.</Notice>
+          <dl className="preplant-readonly">
+            <div><dt>Observation</dt><dd>{proposal.cropHealthGuidance.cropHealthObservation}</dd></div>
+            <div><dt>Possible concern</dt><dd>{proposal.cropHealthGuidance.possibleConcern}</dd></div>
+            <div><dt>Uncertainty</dt><dd>{proposal.cropHealthGuidance.uncertaintyGuidance}</dd></div>
+            <div><dt>Why recommended</dt><dd>{proposal.cropHealthGuidance.whyThisIsRecommended}</dd></div>
+          </dl>
+          {proposal.cropHealthGuidance.prePlantingActions.length ? <ul>{proposal.cropHealthGuidance.prePlantingActions.map((item) => <li key={item}>{item}</li>)}</ul> : null}
+          {proposal.cropHealthGuidance.monitoringActions.length ? <ul>{proposal.cropHealthGuidance.monitoringActions.map((item) => <li key={item}>{item}</li>)}</ul> : null}
+          {proposal.cropHealthGuidance.escalationGuidance ? <p>{proposal.cropHealthGuidance.escalationGuidance}</p> : null}
+          {proposal.cropHealthGuidance.rejectionReason ? <p className="muted-text">Staff-only rejection reason: {proposal.cropHealthGuidance.rejectionReason}</p> : null}
+          {canDecide && pendingApproval ? <div className="row-actions">
+            <Button disabled={isSubmitting} onClick={() => setGuidanceDecision('Included')}>Include guidance</Button>
+            <Button variant="danger" disabled={isSubmitting} onClick={() => setGuidanceDecision('Rejected')}>Reject guidance</Button>
+          </div> : null}
+          {guidanceDecisionPending ? <Notice tone="warning">Include or reject this guidance before final proposal approval.</Notice> : null}
+        </section> : null}
+        {proposal.cropHealthTasks.length ? <section className="work-section" aria-label="Crop-health candidate work">
+          <h3>Crop-health candidate work ({proposal.cropHealthTasks.length})</h3>
+          <p className="muted-text">Titles and descriptions are catalog-controlled. Officers may include or exclude each action and adjust only its operational schedule.</p>
+          {proposal.cropHealthTasks.map((task) => <article key={task.actionKey} className="work-section">
+            <div className="row-actions"><strong>{task.title}</strong><StatusPill label={task.included ? 'Included' : 'Excluded'} tone={task.included ? 'good' : 'bad'} /></div>
+            <p>{task.description}</p><p className="muted-text">{task.taskCategory} · {task.timingCategory} · {formatDateTime(task.dueAt)}</p>
+            {canDecide && pendingApproval ? <Button variant={task.included ? 'danger' : 'secondary'} disabled={isSubmitting} onClick={() => void toggleCropHealthAction(task.actionKey, !task.included, task.dueAt, task.assignedToUserId, task.schedulingNote)}>{task.included ? 'Exclude action' : 'Include action'}</Button> : null}
+          </article>)}
+        </section> : null}
         <h3>Farm tasks ({proposal.tasks.length})</h3>
         {proposal.tasks.map((task, index) => <article key={`task-${index}`} className="work-section">
           <strong>{task.title}</strong><p>{formatDateTime(task.dueAt)}</p><p>{task.reason}</p>
@@ -237,6 +318,11 @@ export function WorkflowReviewPage() {
       <Modal open={Boolean(decision)} title={decision === 'approve' ? 'Approve workflow?' : decision === 'reject' ? 'Reject workflow?' : 'Request revision?'} description="This decision is tied to the candidate revision and workflow version currently displayed." onClose={() => setDecision(null)} footer={<><Button variant="secondary" onClick={() => setDecision(null)} disabled={isSubmitting}>Back</Button><Button variant={decision === 'reject' ? 'danger' : 'primary'} type="submit" form="workflow-decision-form" disabled={isSubmitting}>{isSubmitting ? 'Working...' : 'Confirm Decision'}</Button></>}>
         <form id="workflow-decision-form" className="form-grid" onSubmit={(event) => void submitDecision(event)}>
           <TextAreaInput label={decision === 'approve' ? 'Comment (optional)' : 'Reason'} value={comment} required={decision !== 'approve'} rows={4} onChange={setComment} />
+        </form>
+      </Modal>
+      <Modal open={Boolean(guidanceDecision)} title={guidanceDecision === 'Included' ? 'Include crop-health guidance?' : 'Reject crop-health guidance?'} description="This explicit decision applies only to the locked farmer guidance for the current proposal version." onClose={() => setGuidanceDecision(null)} footer={<><Button variant="secondary" onClick={() => setGuidanceDecision(null)} disabled={isSubmitting}>Back</Button><Button variant={guidanceDecision === 'Rejected' ? 'danger' : 'primary'} type="submit" form="guidance-decision-form" disabled={isSubmitting}>{isSubmitting ? 'Working...' : 'Confirm Guidance Decision'}</Button></>}>
+        <form id="guidance-decision-form" className="form-grid" onSubmit={(event) => void submitGuidanceDecision(event)}>
+          {guidanceDecision === 'Rejected' ? <TextAreaInput label="Staff-only rejection reason" value={guidanceReason} required rows={4} onChange={setGuidanceReason} /> : <Notice tone="info">Included guidance will appear in the farmer-safe final plan only after the overall proposal is approved.</Notice>}
         </form>
       </Modal>
     </section>

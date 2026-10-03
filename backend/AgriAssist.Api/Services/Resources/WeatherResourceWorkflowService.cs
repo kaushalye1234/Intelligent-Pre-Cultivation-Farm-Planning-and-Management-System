@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.Json;
 using AgriAssist.Api.Data;
+using AgriAssist.Api.Dtos.Inspections;
 using AgriAssist.Api.Dtos.Resources;
 using AgriAssist.Api.Dtos.Shared;
 using AgriAssist.Api.ExternalServices.AgenticAI;
@@ -87,7 +88,8 @@ public sealed class WeatherResourceWorkflowService(
                 handoff.RecommendedPrePlantingActions,
                 handoff.Priority,
                 handoff.Warnings,
-                handoff.RequiresHumanReview));
+                handoff.RequiresHumanReview,
+                handoff.ReviewedCropIssueActions));
 
         var userId = currentUser.UserId ?? throw new ApiException(HttpStatusCode.Unauthorized, "AUTH_REQUIRED", "Authentication is required.");
         step.InputJson = JsonSerializer.Serialize(input, JsonOptions);
@@ -105,7 +107,7 @@ public sealed class WeatherResourceWorkflowService(
         {
             output = await aiClient.RunWeatherResourceAnalysisAsync(input, cancellationToken);
             var evidence = await LoadToolEvidenceAsync(step, workflow.Id, cancellationToken);
-            validationErrors = Validate(output, evidence, workflow.Id);
+            validationErrors = Validate(output, evidence, workflow.Id, input);
             validatorName = "WeatherResourceOutputValidator";
             if (validationErrors.Count > 0) output = SafeFailure(workflow.Id, validationErrors);
         }
@@ -249,7 +251,11 @@ public sealed class WeatherResourceWorkflowService(
     /// The agent may only describe what the backend tools returned for this step: stock figures, verified
     /// requirement quantities and the forecast. Every derived figure (shortage, sufficiency, statuses) must follow.
     /// </summary>
-    public static IReadOnlyList<string> Validate(WeatherResourceOutput output, WeatherResourceToolEvidence evidence, Guid workflowId)
+    public static IReadOnlyList<string> Validate(
+        WeatherResourceOutput output,
+        WeatherResourceToolEvidence evidence,
+        Guid workflowId,
+        WeatherResourceInput? input = null)
     {
         var errors = new List<string>();
         if (output.WorkflowId != workflowId) errors.Add("WeatherResource workflowId does not match the persisted workflow.");
@@ -259,6 +265,28 @@ public sealed class WeatherResourceWorkflowService(
         {
             errors.Add("WeatherResource warnings, resourceChecks and recommendations arrays are required.");
             return errors;
+        }
+
+        var considerations = output.CropHealthConsiderations ?? [];
+        var knownActionKeys = (input?.Member2FieldAnalysisContext?.ReviewedCropIssueActions ?? [])
+            .Select(action => action.ActionKey)
+            .ToHashSet(StringComparer.Ordinal);
+        var allowedConsiderationTypes = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "WeatherTimingConstraint", "RainfallScheduling", "ResourceAvailability", "OperationalFeasibility"
+        };
+        if (considerations.Count > knownActionKeys.Count)
+            errors.Add("Crop-health considerations exceed the supplied action count.");
+        foreach (var consideration in considerations)
+        {
+            if (consideration.ContractVersion != Member2CropHealthContractVersions.Member3Consideration)
+                errors.Add("A crop-health consideration contractVersion is unsupported.");
+            if (!knownActionKeys.Contains(consideration.ActionKey))
+                errors.Add("A crop-health consideration references an unknown Member 2 action.");
+            if (!allowedConsiderationTypes.Contains(consideration.ConsiderationType))
+                errors.Add("A crop-health consideration type is invalid.");
+            if (string.IsNullOrWhiteSpace(consideration.Note) || consideration.Note.Length > 500)
+                errors.Add("A crop-health consideration note is invalid.");
         }
 
         if (output.Status == "SafeFailure")

@@ -2,6 +2,7 @@ using System.Text.Json;
 using AgriAssist.Api.Data;
 using AgriAssist.Api.Dtos.CropPlanning;
 using AgriAssist.Api.Dtos.Resources;
+using AgriAssist.Api.Dtos.Inspections;
 using AgriAssist.Api.ExternalServices.AgenticAI;
 using AgriAssist.Api.ExternalServices.Weather;
 using AgriAssist.Api.Models.Shared;
@@ -205,6 +206,26 @@ public sealed class WeatherResourceWorkflowTests
         var errors = WeatherResourceWorkflowService.Validate(output, evidence, workflowId);
 
         Assert.Contains(errors, error => error.Contains("without forecast data"));
+    }
+
+    [Fact]
+    public void Validate_rejects_crop_health_consideration_for_unknown_action()
+    {
+        var workflowId = Guid.NewGuid();
+        var evidence = new WeatherResourceToolEvidence(null, [], [], true, WeatherForecastResponse.Unavailable("Nowhere", "down"));
+        var context = new Member2FieldAnalysisContext(
+            "Suitable", "", "", "", [], "Ready", [], [], "Medium", [], false,
+            [new Member3CropHealthActionContext("known-action", CropHealthActionType.MonitorSymptoms, 0, "EarlyGrowth")]);
+        var input = new WeatherResourceInput(workflowId, Guid.NewGuid(), Guid.NewGuid(), null, "Kandy",
+            DateOnly.FromDateTime(DateTime.UtcNow.AddDays(2)), DateOnly.FromDateTime(DateTime.UtcNow.AddDays(10)),
+            "Medium", "", context);
+        var output = new WeatherResourceOutput(workflowId, "Analyzed", true, [], "Unknown", "No forecast.", [], [], [],
+            ResourceRequirementStatus.Unknown, CropHealthConsiderations:
+            [new CropHealthWeatherResourceConsideration("unknown-action", "WeatherTimingConstraint", "Delay while heavy rain continues.")]);
+
+        var errors = WeatherResourceWorkflowService.Validate(output, evidence, workflowId, input);
+
+        Assert.Contains(errors, error => error.Contains("unknown Member 2 action", StringComparison.Ordinal));
     }
 
     [Fact]
