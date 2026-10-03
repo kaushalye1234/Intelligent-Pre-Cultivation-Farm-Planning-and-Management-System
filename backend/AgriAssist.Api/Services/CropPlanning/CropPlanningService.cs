@@ -9,8 +9,10 @@ using AgriAssist.Api.ExternalServices.AgenticAI;
 using AgriAssist.Api.Models.CropPlanning;
 using AgriAssist.Api.Models.Inspections;
 using AgriAssist.Api.Models.Shared;
+using AgriAssist.Api.Models.TaskApproval;
 using AgriAssist.Api.Services.Shared;
 using AgriAssist.Api.Services.Inspections;
+using AgriAssist.Api.Dtos.TaskApproval;
 using AgriAssist.Api.Validators.CropPlanning;
 using AgriAssist.Api.Validators.Shared;
 using Microsoft.EntityFrameworkCore;
@@ -1278,7 +1280,17 @@ public sealed class CropPlanningService(
                 ReviewedCropIssueActions = BuildReviewedCropIssueActions(
                     assessment.Id,
                     assessment.FrozenImageAnalysisReviewId.Value,
-                    frozenReviewedImageAnalysis)
+                    frozenReviewedImageAnalysis),
+                ReviewedCropHealthGuidance = new ReviewedCropHealthGuidanceSource(
+                    frozenReviewedImageAnalysis.VisibleFindings,
+                    frozenReviewedImageAnalysis.PossibleConcerns,
+                    frozenReviewedImageAnalysis.Severity,
+                    frozenReviewedImageAnalysis.Uncertainty,
+                    frozenReviewedImageAnalysis.RequiresFurtherAssessment,
+                    assessment.Id,
+                    frozenReviewedImageAnalysis.InspectionImageId,
+                    frozenReviewedImageAnalysis.AnalysisId,
+                    assessment.FrozenImageAnalysisReviewId.Value)
             };
         }
 
@@ -1387,6 +1399,78 @@ public sealed class CropPlanningService(
         return ReadFieldAnalysisOutput(outputJson, workflow.Id, ["Field analysis output is not available yet."]);
     }
 
+    public async Task<FarmerApprovedPlanResponse> GetApprovedPlanAsync(Guid requestId, CancellationToken cancellationToken)
+    {
+        if (currentUser.Role != ApplicationRole.Farmer)
+            throw new ApiException(HttpStatusCode.Forbidden, "FARMER_REQUIRED", "A Farmer account is required.");
+        var request = await ApplyPlanRequestAccess(dbContext.CropPlanRequests.AsNoTracking())
+            .Include(item => item.CropType)
+            .Include(item => item.CropVariety)
+            .SingleOrDefaultAsync(item => item.Id == requestId, cancellationToken)
+            ?? throw NotFound("Crop plan request");
+        if (request.Status != CropPlanRequestStatus.Approved)
+            throw new ApiException(HttpStatusCode.Conflict, "APPROVED_PLAN_NOT_READY", "The crop plan has not reached its final approved state.");
+        var workflow = await LatestWorkflowQuery(requestId)
+            .Include(item => item.Steps)
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw NotFound("AI workflow");
+        if (workflow.Status != AgentWorkflowStatus.Completed)
+            throw new ApiException(HttpStatusCode.Conflict, "APPROVED_PLAN_NOT_READY", "The crop-planning workflow is not complete.");
+        var schedulingStep = workflow.Steps.OrderBy(item => item.Sequence)
+            .LastOrDefault(item => item.AgentName == "SchedulingValidationAgent" && item.Status == AgentStepStatus.Completed)
+            ?? throw NotFound("Approved scheduling proposal");
+        SchedulingValidationOutput proposal;
+        try
+        {
+            proposal = JsonSerializer.Deserialize<SchedulingValidationOutput>(schedulingStep.OutputJson, JsonOptions)
+                ?? throw new JsonException();
+        }
+        catch (JsonException)
+        {
+            throw new ApiException(HttpStatusCode.Conflict, "APPROVED_PLAN_INVALID", "The approved plan could not be read safely.");
+        }
+
+        var tasks = await dbContext.FarmTasks.AsNoTracking()
+            .Where(item => !item.IsDeleted && item.GeneratedByWorkflowId == workflow.Id && item.Status == FarmTaskStatus.Approved)
+            .OrderBy(item => item.DueAt).ThenBy(item => item.Id)
+            .Select(item => new FarmerApprovedTaskResponse(item.Id, item.Title, item.Description, item.DueAt, item.Status.ToString()))
+            .ToArrayAsync(cancellationToken);
+        var irrigation = await dbContext.IrrigationSchedules.AsNoTracking()
+            .Where(item => !item.IsDeleted && item.GeneratedByWorkflowId == workflow.Id && item.Status == IrrigationScheduleStatus.Approved)
+            .OrderBy(item => item.ScheduledAt).ThenBy(item => item.Id)
+            .Select(item => new FarmerApprovedIrrigationResponse(item.Id, item.ScheduledAt, item.DurationMinutes, item.Notes, item.Status.ToString()))
+            .ToArrayAsync(cancellationToken);
+
+        FarmerApprovedCropHealthResponse? cropHealth = null;
+        if (proposal.CropHealthGuidance?.Decision == CropHealthGuidanceDecision.Included)
+        {
+            var includedActions = (proposal.CropHealthCandidateTasks ?? [])
+                .Where(item => item.Included)
+                .OrderBy(item => item.DueAt)
+                .ToArray();
+            cropHealth = new FarmerApprovedCropHealthResponse(
+                proposal.CropHealthGuidance.CropHealthObservation,
+                proposal.CropHealthGuidance.PossibleConcern,
+                proposal.CropHealthGuidance.UncertaintyGuidance,
+                includedActions.Where(item => item.TimingCategory == "BeforePlanting").Select(item => CropHealthActionCatalog.Get(item.ActionType).Description).ToArray(),
+                includedActions.Where(item => item.TimingCategory == "EarlyGrowth").Select(item => CropHealthActionCatalog.Get(item.ActionType).Description).ToArray(),
+                includedActions.Where(item => item.TaskCategory == "AssessmentEscalationTask").Select(item => CropHealthActionCatalog.Get(item.ActionType).Description).FirstOrDefault(),
+                proposal.CropHealthGuidance.WhyThisIsRecommended);
+        }
+
+        return new FarmerApprovedPlanResponse(
+            1,
+            request.Id,
+            request.Objective,
+            request.CropType?.Name ?? "Crop",
+            request.CropVariety?.Name,
+            request.PreferredStartDate,
+            request.PreferredEndDate,
+            tasks,
+            irrigation,
+            cropHealth);
+    }
+
     public async Task<Member3HandoffResponse> GetMember3HandoffAsync(Guid requestId, CancellationToken cancellationToken)
     {
         RequireMember3HandoffViewer();
@@ -1453,7 +1537,15 @@ public sealed class CropPlanningService(
             fieldAnalysis.FieldPreparationRequirements,
             fieldAnalysis.PlantingReadiness,
             fieldAnalysis.IdentifiedRisks,
-            fieldAnalysis.RecommendedPrePlantingActions);
+            fieldAnalysis.RecommendedPrePlantingActions,
+            (fieldAnalysis.ReviewedCropIssueActions ?? [])
+                .OrderBy(action => action.Order)
+                .Select(action => new Member3CropHealthActionContext(
+                    CropHealthActionCatalog.ActionKey(action.ReviewId, action.Order),
+                    action.ActionType,
+                    action.Order,
+                    action.TimingCategory))
+                .ToArray());
     }
     private async Task<CropPlanRequestResponse> CreateRequestCoreAsync(CropPlanRequestCreate request, CropPlanRequestStatus status, string note, CancellationToken cancellationToken)
     {

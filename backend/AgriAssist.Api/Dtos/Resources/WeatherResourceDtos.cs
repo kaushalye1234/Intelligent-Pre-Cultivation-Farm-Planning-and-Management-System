@@ -118,7 +118,13 @@ public sealed record Member2FieldAnalysisContext(
     IReadOnlyList<string> RecommendedPrePlantingActions,
     string Priority,
     IReadOnlyList<string> Warnings,
-    bool RequiresHumanReview);
+    bool RequiresHumanReview,
+    IReadOnlyList<Member3CropHealthActionContext>? ReviewedCropIssueActions = null);
+
+public sealed record CropHealthWeatherResourceConsideration(
+    string ActionKey,
+    string ConsiderationType,
+    string Note);
 
 /// <summary>
 /// Sent to the AI service. The agent gathers requirements, field, inventory, reservations and weather
@@ -183,7 +189,8 @@ public sealed record WeatherResourceOutput(
     string RequirementStatus = ResourceRequirementStatus.Unknown,
     RequirementSourceSummary? RequirementSource = null,
     string? Reason = null,
-    IReadOnlyList<string>? ToolsUsed = null);
+    IReadOnlyList<string>? ToolsUsed = null,
+    IReadOnlyList<CropHealthWeatherResourceConsideration>? CropHealthConsiderations = null);
 
 public sealed record WeatherResourceRunResponse(
     Guid WorkflowId,

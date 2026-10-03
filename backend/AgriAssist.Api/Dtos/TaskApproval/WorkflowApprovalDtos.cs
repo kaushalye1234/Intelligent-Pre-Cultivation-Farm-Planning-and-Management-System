@@ -1,5 +1,6 @@
 using System.Text.Json;
 using AgriAssist.Api.Dtos.Shared;
+using AgriAssist.Api.Dtos.Inspections;
 using AgriAssist.Api.Models.Shared;
 using AgriAssist.Api.Models.TaskApproval;
 
@@ -16,6 +17,38 @@ public sealed record SchedulingCandidateIrrigation(Guid FieldId, DateTime Schedu
 public sealed record SchedulingCandidateReservation(Guid InventoryStockId, decimal Quantity, string Purpose, decimal? EstimatedUnitCost,
     string? Reason = null, IReadOnlyList<SchedulingSource>? Sources = null);
 public sealed record SchedulingConstraint(string Code, string Severity, string Message);
+
+[System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter<CropHealthGuidanceDecision>))]
+public enum CropHealthGuidanceDecision { PendingDecision, Included, Rejected, NotApplicable }
+
+public sealed record CropHealthCandidateTask(
+    string ActionKey,
+    CropHealthActionType ActionType,
+    string TaskCategory,
+    string Title,
+    string Description,
+    string TimingCategory,
+    DateTime DueAt,
+    Guid AssignedToUserId,
+    bool Included,
+    string? SchedulingNote,
+    Guid InspectionId,
+    Guid InspectionImageId,
+    Guid AnalysisId,
+    Guid ReviewId);
+
+public sealed record CropHealthGuidanceCandidate(
+    string CropHealthObservation,
+    string PossibleConcern,
+    string UncertaintyGuidance,
+    IReadOnlyList<string> PrePlantingActions,
+    IReadOnlyList<string> MonitoringActions,
+    string? EscalationGuidance,
+    string WhyThisIsRecommended,
+    CropHealthGuidanceDecision Decision,
+    Guid? DecidedByUserId = null,
+    DateTime? DecidedAt = null,
+    string? RejectionReason = null);
 public sealed record SchedulingStageEvidence(Guid Id, string StageName, int Sequence, int? TypicalMinDays, int? TypicalMaxDays, string SourceName, string? SourceUrl);
 public sealed record SchedulingIrrigationRuleEvidence(Guid Id, string RuleKey, int DayOffsetFromPlanting, string StartTimeUtc, int DurationMinutes, string SourceName, string? SourceUrl, DateTime VerifiedAt);
 public sealed record SchedulingEvidenceBundle(
@@ -61,7 +94,9 @@ public sealed record SchedulingValidationOutput(
     IReadOnlyList<SchedulingCandidateReservation> CandidateReservations,
     decimal? EstimatedCost,
     IReadOnlyList<SchedulingConstraint> Constraints,
-    int ContractVersion = 1);
+    int ContractVersion = 1,
+    IReadOnlyList<CropHealthCandidateTask>? CropHealthCandidateTasks = null,
+    CropHealthGuidanceCandidate? CropHealthGuidance = null);
 
 public sealed class WorkflowApprovalQuery : PagedQuery
 {
@@ -119,6 +154,21 @@ public sealed record WorkflowDecisionRequest(
     int ExpectedWorkflowVersion,
     string IdempotencyKey,
     string Comment);
+
+public sealed record CropHealthGuidanceDecisionRequest(
+    int CandidateRevision,
+    int ExpectedWorkflowVersion,
+    CropHealthGuidanceDecision Decision,
+    string IdempotencyKey,
+    string? RejectionReason);
+
+public sealed record CropHealthCandidateOperationalRequest(
+    int CandidateRevision,
+    int ExpectedWorkflowVersion,
+    bool Included,
+    DateTime DueAt,
+    Guid AssignedToUserId,
+    string? SchedulingNote);
 
 public sealed record WorkflowDecisionResponse(
     Guid WorkflowId,

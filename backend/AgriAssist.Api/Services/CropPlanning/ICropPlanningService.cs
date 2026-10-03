@@ -48,6 +48,7 @@ public interface ICropPlanningService
     Task<FieldAnalysisRunResponse> RunFieldAnalysisAsync(Guid requestId, CancellationToken cancellationToken);
     Task<CropPlanningWorkflowStatusResponse> GetWorkflowStatusAsync(Guid requestId, CancellationToken cancellationToken);
     Task<CropPlanningResultResponse> GetPlanningResultAsync(Guid requestId, CancellationToken cancellationToken);
+    Task<FarmerApprovedPlanResponse> GetApprovedPlanAsync(Guid requestId, CancellationToken cancellationToken);
     Task<FieldAnalysisOutput> GetFieldAnalysisResultAsync(Guid requestId, CancellationToken cancellationToken);
     Task<Member3HandoffResponse> GetMember3HandoffAsync(Guid requestId, CancellationToken cancellationToken);
 }

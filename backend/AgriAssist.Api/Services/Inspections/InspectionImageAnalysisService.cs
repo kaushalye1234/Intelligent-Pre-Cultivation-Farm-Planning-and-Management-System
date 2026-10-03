@@ -465,6 +465,8 @@ public sealed class InspectionImageAnalysisService(
         var text = string.Join(' ', edit.VisibleFindings.Concat(edit.PossibleConcerns).Append(edit.Uncertainty)).ToLowerInvariant();
         if (ProhibitedTreatmentTerms.Any(text.Contains))
             throw new ApiException(HttpStatusCode.BadRequest, "CHEMICAL_GUIDANCE_PROHIBITED", "Chemical treatment instructions are not allowed in this review path.");
+        if (new[] { "confirmed disease", "confirmed pest", "definitive diagnosis", "definitely caused by", "diagnosed as" }.Any(text.Contains))
+            throw new ApiException(HttpStatusCode.BadRequest, "UNSUPPORTED_DIAGNOSIS_CERTAINTY", "A single-image review must preserve diagnostic uncertainty.");
     }
 
     private InspectionImageAnalysisFinalResult ReadFinalResult(InspectionImageAnalysis analysis) =>

@@ -258,7 +258,8 @@ public sealed record FieldAnalysisOutput(
     string PlantingReadiness = "Unknown",
     IReadOnlyList<PrePlantingRisk>? IdentifiedRisks = null,
     IReadOnlyList<string>? RecommendedPrePlantingActions = null,
-    IReadOnlyList<ReviewedCropIssueActionResponse>? ReviewedCropIssueActions = null);
+    IReadOnlyList<ReviewedCropIssueActionResponse>? ReviewedCropIssueActions = null,
+    ReviewedCropHealthGuidanceSource? ReviewedCropHealthGuidance = null);
 
 public sealed record ReviewedCropIssueActionResponse(
     CropHealthActionType ActionType,
@@ -273,6 +274,17 @@ public sealed record ReviewedCropIssueActionResponse(
     Guid AnalysisId,
     Guid ReviewId,
     IReadOnlyList<ImageAnalysisSourceReference> SourceReferences);
+
+public sealed record ReviewedCropHealthGuidanceSource(
+    IReadOnlyList<string> VisibleFindings,
+    IReadOnlyList<string> PossibleConcerns,
+    string Severity,
+    string Uncertainty,
+    bool RequiresFurtherAssessment,
+    Guid InspectionId,
+    Guid InspectionImageId,
+    Guid AnalysisId,
+    Guid ReviewId);
 
 public sealed record FieldAnalysisRunResponse(
     Guid WorkflowId,
@@ -301,4 +313,46 @@ public sealed record Member3HandoffResponse(
     IReadOnlyList<string> FieldPreparationRequirements,
     string PlantingReadiness,
     IReadOnlyList<PrePlantingRisk> IdentifiedRisks,
-    IReadOnlyList<string> RecommendedPrePlantingActions);
+    IReadOnlyList<string> RecommendedPrePlantingActions,
+    IReadOnlyList<Member3CropHealthActionContext>? ReviewedCropIssueActions = null);
+
+public sealed record Member3CropHealthActionContext(
+    string ActionKey,
+    CropHealthActionType ActionType,
+    int Order,
+    string TimingCategory);
+
+public sealed record FarmerApprovedTaskResponse(
+    Guid Id,
+    string Title,
+    string Description,
+    DateTime DueAt,
+    string Status);
+
+public sealed record FarmerApprovedIrrigationResponse(
+    Guid Id,
+    DateTime ScheduledAt,
+    int DurationMinutes,
+    string Notes,
+    string Status);
+
+public sealed record FarmerApprovedCropHealthResponse(
+    string CropHealthObservation,
+    string PossibleConcern,
+    string UncertaintyGuidance,
+    IReadOnlyList<string> ApprovedPrePlantingActions,
+    IReadOnlyList<string> ApprovedMonitoringActions,
+    string? EscalationGuidance,
+    string WhyThisIsRecommended);
+
+public sealed record FarmerApprovedPlanResponse(
+    int ContractVersion,
+    Guid CropPlanRequestId,
+    string Objective,
+    string CropName,
+    string? VarietyName,
+    DateOnly PreferredStartDate,
+    DateOnly PreferredEndDate,
+    IReadOnlyList<FarmerApprovedTaskResponse> ApprovedTasks,
+    IReadOnlyList<FarmerApprovedIrrigationResponse> ApprovedIrrigationSchedules,
+    FarmerApprovedCropHealthResponse? CropHealth);
