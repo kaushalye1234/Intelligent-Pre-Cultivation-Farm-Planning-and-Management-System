@@ -172,10 +172,10 @@
 
 - [ ] **Step 3: Run required checks**
   From the repository root, run the AGENTS.md backend checks in order:
-- dotnet restore backend/AgriAssist.Api.Tests/AgriAssist.Api.Tests.csproj
-- dotnet build backend/AgriAssist.Api.Tests/AgriAssist.Api.Tests.csproj --configuration Release --no-restore
-- $env:Logging__EventLog__LogLevel__Default = 'None'
-- dotnet test backend/AgriAssist.Api.Tests/AgriAssist.Api.Tests.csproj --configuration Release --no-build
+  - dotnet restore backend/AgriAssist.Api.Tests/AgriAssist.Api.Tests.csproj
+  - dotnet build backend/AgriAssist.Api.Tests/AgriAssist.Api.Tests.csproj --configuration Release --no-restore
+  - $env:Logging__EventLog__LogLevel__Default = 'None'
+  - dotnet test backend/AgriAssist.Api.Tests/AgriAssist.Api.Tests.csproj --configuration Release --no-build
 
 Then run from ai-service: python -m compileall -q .; then python -m pytest.
 Run from frontend/react-app in order: npm ci; npm run lint; npm run build; npm test.
