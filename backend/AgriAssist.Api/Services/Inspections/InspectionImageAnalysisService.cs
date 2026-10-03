@@ -197,6 +197,67 @@ public sealed class InspectionImageAnalysisService(
             : await MapStateAsync(analysisResult, true, false, cancellationToken);
     }
 
+    public async Task<IReadOnlyList<InspectionImageAnalysisAuditItemResponse>> GetHistoryAsync(
+        Guid cropPlanRequestId,
+        CancellationToken cancellationToken)
+    {
+        var inspection = await VisibleInspectionAsync(cropPlanRequestId, cancellationToken);
+        var analyses = await dbContext.InspectionImageAnalyses.AsNoTracking()
+            .Where(item => item.FieldInspectionId == inspection.Id)
+            .OrderByDescending(item => item.CreatedAt)
+            .ThenByDescending(item => item.Id)
+            .ToListAsync(cancellationToken);
+        if (analyses.Count == 0) return [];
+
+        var analysisIds = analyses.Select(item => item.Id).ToArray();
+        var reviews = await dbContext.InspectionImageAnalysisReviews.AsNoTracking()
+            .Where(item => analysisIds.Contains(item.InspectionImageAnalysisId))
+            .OrderBy(item => item.ReviewedAt)
+            .ThenBy(item => item.CreatedAt)
+            .ThenBy(item => item.Id)
+            .ToListAsync(cancellationToken);
+        var reviewLookup = reviews.ToLookup(item => item.InspectionImageAnalysisId);
+
+        string? currentFingerprint = null;
+        if (inspection.Status == InspectionStatus.InProgress)
+        {
+            var representative = await CurrentRepresentativeAsync(inspection.Id, cancellationToken);
+            var capability = representative is null ? null : await TryGetCapabilityAsync(cancellationToken);
+            if (representative is not null && capability is not null && !string.IsNullOrWhiteSpace(representative.ContentSha256))
+            {
+                var planRequest = await LoadPlanRequestAsync(cropPlanRequestId, cancellationToken);
+                currentFingerprint = BuildFingerprint(representative, planRequest, capability);
+            }
+        }
+
+        return analyses.Select(analysis =>
+        {
+            var mappedReviews = reviewLookup[analysis.Id]
+                .Select(review => MapReview(review, string.IsNullOrWhiteSpace(review.ReviewedProjectionJson)
+                    ? null
+                    : JsonSerializer.Deserialize<ReviewedImageAnalysisProjection>(review.ReviewedProjectionJson, JsonOptions)))
+                .ToArray();
+            var frozen = mappedReviews.Any(review => review.ReviewId == inspection.FrozenImageAnalysisReviewId);
+            var current = currentFingerprint is not null
+                && string.Equals(analysis.AnalysisFingerprint, currentFingerprint, StringComparison.Ordinal);
+            return new InspectionImageAnalysisAuditItemResponse(
+                analysis.Id,
+                analysis.InspectionImageId,
+                analysis.Status.ToString(),
+                current,
+                frozen,
+                !current && !frozen && analysis.Status == InspectionImageAnalysisStatus.Succeeded,
+                ReadJsonElement(analysis.Pass1ResultJson),
+                ReadJsonArray(analysis.EvidencePacketJson),
+                ReadOptionalFinalResult(analysis.FinalResultJson),
+                mappedReviews,
+                analysis.FailureCategory,
+                analysis.FailureMessageSafe,
+                analysis.CreatedAt,
+                analysis.CompletedAt);
+        }).ToArray();
+    }
+
     public async Task<InspectionImageAnalysisReviewResponse> ReviewAsync(
         Guid cropPlanRequestId,
         InspectionImageAnalysisReviewRequest request,
@@ -286,6 +347,7 @@ public sealed class InspectionImageAnalysisService(
             || string.IsNullOrWhiteSpace(review.ReviewedProjectionJson)) return null;
         var projection = JsonSerializer.Deserialize<ReviewedImageAnalysisProjection>(review.ReviewedProjectionJson, JsonOptions);
         return projection is not null
+            && projection.ContractVersion == Member2CropHealthContractVersions.ReviewedProjection
             && projection.AnalysisId == review.InspectionImageAnalysisId
             && projection.InspectionImageId == review.InspectionImageAnalysis.InspectionImageId
             ? projection
@@ -474,6 +536,27 @@ public sealed class InspectionImageAnalysisService(
             ? JsonSerializer.Deserialize<InspectionImageAnalysisFinalResult>(analysis.FinalResultJson, JsonOptions)
                 ?? throw new ApiException(HttpStatusCode.Conflict, "IMAGE_ANALYSIS_RESULT_INVALID", "The image-analysis result is invalid.")
             : throw new ApiException(HttpStatusCode.Conflict, "IMAGE_ANALYSIS_RESULT_MISSING", "The image-analysis result is missing.");
+
+    private static InspectionImageAnalysisFinalResult? ReadOptionalFinalResult(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try { return JsonSerializer.Deserialize<InspectionImageAnalysisFinalResult>(json, JsonOptions); }
+        catch (JsonException) { return null; }
+    }
+
+    private static JsonElement? ReadJsonElement(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try { return JsonSerializer.Deserialize<JsonElement>(json, JsonOptions); }
+        catch (JsonException) { return null; }
+    }
+
+    private static IReadOnlyList<JsonElement> ReadJsonArray(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return [];
+        try { return JsonSerializer.Deserialize<JsonElement[]>(json, JsonOptions) ?? []; }
+        catch (JsonException) { return []; }
+    }
 
     private async Task<InspectionImageAnalysisStateResponse> MapStateAsync(
         InspectionImageAnalysis analysis,

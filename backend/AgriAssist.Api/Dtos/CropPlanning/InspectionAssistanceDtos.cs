@@ -50,4 +50,3 @@ public sealed record InspectionNoteAssistanceResponse(
     IReadOnlyList<string> ContradictionWarnings,
     IReadOnlyList<string> MissingDataWarnings,
     string? FailureCategory);
-

@@ -302,7 +302,7 @@ export type InspectionNoteSuggestions = {
 
 export type InspectionNoteAssistanceResponse = {
   contractVersion: number
-  status: string
+  status: 'Available' | 'Unavailable'
   suggestions: InspectionNoteSuggestions | null
   contradictionWarnings: string[]
   missingDataWarnings: string[]
@@ -340,6 +340,7 @@ export type InspectionImageAnalysisResult = {
 }
 
 export type ReviewedImageAnalysisProjection = {
+  contractVersion: 1
   analysisId: string
   inspectionImageId: string
   visibleFindings: string[]
@@ -372,6 +373,28 @@ export type InspectionImageAnalysisState = {
   effectiveReview: InspectionImageAnalysisReview | null
   failureCategory?: string | null
   message?: string | null
+}
+
+export type InspectionImageAnalysisAuditItem = {
+  analysisId: string
+  inspectionImageId: string
+  status: string
+  isCurrent: boolean
+  isFrozen: boolean
+  isSuperseded: boolean
+  pass1Result?: unknown
+  evidencePacket: unknown[]
+  result: InspectionImageAnalysisResult | null
+  reviews: Array<{
+    reviewId: string
+    disposition: 'Accepted' | 'Edited' | 'Rejected'
+    reviewedAt: string
+    officerEditedFields: string[]
+  }>
+  failureCategory?: string | null
+  failureMessage?: string | null
+  createdAt: string
+  completedAt?: string | null
 }
 
 export type PrePlantingAssessment = PrePlantingAssessmentInput & {

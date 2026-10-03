@@ -105,6 +105,8 @@ Member 3 never reserves, releases or changes stock, and never approves anything.
 }
 ```
 
+The context may also contain authoritative `reviewedCropIssueActions`. Member 3 treats them as read-only and does not need to echo them. If weather or resource evidence materially affects an action, `WeatherResourceOutput.cropHealthConsiderations` may contain a separate version-1 item with `actionKey`, `considerationType`, and a bounded operational note. Backend validation requires a known action key and rejects any consideration that changes action meaning, uncertainty, provenance, or introduces chemical treatment. If there is no relevant effect, Member 3 returns no consideration and Member 4 still receives the original actions from persisted Field Analysis.
+
 This is completed structured Member 2 output, not raw evidence. It excludes staff notes, raw observation rows, image metadata, inspection/evidence IDs, crop-issue IDs, and unrelated history. Resource Officers do not manually re-enter Member 2 water, irrigation, drainage, waterlogging, readiness, or risk observations. Pumps, pipes, tanks, and irrigation equipment remain ordinary Member 3 inventory resources and are not substitutes for these Field Officer observations. `WeatherResourceAgent` receives the context read-only; its existing weather and inventory reasoning is unchanged.
 
 Weather risk rules: heavy rain (30 mm in a day or 80 mm total), heat (38 C or more) or wind (15 m/s

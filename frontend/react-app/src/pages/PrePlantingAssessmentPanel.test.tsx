@@ -154,7 +154,7 @@ describe('PrePlantingAssessmentPanel', () => {
     const post = vi.spyOn(api, 'post').mockResolvedValue({
       data: {
         contractVersion: 1,
-        status: 'Succeeded',
+        status: 'Available',
         suggestions: {
           soilNotes: 'Moist loamy soil was observed.',
           waterConcerns: 'Canal water was reported as adequate and reliable.',

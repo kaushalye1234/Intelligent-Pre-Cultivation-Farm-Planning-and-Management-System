@@ -8,4 +8,3 @@ public interface IInspectionAssistanceAIClient
         InspectionNoteAssistanceAiInput input,
         CancellationToken cancellationToken);
 }
-

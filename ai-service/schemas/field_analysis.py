@@ -7,6 +7,9 @@ from pydantic import ConfigDict, Field, field_validator
 from schemas.common import AgentEnvelope, CamelModel
 from schemas.inspection_image_analysis import CropHealthActionType, ValidatedSourceReference
 
+CROP_FIELD_ANALYSIS_CONTRACT_VERSION = 2
+REVIEWED_IMAGE_ANALYSIS_CONTRACT_VERSION = 1
+
 
 class ReviewedCropHealthActionInput(CamelModel):
     model_config = ConfigDict(extra="forbid")
@@ -18,6 +21,7 @@ class ReviewedCropHealthActionInput(CamelModel):
 
 class ReviewedImageAnalysisInputProjection(CamelModel):
     model_config = ConfigDict(extra="forbid")
+    contract_version: Literal[1] = Field(default=REVIEWED_IMAGE_ANALYSIS_CONTRACT_VERSION, alias="contractVersion")
     analysis_id: UUID = Field(alias="analysisId")
     inspection_image_id: UUID = Field(alias="inspectionImageId")
     visible_findings: list[str] = Field(alias="visibleFindings", max_length=8)
@@ -69,6 +73,7 @@ class OpenIssueSummary(CamelModel):
 class CropFieldAnalysisOutput(AgentEnvelope):
     model_config = ConfigDict(extra="forbid")
 
+    contract_version: Literal[2] = Field(default=CROP_FIELD_ANALYSIS_CONTRACT_VERSION, alias="contractVersion")
     status: Literal["Analyzed", "SafeFailure"]
     field_condition: FieldCondition = Field(alias="fieldCondition")
     open_issues: list[OpenIssueSummary] = Field(default_factory=list, alias="openIssues")

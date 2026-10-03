@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { parseSchedulingOutput, safeSourceUrl } from './schedulingProposal'
+
+function golden(name: string): unknown {
+  const path = resolve(process.cwd(), '../../docs/ai-usage/fixtures/member2', name)
+  return JSON.parse(readFileSync(path, 'utf8'))
+}
 
 describe('scheduling proposal display parser', () => {
   it('reads a version-2 blocked proposal with per-item evidence', () => {
@@ -23,5 +30,16 @@ describe('scheduling proposal display parser', () => {
   it('allows only HTTP source links', () => {
     expect(safeSourceUrl('https://example.test/guide')).toBe('https://example.test/guide')
     expect(safeSourceUrl('javascript:alert(1)')).toBeNull()
+  })
+
+  it('parses the shared pending crop-health proposal fixture without semantic rewriting', () => {
+    const proposal = parseSchedulingOutput(golden('member4-proposal.pending.valid.json'))
+
+    expect(proposal?.cropHealthGuidance?.decision).toBe('PendingDecision')
+    expect(proposal?.cropHealthTasks[0]).toMatchObject({
+      actionType: 'RemoveAffectedResidue',
+      title: 'Remove affected crop residues',
+      included: true,
+    })
   })
 })

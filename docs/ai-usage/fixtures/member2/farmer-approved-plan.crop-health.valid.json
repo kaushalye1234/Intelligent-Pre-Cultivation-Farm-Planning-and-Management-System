@@ -1,0 +1,25 @@
+{
+  "contractVersion": 1,
+  "cropPlanRequestId": "77777777-7777-7777-7777-777777777777",
+  "objective": "Grow rice safely.",
+  "cropName": "Rice",
+  "varietyName": "Bg 352",
+  "preferredStartDate": "2026-10-01",
+  "preferredEndDate": "2027-01-01",
+  "approvedAt": "2026-09-30T08:00:00Z",
+  "fieldSummary": "The field is ready with minor preparation.",
+  "weatherSummary": "Seasonal rain is expected.",
+  "warnings": [],
+  "recommendations": [],
+  "approvedTasks": [],
+  "approvedIrrigationSchedules": [],
+  "cropHealth": {
+    "cropHealthObservation": "Brown lesions were observed on the submitted crop image.",
+    "possibleConcern": "The visible symptoms may indicate a crop-health issue.",
+    "uncertaintyGuidance": "The exact cause was not confirmed from one image.",
+    "approvedPrePlantingActions": ["Remove visibly affected crop residues from the field before planting."],
+    "approvedMonitoringActions": ["Monitor the crop for recurring symptoms during early growth."],
+    "escalationGuidance": "Request further assessment if symptoms persist or spread.",
+    "whyThisIsRecommended": "This guidance uses reviewed and approved field inspection evidence."
+  }
+}

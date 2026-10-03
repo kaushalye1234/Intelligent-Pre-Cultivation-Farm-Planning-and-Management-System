@@ -74,6 +74,13 @@ public sealed class CropPlansWorkflowController(
         CancellationToken cancellationToken) =>
         Ok(await imageAnalysisService.GetCurrentAsync(id, cancellationToken));
 
+    [HttpGet("{id:guid}/pre-planting-assessment/image-analysis/history")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.FieldOfficer)},{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
+    public async Task<ActionResult<IReadOnlyList<AgriAssist.Api.Dtos.Inspections.InspectionImageAnalysisAuditItemResponse>>> GetRepresentativeImageAnalysisHistory(
+        Guid id,
+        CancellationToken cancellationToken) =>
+        Ok(await imageAnalysisService.GetHistoryAsync(id, cancellationToken));
+
     [HttpPost("{id:guid}/pre-planting-assessment/image-analysis/review")]
     [Authorize(Roles = nameof(ApplicationRole.FieldOfficer))]
     public async Task<ActionResult<AgriAssist.Api.Dtos.Inspections.InspectionImageAnalysisReviewResponse>> ReviewRepresentativeImageAnalysis(

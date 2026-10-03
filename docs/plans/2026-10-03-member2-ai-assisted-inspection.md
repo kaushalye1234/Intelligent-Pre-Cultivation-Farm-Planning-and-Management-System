@@ -514,3 +514,18 @@ flutter test
 ```
 
 PostgreSQL-specific partial-index, row-lock, transaction, JSONB, and concurrent-approval behavior must be reported verified only when the isolated PostgreSQL suite runs successfully.
+
+## Implemented contract/version index
+
+| Boundary | Version | Authority |
+| --- | ---: | --- |
+| Inspection Note Assistance | 1 | Python strict output + ASP.NET validation |
+| Image Analysis Pass 1 | 1 | Python strict output |
+| Final Inspection Image Analysis | 1 | Python strict output + ASP.NET validation |
+| Reviewed Image Analysis projection | 1 | ASP.NET |
+| Persisted Crop Field Analysis | 2 | ASP.NET deterministic wrapper |
+| Member 3 crop-health consideration | 1 | ASP.NET validation |
+| Member 4 scheduling/crop-health proposal | 2 | ASP.NET deterministic catalog |
+| Farmer approved plan | 1 | ASP.NET server-composed projection |
+
+Shared golden fixtures are under `docs/ai-usage/fixtures/member2` and are loaded by Python, C#, React, and Flutter tests. They intentionally cover valid, unknown-field/action, and unsupported-version payloads without introducing cross-language code generation.

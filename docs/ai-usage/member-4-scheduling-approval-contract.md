@@ -30,6 +30,29 @@ The agent creates preparation review tasks only from Member 2 `fieldPreparationR
 
 The version-2 result uses the same endpoint and includes `contractVersion: 2`. Older stored results without that property remain readable and use the existing approval revalidation path. Only a version-2 result receives the new reason/source and zero-irrigation checks.
 
+### Crop-health action and guidance path
+
+`reviewedCropIssueActions` remain separate from `fieldPreparationRequirements`. ASP.NET maps each allowlisted action through the deterministic crop-health catalog after Scheduling Validation; the scheduling model cannot author or rewrite those semantics. Each mapped candidate has locked action type, category, title, description, non-chemical meaning, and Member 2 provenance. AO/Admin may include/reject it and change only bounded schedule, assignee/role, priority where supported, and a staff-only scheduling note. Approval reconstructs and validates catalog wording again.
+
+When frozen reviewed evidence exists, ASP.NET also constructs a locked farmer-safe crop-health guidance candidate. Each proposal version uses `PendingDecision`, `Included`, `Rejected`, or `NotApplicable`. A candidate starts Pending and final workflow approval is rejected until AO/Admin explicitly Includes or Rejects it. A new proposal revision resets the decision. Guidance and task decisions remain independent. Neither path may introduce chemical treatment or turn an uncertain concern into a confirmed diagnosis.
+
+The additional decision routes are:
+
+```http
+POST /api/task-approval/workflows/{workflowId}/crop-health-guidance-decision
+PUT  /api/task-approval/workflows/{workflowId}/crop-health-actions/{actionKey}
+```
+
+Authorized Field Officers may read only workflows linked to inspections they own; they receive no decision controls. AO/Admin retain proposal authority. Resource Officers and farmers cannot access Member 2 raw analysis/review history through Task Approval.
+
+After final approval, the owning farmer reads the version-1 server-composed DTO:
+
+```http
+GET /api/crop-planning/requests/{cropPlanRequestId}/approved-plan
+```
+
+It contains approved plan data, approved tasks, approved irrigation, and an optional crop-health section only when the exact proposal guidance was Included. Legacy plans and plans with rejected/no image guidance return the normal approved data with `cropHealth: null`. The endpoint never returns raw workflow JSON, analysis/review IDs, hashes, fingerprints, evidence packets, prompt/model metadata, rejected/stale output, or staff-only notes. Flutter consumes only this projection.
+
 The backend validates identifiers, ownership, revision, dates, conflicts, inventory, reservations, and budget using current database state. Only a valid candidate moves the workflow to `PendingOfficerApproval`. The AI result cannot set its own eligibility.
 
 ## Review and decisions

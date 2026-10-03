@@ -1,9 +1,12 @@
 from datetime import date, datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import Field, field_validator
 
 from schemas.common import AgentEnvelope, CamelModel
+
+MEMBER3_CROP_HEALTH_CONSIDERATION_CONTRACT_VERSION = 1
 
 SUFFICIENT = "Sufficient"
 INSUFFICIENT = "Insufficient"
@@ -178,6 +181,10 @@ class ResourceRequirementAssessment(CamelModel):
 
 
 class CropHealthWeatherResourceConsideration(CamelModel):
+    contract_version: Literal[1] = Field(
+        default=MEMBER3_CROP_HEALTH_CONSIDERATION_CONTRACT_VERSION,
+        alias="contractVersion",
+    )
     action_key: str = Field(alias="actionKey", min_length=1, max_length=80)
     consideration_type: str = Field(alias="considerationType", min_length=1, max_length=80)
     note: str = Field(min_length=1, max_length=500)

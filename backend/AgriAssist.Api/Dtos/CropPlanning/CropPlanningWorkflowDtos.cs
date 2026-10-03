@@ -259,7 +259,8 @@ public sealed record FieldAnalysisOutput(
     IReadOnlyList<PrePlantingRisk>? IdentifiedRisks = null,
     IReadOnlyList<string>? RecommendedPrePlantingActions = null,
     IReadOnlyList<ReviewedCropIssueActionResponse>? ReviewedCropIssueActions = null,
-    ReviewedCropHealthGuidanceSource? ReviewedCropHealthGuidance = null);
+    ReviewedCropHealthGuidanceSource? ReviewedCropHealthGuidance = null,
+    int ContractVersion = Member2CropHealthContractVersions.CropFieldAnalysis);
 
 public sealed record ReviewedCropIssueActionResponse(
     CropHealthActionType ActionType,
@@ -314,7 +315,8 @@ public sealed record Member3HandoffResponse(
     string PlantingReadiness,
     IReadOnlyList<PrePlantingRisk> IdentifiedRisks,
     IReadOnlyList<string> RecommendedPrePlantingActions,
-    IReadOnlyList<Member3CropHealthActionContext>? ReviewedCropIssueActions = null);
+    IReadOnlyList<Member3CropHealthActionContext>? ReviewedCropIssueActions = null,
+    int ContractVersion = Member2CropHealthContractVersions.Member3Consideration);
 
 public sealed record Member3CropHealthActionContext(
     string ActionKey,

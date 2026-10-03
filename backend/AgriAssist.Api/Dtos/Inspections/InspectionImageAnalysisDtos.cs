@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace AgriAssist.Api.Dtos.Inspections;
@@ -5,6 +6,15 @@ namespace AgriAssist.Api.Dtos.Inspections;
 public static class InspectionImageAnalysisContract
 {
     public const int Version = 1;
+}
+
+public static class Member2CropHealthContractVersions
+{
+    public const int ReviewedProjection = 1;
+    public const int CropFieldAnalysis = 2;
+    public const int Member3Consideration = 1;
+    public const int Member4Proposal = 2;
+    public const int FarmerApprovedPlan = 1;
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<CropHealthIssueCategory>))]
@@ -90,7 +100,8 @@ public sealed record ReviewedImageAnalysisProjection(
     IReadOnlyList<ReviewedCropHealthAction> Actions,
     IReadOnlyList<ImageAnalysisSourceReference> SourceReferences,
     bool RequiresFurtherAssessment,
-    IReadOnlyList<string> OfficerEditedFields);
+    IReadOnlyList<string> OfficerEditedFields,
+    int ContractVersion = Member2CropHealthContractVersions.ReviewedProjection);
 
 public sealed record InspectionImageAnalysisReviewResponse(
     Guid ReviewId,
@@ -112,3 +123,18 @@ public sealed record InspectionImageAnalysisStateResponse(
     string? FailureCategory,
     string? Message);
 
+public sealed record InspectionImageAnalysisAuditItemResponse(
+    Guid AnalysisId,
+    Guid InspectionImageId,
+    string Status,
+    bool IsCurrent,
+    bool IsFrozen,
+    bool IsSuperseded,
+    JsonElement? Pass1Result,
+    IReadOnlyList<JsonElement> EvidencePacket,
+    InspectionImageAnalysisFinalResult? Result,
+    IReadOnlyList<InspectionImageAnalysisReviewResponse> Reviews,
+    string? FailureCategory,
+    string? FailureMessage,
+    DateTime CreatedAt,
+    DateTime? CompletedAt);

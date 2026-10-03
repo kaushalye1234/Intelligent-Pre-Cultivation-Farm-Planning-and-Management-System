@@ -38,6 +38,30 @@ public sealed class InspectionImageAnalysisServiceTests
         Assert.Equal(ImageAnalysisReviewDecision.Accepted, review.Disposition);
         Assert.Single(await db.InspectionImageAnalysisReviews.ToListAsync());
         Assert.Equal(CropHealthActionType.MonitorSymptoms, review.Projection!.Actions[0].ActionType);
+        Assert.Equal(Member2CropHealthContractVersions.ReviewedProjection, review.Projection.ContractVersion);
+    }
+
+    [Fact]
+    public async Task Staff_audit_history_is_explicit_and_remains_inspection_scoped()
+    {
+        await using var db = NewDbContext();
+        var seeded = await SeedAsync(db);
+        var service = NewService(db, seeded.OfficerId, new FakeImageAiClient());
+        await service.AnalyzeAsync(seeded.PlanId, CancellationToken.None);
+        await service.ReviewAsync(seeded.PlanId, new InspectionImageAnalysisReviewRequest(
+            ImageAnalysisReviewDecision.Accepted, null, null), CancellationToken.None);
+
+        var history = await service.GetHistoryAsync(seeded.PlanId, CancellationToken.None);
+
+        var item = Assert.Single(history);
+        Assert.True(item.IsCurrent);
+        Assert.False(item.IsFrozen);
+        Assert.NotNull(item.Result);
+        Assert.Single(item.Reviews);
+        await Assert.ThrowsAsync<ApiException>(() => NewService(db, Guid.NewGuid(), new FakeImageAiClient())
+            .GetHistoryAsync(seeded.PlanId, CancellationToken.None));
+        await Assert.ThrowsAsync<ApiException>(() => NewService(db, seeded.FarmerId, new FakeImageAiClient(), ApplicationRole.ResourceOfficer)
+            .GetHistoryAsync(seeded.PlanId, CancellationToken.None));
     }
 
     [Fact]
@@ -75,10 +99,14 @@ public sealed class InspectionImageAnalysisServiceTests
         Assert.Equal(InspectionImageAnalysisStatus.Stale, (await db.InspectionImageAnalyses.SingleAsync()).Status);
     }
 
-    private static InspectionImageAnalysisService NewService(AppDbContext db, Guid officerId, IInspectionImageAnalysisAIClient ai) =>
+    private static InspectionImageAnalysisService NewService(
+        AppDbContext db,
+        Guid userId,
+        IInspectionImageAnalysisAIClient ai,
+        ApplicationRole role = ApplicationRole.FieldOfficer) =>
         new(
             db,
-            new CurrentUserStub(officerId),
+            new CurrentUserStub(userId, role),
             new FakeCloudinaryService(),
             ai,
             NullLogger<InspectionImageAnalysisService>.Instance);
@@ -132,16 +160,16 @@ public sealed class InspectionImageAnalysisServiceTests
         };
         db.AddRange(farmer, officer, farm, field, crop, variety, plan, inspection, image);
         await db.SaveChangesAsync();
-        return new Seeded(officer.Id, plan.Id);
+        return new Seeded(farmer.Id, officer.Id, plan.Id);
     }
 
-    private sealed record Seeded(Guid OfficerId, Guid PlanId);
+    private sealed record Seeded(Guid FarmerId, Guid OfficerId, Guid PlanId);
 
-    private sealed class CurrentUserStub(Guid userId) : ICurrentUserService
+    private sealed class CurrentUserStub(Guid userId, ApplicationRole role) : ICurrentUserService
     {
         public Guid? UserId { get; } = userId;
-        public ApplicationRole? Role => ApplicationRole.FieldOfficer;
-        public bool IsInRole(ApplicationRole role) => role == ApplicationRole.FieldOfficer;
+        public ApplicationRole? Role { get; } = role;
+        public bool IsInRole(ApplicationRole roleToCheck) => roleToCheck == role;
     }
 
     private sealed class FakeCloudinaryService : ICloudinaryService

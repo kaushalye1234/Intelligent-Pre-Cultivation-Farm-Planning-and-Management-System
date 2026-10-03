@@ -1476,7 +1476,7 @@ public sealed class CropPlanningService(
             .Where(item => !string.IsNullOrWhiteSpace(item)).Distinct(StringComparer.Ordinal).ToArray();
 
         return new FarmerApprovedPlanResponse(
-            1,
+            Member2CropHealthContractVersions.FarmerApprovedPlan,
             request.Id,
             request.Objective,
             request.CropType?.Name ?? "Crop",
@@ -1926,6 +1926,8 @@ public sealed class CropPlanningService(
     private async Task<IReadOnlyList<string>> ValidateFieldAnalysisOutputAsync(Guid workflowId, Guid assessmentId, FieldAnalysisOutput output, CancellationToken cancellationToken)
     {
         var errors = new List<string>();
+        if (output.ContractVersion != Member2CropHealthContractVersions.CropFieldAnalysis)
+            errors.Add("FieldAnalysis contractVersion is unsupported.");
         if (output.WorkflowId != workflowId) errors.Add("FieldAnalysis workflowId does not match the persisted workflow.");
         if (string.IsNullOrWhiteSpace(output.Status)) errors.Add("FieldAnalysis status is required.");
         if (output.Warnings is null) errors.Add("FieldAnalysis warnings array is required.");
@@ -2310,6 +2312,7 @@ public sealed class CropPlanningService(
     {
         public Task<InspectionImageAnalysisStateResponse> AnalyzeAsync(Guid cropPlanRequestId, CancellationToken cancellationToken) => throw new InvalidOperationException();
         public Task<InspectionImageAnalysisStateResponse> GetCurrentAsync(Guid cropPlanRequestId, CancellationToken cancellationToken) => throw new InvalidOperationException();
+        public Task<IReadOnlyList<InspectionImageAnalysisAuditItemResponse>> GetHistoryAsync(Guid cropPlanRequestId, CancellationToken cancellationToken) => throw new InvalidOperationException();
         public Task<InspectionImageAnalysisReviewResponse> ReviewAsync(Guid cropPlanRequestId, InspectionImageAnalysisReviewRequest request, CancellationToken cancellationToken) => throw new InvalidOperationException();
         public Task<ImageAnalysisCapabilityResponse?> TryGetCapabilityAsync(CancellationToken cancellationToken) => Task.FromResult<ImageAnalysisCapabilityResponse?>(null);
         public Task<Guid?> ResolveEligibleReviewIdForSubmissionAsync(FieldInspection inspection, CropPlanRequest planRequest, ImageAnalysisCapabilityResponse? capability, CancellationToken cancellationToken) => Task.FromResult<Guid?>(null);

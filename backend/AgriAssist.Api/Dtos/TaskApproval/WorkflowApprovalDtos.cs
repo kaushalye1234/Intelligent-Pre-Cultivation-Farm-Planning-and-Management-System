@@ -80,7 +80,7 @@ public sealed record SchedulingValidationInput(
     IReadOnlyList<ExistingFarmTaskSnapshot> ExistingTasks,
     IReadOnlyList<ExistingIrrigationSnapshot> ExistingIrrigation,
     SchedulingEvidenceBundle? Evidence = null,
-    int ContractVersion = 2);
+    int ContractVersion = Member2CropHealthContractVersions.Member4Proposal);
 
 public sealed record SchedulingValidationOutput(
     Guid WorkflowId,

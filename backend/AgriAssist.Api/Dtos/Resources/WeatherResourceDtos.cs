@@ -1,5 +1,6 @@
 using AgriAssist.Api.ExternalServices.Weather;
 using AgriAssist.Api.Dtos.CropPlanning;
+using AgriAssist.Api.Dtos.Inspections;
 using AgriAssist.Api.Models.Shared;
 
 namespace AgriAssist.Api.Dtos.Resources;
@@ -124,7 +125,8 @@ public sealed record Member2FieldAnalysisContext(
 public sealed record CropHealthWeatherResourceConsideration(
     string ActionKey,
     string ConsiderationType,
-    string Note);
+    string Note,
+    int ContractVersion = Member2CropHealthContractVersions.Member3Consideration);
 
 /// <summary>
 /// Sent to the AI service. The agent gathers requirements, field, inventory, reservations and weather

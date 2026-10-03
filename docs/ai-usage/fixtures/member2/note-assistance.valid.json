@@ -1,0 +1,15 @@
+{
+  "contractVersion": 1,
+  "status": "Available",
+  "suggestions": {
+    "soilNotes": "Moist loamy soil was observed.",
+    "waterConcerns": null,
+    "drainageNotes": "Drainage was recorded as good with low waterlogging risk.",
+    "generalFieldNotes": null,
+    "riskNotes": null,
+    "officerNotes": "Recheck field readiness before sowing."
+  },
+  "contradictionWarnings": [],
+  "missingDataWarnings": ["No water concern was supplied."],
+  "failureCategory": null
+}

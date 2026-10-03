@@ -287,6 +287,24 @@
   border-radius: var(--radius-md);
 }
 
+.image-analysis-history {
+  margin-top: 1rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+
+.image-analysis-history summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.audit-history-item {
+  margin-top: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 0.85rem;
+}
+
 .image-analysis-panel {
   background: var(--color-surface-raised);
   border-left: 4px solid var(--color-primary);

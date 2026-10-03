@@ -11,6 +11,7 @@ import type {
   ApplicationRole,
   CropHealthActionType,
   FieldAnalysisResult,
+  InspectionImageAnalysisAuditItem,
   InspectionImageAnalysisResult,
   InspectionImageAnalysisState,
   InspectionNoteAssistanceResponse,
@@ -166,6 +167,7 @@ export function PrePlantingAssessmentPanel({
   const [noteDecisions, setNoteDecisions] = useState<Partial<Record<NoteFieldKey, NoteDecision>>>({})
   const [imageAnalysis, setImageAnalysis] = useState<InspectionImageAnalysisState | null>(null)
   const [imageEdit, setImageEdit] = useState<InspectionImageAnalysisResult | null>(null)
+  const [imageHistory, setImageHistory] = useState<InspectionImageAnalysisAuditItem[] | null>(null)
   const [files, setFiles] = useState<File[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [assessmentLoadFailed, setAssessmentLoadFailed] = useState(false)
@@ -310,7 +312,7 @@ export function PrePlantingAssessmentPanel({
       )
       setNoteAssistance(response.data)
       setNoteDecisions({})
-      if (response.data.status !== 'Succeeded') {
+      if (response.data.status !== 'Available') {
         setWarning('AI note assistance is currently unavailable. You can continue entering the inspection manually.')
       }
     } catch (err) {
@@ -368,6 +370,21 @@ export function PrePlantingAssessmentPanel({
     } catch (err) {
       setWarning('AI image analysis could not be completed. The manual inspection remains available. ' + getErrorMessage(err))
       await loadImageAnalysis()
+    } finally {
+      setAction(null)
+    }
+  }
+
+  async function loadImageAnalysisHistory() {
+    setAction('review-image')
+    setError('')
+    try {
+      const response = await api.get<InspectionImageAnalysisAuditItem[]>(
+        `/crop-plans/${requestId}/pre-planting-assessment/image-analysis/history`,
+      )
+      setImageHistory(response.data)
+    } catch (err) {
+      setError(getErrorMessage(err))
     } finally {
       setAction(null)
     }
@@ -657,6 +674,7 @@ export function PrePlantingAssessmentPanel({
       {assessment ? <ImageAnalysisPanel
         state={imageAnalysis}
         edit={imageEdit}
+        history={imageHistory}
         canEdit={canEdit}
         busy={busy}
         hasRepresentative={assessment.images.some((image) => image.isRepresentativeForAi)}
@@ -664,6 +682,7 @@ export function PrePlantingAssessmentPanel({
         onAccept={() => void reviewImageAnalysis('Accepted')}
         onEdit={() => void reviewImageAnalysis('Edited')}
         onReject={() => void reviewImageAnalysis('Rejected')}
+        onLoadHistory={() => void loadImageAnalysisHistory()}
         onEditChange={setImageEdit}
       /> : null}
 
@@ -747,6 +766,7 @@ function SuggestedNoteField({
 function ImageAnalysisPanel({
   state,
   edit,
+  history,
   canEdit,
   busy,
   hasRepresentative,
@@ -754,10 +774,12 @@ function ImageAnalysisPanel({
   onAccept,
   onEdit,
   onReject,
+  onLoadHistory,
   onEditChange,
 }: {
   state: InspectionImageAnalysisState | null
   edit: InspectionImageAnalysisResult | null
+  history: InspectionImageAnalysisAuditItem[] | null
   canEdit: boolean
   busy: boolean
   hasRepresentative: boolean
@@ -765,6 +787,7 @@ function ImageAnalysisPanel({
   onAccept: () => void
   onEdit: () => void
   onReject: () => void
+  onLoadHistory: () => void
   onEditChange: (value: InspectionImageAnalysisResult) => void
 }) {
   const result = state?.result
@@ -825,6 +848,21 @@ function ImageAnalysisPanel({
       {state?.effectiveReview ? <Notice tone={state.effectiveReview.disposition === 'Rejected' ? 'warning' : 'success'}>
         Latest review: {state.effectiveReview.disposition}{state.effectiveReview.officerEditedFields.length ? ` · Officer Edited (${state.effectiveReview.officerEditedFields.join(', ')})` : ''}.
       </Notice> : null}
+      <details className="image-analysis-history">
+        <summary onClick={() => { if (history === null && !busy) onLoadHistory() }}>Staff audit history</summary>
+        {history === null ? <p className="muted-text">Open to load immutable analysis and review history.</p> : history.length === 0
+          ? <p className="muted-text">No image-analysis attempts have been recorded.</p>
+          : history.map((item) => <article key={item.analysisId} className="audit-history-item">
+            <div className="row-actions">
+              <strong>{item.isFrozen ? 'Frozen' : item.isCurrent ? 'Current' : item.isSuperseded ? 'Superseded' : item.status}</strong>
+              <StatusPill label={item.status} tone={item.status === 'Succeeded' ? 'good' : item.status === 'Running' ? 'info' : 'bad'} />
+            </div>
+            <p className="muted-text">Created {item.createdAt}{item.completedAt ? ` · completed ${item.completedAt}` : ''}</p>
+            {item.failureMessage ? <Notice tone="warning">{item.failureMessage}</Notice> : null}
+            {item.result ? <><ResultList title="Visible findings" items={item.result.visibleFindings} /><AssessmentItem label="Uncertainty" value={item.result.uncertainty} /></> : null}
+            {item.reviews.length ? <ul>{item.reviews.map((review) => <li key={review.reviewId}>{review.disposition} · {review.reviewedAt}{review.officerEditedFields.length ? ' · Officer Edited' : ''}</li>)}</ul> : <p className="muted-text">No Field Officer review.</p>}
+          </article>)}
+      </details>
     </section>
   )
 }

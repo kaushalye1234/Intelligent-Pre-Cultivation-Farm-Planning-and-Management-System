@@ -1,0 +1,16 @@
+{
+  "contractVersion": 1,
+  "status": "Available",
+  "suggestions": {
+    "soilNotes": null,
+    "waterConcerns": null,
+    "drainageNotes": null,
+    "generalFieldNotes": null,
+    "riskNotes": null,
+    "officerNotes": null,
+    "inventedTreatmentNotes": "Apply a treatment."
+  },
+  "contradictionWarnings": [],
+  "missingDataWarnings": [],
+  "failureCategory": null
+}

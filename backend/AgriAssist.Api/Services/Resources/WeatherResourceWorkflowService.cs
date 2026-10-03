@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.Json;
 using AgriAssist.Api.Data;
+using AgriAssist.Api.Dtos.Inspections;
 using AgriAssist.Api.Dtos.Resources;
 using AgriAssist.Api.Dtos.Shared;
 using AgriAssist.Api.ExternalServices.AgenticAI;
@@ -278,6 +279,8 @@ public sealed class WeatherResourceWorkflowService(
             errors.Add("Crop-health considerations exceed the supplied action count.");
         foreach (var consideration in considerations)
         {
+            if (consideration.ContractVersion != Member2CropHealthContractVersions.Member3Consideration)
+                errors.Add("A crop-health consideration contractVersion is unsupported.");
             if (!knownActionKeys.Contains(consideration.ActionKey))
                 errors.Add("A crop-health consideration references an unknown Member 2 action.");
             if (!allowedConsiderationTypes.Contains(consideration.ConsiderationType))
