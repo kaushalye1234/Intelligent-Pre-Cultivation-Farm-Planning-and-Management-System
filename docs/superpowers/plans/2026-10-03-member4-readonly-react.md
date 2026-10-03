@@ -1,81 +1,59 @@
-# Member 4 Read-Only ReAct Evidence Retrieval Implementation Plan
+# Member 4 Single-Tool ReAct Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a bounded, model-selected, read-only evidence retrieval loop before Member 4's existing deterministic scheduler, while preserving proposal-only output and officer approval.
+**Goal:** Let the scheduling agent make one safe read-only request for missing verified crop-profile evidence, then let existing deterministic code build the proposal.
 
-**Architecture:** Keep complete and already-valid requests on the existing deterministic fast path. For a narrowly classified refreshable evidence gap, a typed provider tool-call contract drives a fixed dispatcher that uses existing GET wrappers; deterministic validators merge only matching persisted results into an in-memory request. EvidenceScheduler remains the sole candidate generator and risk assessor, and every unavailable or unsafe result exits through the existing safe dependency/blocking path.
+**Architecture:** Keep the current scheduler and approval workflow unchanged. If upstream analysis is complete but crop-profile evidence is incomplete, the OpenAI model may call exactly one fixed tool, GetVerifiedCropProfile, with no model-controlled IDs. Typed existing GET wrappers retrieve the matching profile; deterministic code validates it and passes it to the current scheduler or returns MissingDependency.
 
-**Tech Stack:** Python 3.11-compatible code, FastAPI, Pydantic 2, LangGraph, OpenAI SDK already pinned by ai-service/requirements.txt, httpx, pytest, pytest-asyncio.
+**Tech Stack:** Python, FastAPI, Pydantic, LangGraph, the existing OpenAI SDK and BackendToolClient.
 
-**Spec:** docs/superpowers/specs/2026-10-03-member4-readonly-react-design.md
+**Spec:** `docs/superpowers/specs/2026-10-03-member4-readonly-react-design.md`
 
 ## Global Constraints
 
-- Keep the backend tool surface GET-only; do not add a write endpoint for this feature.
-- Keep every model action on a fixed allowlist with strict typed arguments; trusted graph state supplies workflow, step, and candidate revision context.
-- Retrieval is disabled by default. When enabled, limits are at most 3 model turns, at most 5 total tool calls, one 45-second overall retrieval deadline, and at most 16 KiB of serialized observation per call.
-- A complete evidence request must not call the model or backend retrieval tools.
-- Never synthesize or replace Member 1–3 completion status, warnings, conclusions, or source provenance.
-- Do not generate candidates from an unverified, mismatched, stale, malformed, timed-out, or partially accepted retrieval.
-- EvidenceScheduler remains deterministic and read-only; no final task, irrigation schedule, inventory reservation, or approval is created before explicit officer approval.
-- Preserve workflow ID, candidate revision, ownership scope, approval-time inventory/schedule rechecks, concurrency handling, rollback, and audit behavior.
-- Use existing typed BackendToolClient wrappers; reject unknown tool names, extra arguments, arbitrary URLs/paths, and model-supplied trusted context.
-- Run AI-service checks and the applicable repository checks for any shared file changed; do not claim PostgreSQL behavior from EF InMemory tests.
+- Keep the feature disabled by default behind `SCHEDULING_PROFILE_RETRIEVAL_ENABLED=false`.
+- A complete evidence request must call neither the model nor the profile tool.
+- Missing Member 1, 2, or 3 output or required step IDs must block before any model call.
+- Expose exactly one model-visible read-only tool and allow exactly one tool call per request.
+- The tool accepts no caller-controlled identifiers; trusted request context binds workflow, crop plan, crop type, and variety.
+- Use only existing crop-plan-context and crop-reference-profile GET routes through typed Python wrappers.
+- Never synthesize or overwrite Member 1–3 statuses, conclusions, warnings, or source provenance.
+- EvidenceScheduler remains the sole source of candidate tasks, irrigation entries, resource reservations, dates, and risk assessment.
+- No farm writes or approvals occur during retrieval. The existing officer approval transaction remains unchanged.
+- Preserve workflow ID and candidate revision, audit behavior, and safe failure handling.
 
 ## Review Focus
 
-- **Valid request with complete evidence:** ensure no model call or retrieval HTTP request occurs; pin in Task 1 and Task 5.
-- **Missing whole upstream analysis versus refreshable supporting evidence:** block the former and refresh only the latter; pin in Task 1 and Task 4.
-- **Cross-workflow/entity/profile/source mismatch or altered candidate revision:** reject it before it can change the scheduling request; pin in Task 3 and Task 4.
-- **Provider returns malformed, unsupported, repeated, or over-budget calls:** stop safely without dispatching unapproved tools; pin in Task 2 and Task 4.
-- **Timeout, cancellation, missing token, HTTP error, or oversized observation:** return the existing safe dependency result without scheduling from partial data; pin in Task 3 and Task 4.
-
----
+- **Complete profile present:** prove zero provider/tool calls and preserve the existing deterministic output in Task 3.
+- **Upstream output or step missing:** prove no retrieval is attempted and result remains MissingDependency in Task 2.
+- **Unknown, multiple, or malformed model tool call:** reject without dispatching a request in Tasks 1 and 2.
+- **Wrong crop/profile/source or unverified profile:** reject evidence and create no candidate in Task 2.
+- **Provider/backend timeout, missing token, or oversized response:** stop safely and preserve the original request in Tasks 2 and 3.
 
 ## File Map
 
 | File | Responsibility |
 | --- | --- |
-| Create: `ai-service/schemas/tool_calling.py` | Provider-neutral typed tool definitions, model tool calls, turn result, trace entry, and strict argument shape. |
-| Modify: `ai-service/providers/base_llm_provider.py` | Add the typed tool-turn contract and safe unsupported-provider behavior without changing generate_json. |
-| Modify: `ai-service/providers/openai_provider.py` | Translate the typed contract to constrained OpenAI function calls and parse response into the shared type. |
-| Modify: `ai-service/config.py` | Add validated retrieval limits with the exact defaults in Global Constraints. |
-| Create: `ai-service/tools/scheduling_evidence_tools.py` | Fixed allowlist schemas, trusted-context argument binding, tool dispatch, typed read wrappers, and result-size validation. |
-| Create: `ai-service/agents/scheduling_evidence_retriever.py` | Classify refreshable gaps, run the bounded ReAct loop, validate/merge accepted results, and return a safe retrieval outcome. |
-| Modify: `ai-service/agents/scheduling_validation_agent.py` | Accept an optional retriever and preserve the existing direct deterministic behavior when none is configured. |
-| Modify: `ai-service/graph/workflow_graph.py` | Add the conditional retrieval node before existing dependency validation; maintain an explicit loop counter/deadline state. |
-| Modify: `ai-service/main.py` | Construct the retrieval agent with current settings, configured provider, and existing backend read tools for the scheduling endpoint only. |
-| Create: `ai-service/tests/test_tool_calling_contract.py` | Validate provider-neutral tool call and strict schema behavior. |
-| Modify: `ai-service/tests/test_llm_providers.py` | Test OpenAI tool schema request, parsed call/terminal turn, malformed response and timeout classification. |
-| Create: `ai-service/tests/test_scheduling_evidence_tools.py` | Test allowlist, argument binding, typed backend wrapper use, response bounds, and fail-closed behavior. |
-| Create: `ai-service/tests/test_scheduling_evidence_retriever.py` | Test gap selection, bounded loop, provenance validation, merge rules, and safe stops. |
-| Modify: `ai-service/tests/test_scheduling_validation_graph.py` | Test fast path, retrieval path, and blocked retrieval path without changing deterministic candidate expectations. |
-| Modify: `ai-service/tests/test_scheduling_validation_api.py` | Test endpoint construction/wiring and confirm response contract and authorization remain unchanged. |
+| Modify: `ai-service/providers/base_llm_provider.py` | Add one typed tool-call result/method without changing existing JSON generation. |
+| Modify: `ai-service/providers/openai_provider.py` | Implement strict single-function calling for the configured provider. |
+| Modify: `ai-service/config.py` | Add the disabled-by-default feature switch. |
+| Create: `ai-service/tools/scheduling_evidence_tools.py` | Expose only GetVerifiedCropProfile and bind trusted identifiers to existing GET wrappers. |
+| Create: `ai-service/agents/scheduling_profile_retriever.py` | Check prerequisites, request/validate one profile, and return the original input on safe failure. |
+| Modify: `ai-service/agents/scheduling_validation_agent.py` | Invoke the optional retriever before existing deterministic checks. |
+| Modify: `ai-service/graph/workflow_graph.py` | Add one conditional retrieval step before existing evidence validation. |
+| Modify: `ai-service/main.py` | Construct the provider and read-only wrappers only when the feature is enabled. |
+| Modify: `ai-service/tests/test_llm_providers.py` | Cover the single typed OpenAI tool-call response. |
+| Create: `ai-service/tests/test_scheduling_evidence_tools.py` | Cover the fixed tool, trusted IDs, typed GET use, and profile validation. |
+| Modify: `ai-service/tests/test_scheduling_validation_agent.py` | Cover prerequisites, one-call limit, safe failures, and unchanged deterministic results. |
+| Modify: `ai-service/tests/test_scheduling_validation_graph.py` | Cover fast path, retrieval path, and safe-block path. |
+| Modify: `ai-service/tests/test_scheduling_validation_api.py` | Confirm feature-flag wiring leaves route/auth/response contracts unchanged. |
 
-Do not modify InternalAgentToolsController or add endpoints unless implementation inspection proves that an approved read cannot be performed using its current GET routes. If so, stop implementation and submit an amended spec for review first.
+No backend, React, Flutter, migration, or database changes are expected. If existing GET wrappers cannot retrieve and validate the profile needed by the approved spec, stop and request a design update; do not add a new endpoint.
 
 ---
 
-### Task 1: Define refreshable evidence gaps and typed results
-
-**Files:**
-- Create: `ai-service/schemas/tool_calling.py`
-- Create: `ai-service/tests/test_tool_calling_contract.py`
-- Create: `ai-service/tests/test_scheduling_evidence_retriever.py`
-
-**Interfaces:**
-- Produce `ToolCall(id: str, name: str, arguments: dict[str, object])`, `ToolTurn(text: str | None, tool_calls: list[ToolCall])`, `ToolTraceEntry(tool_name: str, source_ids: list[str], source_version: str | None, result_class: str, elapsed_ms: int)`, and `EvidenceRetrievalResult(request: SchedulingValidationInput, safe_stop_reason: str | None, tool_trace: list[ToolTraceEntry])`.
-- Produce a deterministic gap classifier that distinguishes supported persisted evidence gaps from missing/incomplete Member 1–3 analysis. Only supporting crop-profile metadata and a stock snapshot already referenced by valid Member 3 requirements are refreshable in the first release. Although the approved design lists additional read tools, this first dispatcher uses only results with a safe, one-to-one merge target in the existing scheduling input; it does not fetch weather, re-run Member 3, or synthesize analysis. A profile is stale if its verification time is in the future or its source/version/entity does not match the persisted request; no age threshold is invented. A mismatch in Member 1–3 output itself blocks for upstream reanalysis.
-- A missing or unsuccessful coordinator/field/weather-resource output is never refreshable by this retrieval layer. Do not include weather forecast retrieval: reading a forecast does not recompute Member 3's risk analysis.
-- Strict call arguments must reject unknown fields. The tool-turn schema must allow a terminal response with no tool calls. Do not invent an age-based freshness TTL: reject future verification timestamps and source/version or entity mismatches; GET availability is a fresh read snapshot, while any mismatch in persisted Member 1–3 analysis requires safe reanalysis/review.
-
-- [ ] **Step 1: Write tests** named `test_tool_call_schema_rejects_unknown_fields`, `test_tool_turn_accepts_terminal_text_without_calls`, `test_missing_upstream_analysis_is_not_refreshable`, and `test_only_profile_or_referenced_stock_gaps_are_refreshable`, and `test_future_verified_at_or_source_version_mismatch_is_stale`.
-- [ ] **Step 2: Run** `cd ai-service; python -m pytest tests/test_tool_calling_contract.py tests/test_scheduling_evidence_retriever.py -q`; confirm the new tests fail because the schemas/classifier do not exist.
-- [ ] **Step 3: Implement** the typed Pydantic contract and pure gap classifier. Include a reason code and required trusted entity IDs for each refreshable gap; never ask the LLM to classify it.
-- [ ] **Step 4: Run the same tests** and confirm they pass; add assertions that input request objects remain unchanged during classification.
-
-### Task 2: Add typed provider tool-call support
+### Task 1: Add a typed single-tool response to the OpenAI provider
 
 **Files:**
 - Modify: `ai-service/providers/base_llm_provider.py`
@@ -83,57 +61,40 @@ Do not modify InternalAgentToolsController or add endpoints unless implementatio
 - Modify: `ai-service/tests/test_llm_providers.py`
 
 **Interfaces:**
-- Add `async def generate_tool_turn(self, prompt: str, tool_schemas: list[dict[str, object]]) -> ToolTurn` to BaseLLMProvider. Its default implementation raises ProviderConfigurationError with a stable safe message; existing JSON and crop-finding methods retain their behavior.
-- OpenAIProvider implements the method with strict function schemas, tool choice limited to the supplied functions, SDK retries disabled for this operation, and the configured provider timeout.
-- Parse only valid function calls into ToolTurn. A refusal, malformed call, unknown call shape, or provider error raises/classifies as LLMProviderError; do not execute calls in this provider layer.
+- Add a typed result for either a terminal response or exactly one function call with call ID, function name, and JSON arguments.
+- Add `async def generate_tool_call(self, prompt: str, tool_schema: dict[str, object]) -> ToolCallResult` to BaseLLMProvider. The default raises the existing safe provider-configuration error.
+- OpenAIProvider requests the supplied strict function schema and parses only the expected function name and valid JSON object. It never executes a tool. Existing `generate_json` behavior remains unchanged.
 
-- [ ] **Step 1: Write** `test_base_provider_tool_calls_fail_closed`, `test_openai_provider_returns_typed_tool_calls`, `test_openai_provider_returns_terminal_turn`, `test_openai_provider_rejects_malformed_tool_arguments`, and `test_openai_provider_tool_turn_timeout_is_classified`.
-- [ ] **Step 2: Run** `cd ai-service; python -m pytest tests/test_llm_providers.py -q`; confirm the new contract tests fail.
-- [ ] **Step 3: Implement** the shared method and OpenAI adapter using the SDK version already pinned in requirements; keep all existing generate_json response paths intact.
-- [ ] **Step 4: Run** `cd ai-service; python -m pytest tests/test_llm_providers.py -q`; confirm both existing provider behavior and new tool-call tests pass.
+- [ ] **Step 1: Write failing tests** `test_openai_provider_returns_one_typed_tool_call`, `test_openai_provider_returns_terminal_response`, `test_provider_rejects_unknown_or_multiple_tool_calls`, and `test_provider_rejects_malformed_tool_arguments`.
+- [ ] **Step 2: Run** `cd ai-service; python -m pytest tests/test_llm_providers.py -q`; confirm the new tests fail before implementation.
+- [ ] **Step 3: Implement** the minimal typed provider method using the installed OpenAI SDK interface and existing timeout/error handling.
+- [ ] **Step 4: Rerun** `cd ai-service; python -m pytest tests/test_llm_providers.py -q`; expect all provider tests to pass.
 
-### Task 3: Implement fixed read-only tool dispatch
+### Task 2: Implement the one verified crop-profile tool
+
+**Files:**
+- Create: `ai-service/tools/scheduling_evidence_tools.py`
+- Create: `ai-service/agents/scheduling_profile_retriever.py`
+- Modify: `ai-service/tests/test_scheduling_evidence_tools.py`
+- Modify: `ai-service/tests/test_scheduling_validation_agent.py`
+
+**Interfaces:**
+- Expose exactly `GetVerifiedCropProfile` with an empty argument object. Any extra argument is rejected.
+- The tool uses the trusted request's crop-plan request ID and workflow ID to call existing `CropPlanningTools.get_crop_plan_context`, then `get_crop_reference_profile` with the returned crop type and variety.
+- Implement `async def retrieve_profile(request: SchedulingValidationInput, provider: BaseLLMProvider, tools: SchedulingEvidenceTools) -> SchedulingValidationInput`. Return a copy with only the verified crop-profile evidence filled when all checks pass; return the original request if no retrieval is allowed or any step fails.
+- Retrieval is eligible only when Member 1 status is Planned, Member 2 and Member 3 statuses are Analyzed for the same workflow, required upstream step IDs exist, and the existing evidence bundle is present but lacks its profile ID or verified stages.
+- Validate profile availability, workflow/crop/variety match, Member 3's profile reference when present, source/version metadata, `verifiedAt <= now in UTC`, and at least one verified stage. No age-based TTL is added.
+- Cap this path at one model call, one model tool call, existing provider/backend timeouts, one 45-second overall deadline, and 16 KiB per serialized observation. Never accept a model-supplied ID or free-text scheduling advice.
+
+- [ ] **Step 1: Write failing tests** `test_missing_upstream_skips_provider`, `test_complete_profile_skips_provider`, `test_empty_tool_args_use_trusted_request_ids`, `test_profile_request_uses_existing_get_wrappers`, `test_matching_profile_fills_only_missing_evidence`, `test_wrong_crop_or_member3_profile_blocks`, `test_future_or_unverified_profile_blocks`, `test_unknown_extra_or_multiple_call_blocks`, `test_timeout_token_error_or_oversize_returns_original_request`, and `test_no_model_text_changes_schedule`.
+- [ ] **Step 2: Run** `cd ai-service; python -m pytest tests/test_scheduling_evidence_tools.py tests/test_scheduling_validation_agent.py -q`; confirm the new tests fail.
+- [ ] **Step 3: Implement** the fixed one-tool wrapper and deterministic eligibility/response validation. Keep all failures proposal-free by returning the unchanged request for existing dependency validation to block.
+- [ ] **Step 4: Rerun** the focused command; expect matching verified profiles to pass and all unsafe cases to stay blocked.
+
+### Task 3: Wire the feature flag and one retrieval node
 
 **Files:**
 - Modify: `ai-service/config.py`
-- Create: `ai-service/tools/scheduling_evidence_tools.py`
-- Create: `ai-service/tests/test_scheduling_evidence_tools.py`
-
-**Interfaces:**
-- Add `scheduling_retrieval_enabled=False`, `scheduling_retrieval_max_rounds=3`, `scheduling_retrieval_max_tool_calls=5`, `scheduling_retrieval_timeout_seconds=45`, and `scheduling_retrieval_max_observation_bytes=16384`, each with environment aliases, bounds, and tests. No provider or tool is constructed for scheduling while disabled.
-- Define `SchedulingEvidenceTools.execute(name: str, arguments: dict[str, object], *, workflow_id: UUID, agent_step_id: UUID, request: SchedulingValidationInput) -> object`.
-- Expose only: `GetCropPlanContext`, `GetCropReferenceProfile`, and `GetResourceAvailability`. For resource availability, IDs must be derived from validated Member 3 requirement rows, never accepted from model arguments. All tool calls use existing BackendToolClient-backed typed wrappers and GET endpoints.
-- Bind workflow/step IDs from trusted graph state; bind crop-plan, crop-type, profile, field, and resource IDs from validated request or prior typed tool results. The dispatcher rejects extra arguments and emits no arbitrary URL/path mechanism.
-- Reject serialized observations larger than 16 KiB. Return a minimized typed observation with the source/provenance needed for deterministic validation.
-
-- [ ] **Step 1: Write** `test_unknown_tool_makes_no_http_call`, `test_model_cannot_override_workflow_step_or_entity_ids`, `test_resource_ids_come_from_validated_requirements`, `test_existing_get_wrapper_is_used`, `test_oversized_observation_is_rejected`, and `test_missing_backend_token_stops_safely`.
-- [ ] **Step 2: Run** `cd ai-service; python -m pytest tests/test_scheduling_evidence_tools.py -q`; confirm failure before dispatcher implementation.
-- [ ] **Step 3: Implement** only the fixed typed dispatch table and validated conversions. Do not create a write-capable generic dispatcher.
-- [ ] **Step 4: Run** the same tests and confirm rejected calls never reach BackendToolClient.
-
-### Task 4: Build bounded ReAct retrieval and safe merge
-
-**Files:**
-- Create: `ai-service/agents/scheduling_evidence_retriever.py`
-- Modify: `ai-service/tests/test_scheduling_evidence_retriever.py`
-
-**Interfaces:**
-- Implement `SchedulingEvidenceRetriever.retrieve(request: SchedulingValidationInput, *, workflow_id: UUID, agent_step_id: UUID) -> EvidenceRetrievalResult`.
-- If the gap classifier returns no refreshable gap, return the original request and no tool trace; do not call the provider.
-- If a gap is refreshable, allow no more than 3 model turns, 5 total tool calls, and one 45-second monotonic deadline. Sequentially dispatch calls under the same deadline; stop immediately when the budget is exhausted.
-- Validate every observation with its Pydantic response model and compare workflow/entity/profile/source/version/verified-at data against trusted request context. Reject mismatch; do not partially merge.
-- Permit in-memory replacement only for the missing verified crop-reference evidence bundle or resource availability checks corresponding to existing verified requirements. Never rewrite upstream agent status, warnings, analysis, or provenance.
-- Return a safe stop reason for no tool-call support, refusal, malformed/unknown call, timeout/cancellation, missing token, backend failure, invalid/stale/mismatched evidence, or exhausted budget. On any safe stop leave the original request intact.
-- Log only sanitized workflow/step/revision IDs, tool name, result class, source IDs/version, elapsed time, and stop reason. Do not log prompts, credentials, full tool payloads, or personal/farm records.
-
-- [ ] **Step 1: Write tests** named `test_complete_request_skips_provider_and_tools`, `test_profile_gap_merges_only_matching_verified_profile`, `test_stock_gap_refreshes_only_referenced_stock_checks`, `test_cross_workflow_or_source_mismatch_leaves_request_unchanged`, `test_profile_entity_mismatch_leaves_request_unchanged`, `test_candidate_revision_is_not_model_supplied_or_changed`, `test_unavailable_upstream_output_never_triggers_react`, `test_malformed_unknown_and_repeated_calls_stop_safely`, `test_tool_and_turn_budgets_are_hard_limits`, `test_overall_deadline_stops_loop`, `test_cancellation_leaves_original_request_unchanged`, `test_provider_or_tool_failure_returns_safe_stop`, and `test_terminal_turn_with_unfilled_gap_does_not_schedule`, and `test_logs_exclude_prompt_credentials_and_tool_payloads`.
-- [ ] **Step 2: Run** `cd ai-service; python -m pytest tests/test_scheduling_evidence_retriever.py -q`; confirm expected initial failures.
-- [ ] **Step 3: Implement** the async retrieval loop with injected provider/tools/settings and copy-on-success request updates. Use `asyncio.timeout` or the project's compatible timeout pattern with a monotonic overall deadline; do not retry outside the bounded loop.
-- [ ] **Step 4: Run** the same test file; assert failed retrievals return the original request object/data and cannot yield a candidate.
-
-### Task 5: Wire retrieval into scheduling graph and API
-
-**Files:**
 - Modify: `ai-service/agents/scheduling_validation_agent.py`
 - Modify: `ai-service/graph/workflow_graph.py`
 - Modify: `ai-service/main.py`
@@ -141,28 +102,24 @@ Do not modify InternalAgentToolsController or add endpoints unless implementatio
 - Modify: `ai-service/tests/test_scheduling_validation_api.py`
 
 **Interfaces:**
-- Extend `SchedulingValidationAgent.__init__(retriever: SchedulingEvidenceRetriever | None = None)`. Preserve `check_dependencies`, `propose`, `assess_risk`, and direct deterministic behavior.
-- The graph inserts a retrieval node before `validate_evidence`; it then runs the existing dependency validation, candidate, and risk nodes unchanged. Pass workflow/step/revision from trusted request/graph context, never model arguments.
-- Construct the read-only tool wrappers and configured provider only for the scheduling endpoint when `scheduling_retrieval_enabled` is true. The feature setting defaults false; test that disabled retrieval constructs neither provider nor tool client. If disabled, or if no tool-call-capable provider or backend token is configured, keep existing dependency output and deterministic fast-path behavior.
-- Preserve the HTTP route, auth dependency, response model, workflow ID, candidate revision, and approval flags.
+- Add `scheduling_profile_retrieval_enabled: bool = False` with alias `SCHEDULING_PROFILE_RETRIEVAL_ENABLED`.
+- Keep `SchedulingValidationAgent()` valid for all existing callers. Inject an optional profile retriever; when absent or disabled, retain today's deterministic path.
+- Add one LangGraph node before existing `validate_evidence`; it either supplies validated profile evidence or leaves the original request untouched. The existing validation, candidate, and risk nodes remain unchanged.
+- In `main.py`, construct OpenAI provider and existing read-only tool clients only when the flag is true. Keep endpoint path, auth dependency, and response model unchanged.
 
-- [ ] **Step 1: Write graph/API tests** `test_graph_fast_path_does_not_call_retriever`, `test_graph_retrieves_before_dependency_validation`, `test_graph_safe_stop_skips_candidate_generation`, and `test_scheduling_api_keeps_existing_auth_and_response_contract`.
-- [ ] **Step 2: Run** `cd ai-service; python -m pytest tests/test_scheduling_validation_graph.py tests/test_scheduling_validation_api.py -q`; confirm the new integration tests fail.
-- [ ] **Step 3: Implement** conditional wiring while retaining existing scheduler methods and graph edges after validation.
-- [ ] **Step 4: Run** the same tests and existing scheduling validation tests; confirm deterministic candidate outputs are unchanged for complete inputs.
+- [ ] **Step 1: Write failing tests** `test_flag_defaults_to_disabled`, `test_disabled_feature_constructs_no_provider_or_tool_client`, `test_graph_skips_retrieval_for_complete_evidence`, `test_graph_retrieves_profile_before_candidate`, `test_graph_safe_failure_returns_missing_dependency_without_candidate`, and `test_scheduling_api_contract_is_unchanged`.
+- [ ] **Step 2: Run** `cd ai-service; python -m pytest tests/test_scheduling_validation_graph.py tests/test_scheduling_validation_api.py -q`; confirm the new tests fail.
+- [ ] **Step 3: Implement** only the conditional node and dependency injection. Do not alter deterministic candidate logic, backend contracts, or approval behavior.
+- [ ] **Step 4: Rerun** the focused graph/API/scheduler tests; expect existing deterministic fixture outputs to remain unchanged.
 
-### Task 6: Run full AI checks and review rollout boundary
+### Task 4: Verify the AI-service change
 
-**Files:**
-- Modify only files listed above unless tests prove a specific necessary adapter or schema change.
+- [ ] **Step 1: Run** `cd ai-service; python -m compileall -q .`; require exit code 0.
+- [ ] **Step 2: Run** `cd ai-service; python -m pytest`; require all AI-service tests to pass.
+- [ ] **Step 3: Review** `git diff --check`, conflict markers, and changed-file list. Confirm no write-capable tool, new backend endpoint, secret, or unrelated dependency was added.
+- [ ] **Step 4: Confirm** the complete-evidence output matches the existing deterministic behavior; report backend, React, Flutter, and PostgreSQL checks as not run because this plan changes only the AI service.
+- [ ] **Step 5: Commit** the focused AI-service implementation on a clean feature branch from current dev. Merge through a reviewed PR only after applicable CI passes; do not push directly to dev/main.
 
-- [ ] **Step 1: Run** `cd ai-service; python -m compileall -q .`; expected exit code 0.
-- [ ] **Step 2: Run** `cd ai-service; python -m pytest`; expected all AI-service tests pass.
-- [ ] **Step 3: Run** `git diff --check` and scan changed files for conflict markers, secrets, generated output, and accidental non-GET dispatch.
-- [ ] **Step 4: Run** applicable CI-equivalent backend, React, and Flutter checks if shared files were touched; record unavailable local dependencies as unverified rather than passing.
-- [ ] **Step 5: Confirm** unchanged complete-input deterministic output, no-write property, HumanApproval-only finalization, and approval-time inventory/schedule recheck tests.
-- [ ] **Step 6: Commit** in focused commits on the Member 4 feature branch; do not merge or push directly to dev/main without the user's separate authorization.
+## Phase Boundary
 
-## Completion Gate
-
-The implementation is review-ready only if all acceptance criteria in the design spec pass, including the no-model fast path, strict tool allowlist, bounded retrieval, provenance/workflow validation, safe blocking on failures, unchanged deterministic candidate generation, and unchanged human approval/transaction safeguards.
+Phases 1–3 remain complete for the merged baseline. This is a small Member 4 follow-up enhancement, not a rewrite of scheduling/approval and not a prerequisite for the separate deployment and final-report deliverables unless the group chooses to include it in the demo.
