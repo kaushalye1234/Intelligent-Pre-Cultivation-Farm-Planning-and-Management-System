@@ -8,6 +8,7 @@ from schemas.common import CamelModel, to_camel
 INSPECTION_IMAGE_PASS1_CONTRACT_VERSION = 1
 INSPECTION_IMAGE_ANALYSIS_CONTRACT_VERSION = 1
 IMAGE_PREPROCESSING_VERSION = 1
+INSPECTION_IMAGE_PROMPT_CONTRACT_VERSION = 1
 
 IssueCategory = Literal[
     "Pest", "Fungal", "Bacterial", "DiseaseLike", "NutrientStress",
@@ -114,3 +115,14 @@ class InspectionImageAnalysisOperationResponse(StrictCamelModel):
     final_result: InspectionImageAnalysisResult | None
     failure_category: str | None = Field(max_length=100)
     failure_message: str | None = Field(max_length=300)
+
+
+class InspectionImageAnalysisCapabilityResponse(StrictCamelModel):
+    contract_version: Literal[1]
+    image_preprocessing_version: Literal[1]
+    prompt_contract_version: Literal[1]
+    relevance_rule_version: Literal[1]
+    source_policy_version: str = Field(min_length=1, max_length=80)
+    source_policy_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    provider: str = Field(min_length=1, max_length=80)
+    model: str = Field(min_length=1, max_length=160)

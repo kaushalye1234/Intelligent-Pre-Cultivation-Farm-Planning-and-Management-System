@@ -64,6 +64,7 @@ class RetrievedDocument:
     page_count: int | None = None
     segments: list[ExtractedSegment] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    candidate_links: list[tuple[str, str]] = field(default_factory=list)
 
     @property
     def source_classification(self) -> str:
@@ -84,13 +85,16 @@ class RetrievedDocument:
 
 
 class SourcePolicy:
-    def __init__(self, entries: list[SourcePolicyEntry]) -> None:
+    def __init__(self, entries: list[SourcePolicyEntry], version: str = "unversioned", content_hash: str = "") -> None:
         self.entries = entries
+        self.version = version
+        self.content_hash = content_hash
 
     @classmethod
     def load_default(cls) -> "SourcePolicy":
         path = Path(__file__).resolve().parents[1] / "source_policy" / "crop_finding_sources.json"
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        raw = path.read_bytes()
+        payload = json.loads(raw.decode("utf-8"))
         return cls([
             SourcePolicyEntry(
                 id=item["id"],
@@ -104,7 +108,7 @@ class SourcePolicy:
                 rationale=item["rationale"],
             )
             for item in payload["sources"]
-        ])
+        ], version=str(payload.get("version") or "unversioned"), content_hash=hashlib.sha256(raw).hexdigest())
 
     def allowed_hosts(self, stage: int) -> list[str]:
         return sorted({host for entry in self.entries if entry.stage == stage for host in entry.approved_hosts})
@@ -258,6 +262,15 @@ class CropFindingTools:
         encoding: str | None,
     ) -> RetrievedDocument:
         soup = BeautifulSoup(body.decode(encoding or "utf-8", errors="replace"), "html.parser")
+        candidate_links: list[tuple[str, str]] = []
+        for anchor in soup.find_all("a", href=True):
+            target = urljoin(final_url, str(anchor.get("href") or ""))
+            title = " ".join(anchor.get_text(" ", strip=True).split())[:240]
+            try:
+                self.source_policy.match_url(target, entry.stage)
+            except SourcePolicyError:
+                continue
+            candidate_links.append((self.normalize_url(target), title))
         for tag in soup(["script", "style", "noscript", "nav", "footer", "header", "form", "aside"]):
             tag.decompose()
         title = (soup.title.get_text(" ", strip=True) if soup.title else "") or discovered_title or entry.organization_name
@@ -298,6 +311,7 @@ class CropFindingTools:
             retrieved_at=datetime.now(timezone.utc).isoformat(),
             acceptance_reason=entry.rationale,
             segments=segments,
+            candidate_links=candidate_links,
         )
 
     def _extract_pdf(
