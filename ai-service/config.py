@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     backend_tool_token: str = Field(default="", alias="BACKEND_TOOL_TOKEN")
     tool_timeout_seconds: float = 8
     provider_timeout_seconds: float = 30
+    inspection_image_overall_timeout_seconds: float = Field(default=120, alias="INSPECTION_IMAGE_OVERALL_TIMEOUT_SECONDS", ge=60, le=150)
+    inspection_image_pass1_timeout_seconds: float = Field(default=30, alias="INSPECTION_IMAGE_PASS1_TIMEOUT_SECONDS", ge=10, le=45)
+    inspection_image_pass2_timeout_seconds: float = Field(default=45, alias="INSPECTION_IMAGE_PASS2_TIMEOUT_SECONDS", ge=15, le=60)
     crop_finding_candidate_limit: int = Field(default=8, alias="CROP_FINDING_CANDIDATE_LIMIT", ge=1, le=20)
     crop_finding_stage1_retrieval_limit: int = Field(default=5, alias="CROP_FINDING_STAGE1_RETRIEVAL_LIMIT", ge=1, le=10)
     crop_finding_stage2_retrieval_limit: int = Field(default=3, alias="CROP_FINDING_STAGE2_RETRIEVAL_LIMIT", ge=1, le=6)
