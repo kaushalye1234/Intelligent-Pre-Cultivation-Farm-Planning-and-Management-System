@@ -22,7 +22,7 @@
 - Configure the API's App:ReactUrl to the exact deployed React origin and React's VITE_API_BASE_URL to the deployed API origin plus /api.
 - Keep Swagger disabled in Production and preserve the explicit human-approval requirement for final tasks and irrigation schedules.
 - Free-tier services may spin down; do not select a paid plan, paid add-on, or upgrade without explicit Group 04 approval.
-- Do not commit .env files, credentials, build output, virtual environments, node_modules, __pycache__, or .pyc files.
+- Before each commit, run git diff --check and scan changed tracked source for conflict markers. Do not commit .env files, credentials, build output, virtual environments, node_modules, __pycache__, or .pyc files.
 
 ## Implementation Start Gate
 
@@ -44,12 +44,11 @@
 
 ## Review Focus
 
-1. Production with a missing database connection string must fail at startup rather than create ephemeral storage. Pin this in DeploymentConfigurationTests.
+1. Production must require PostgreSQL when configured and fail when its connection string is missing; Swagger must remain unavailable. Pin these boundaries in DeploymentConfigurationTests.
 2. Render-injected settings must work when no .env file exists, and a local .env must not replace production values. Pin this in the API image smoke check with Production environment variables and no .env file.
 3. Both containers must use a non-default PORT value when supplied. Pin this in container smoke checks by launching each image on an alternate port and requesting /health.
 4. The deployed React origin must be the only configured non-local browser origin, and a preflight request must return that origin. Pin this in the PowerShell smoke check.
 5. A first request after service spin-down may exceed the current AI/API timeout budget. Document the expected cold start and measure a real end-to-end request before claiming the demo is ready; never bypass workflow approval on timeout.
-6. Production Swagger must remain unavailable. Pin this in DeploymentConfigurationTests.
 
 ## Task 1: Require durable storage in the deployed API and create its Docker image
 
@@ -168,8 +167,8 @@
 - [ ] **Step 1: Add a Docker image build job**
   Add an Ubuntu job that checks out the branch and runs docker build for the API and AI images using their checked-in Dockerfiles and contexts. Do not log in to a registry, push images, or use deployment credentials.
 
-- [ ] **Step 2: Validate workflow syntax**
-  Parse .github/workflows/ci.yml and render.yaml using the CI Python 3.12 environment with PyYAML installed. Expected: both parse without YAML errors.
+- [ ] **Step 2: Validate workflow and Blueprint syntax**
+  In the existing ai-service job, after requirements installation, parse .github/workflows/ci.yml and render.yaml with Python 3.12 and PyYAML. Expected: both parse without YAML errors; do not introduce a separate validation dependency.
 
 - [ ] **Step 3: Run required checks**
   From the repository root, run the AGENTS.md backend checks in order:
@@ -178,9 +177,9 @@
 - $env:Logging__EventLog__LogLevel__Default = 'None'
 - dotnet test backend/AgriAssist.Api.Tests/AgriAssist.Api.Tests.csproj --configuration Release --no-build
 
-Then run the AI checks from ai-service: python -m compileall -q . and python -m pytest.
-Run React checks from frontend/react-app: npm ci, npm run lint, npm run build, and npm test.
-Run Flutter checks from mobile/flutter_app: flutter pub get, flutter analyze, and flutter test for each test file separately, matching the repository CI loop.
+Then run from ai-service: python -m compileall -q .; then python -m pytest.
+Run from frontend/react-app in order: npm ci; npm run lint; npm run build; npm test.
+Run from mobile/flutter_app: flutter pub get; flutter analyze; then Get-ChildItem .\\test\\*_test.dart | ForEach-Object { flutter test --no-pub $_.FullName } so each test file runs separately.
 Also build both Docker images. Expected: every applicable command exits 0; report any environment-blocked Flutter command separately and do not label it passing.
 
 - [ ] **Step 4: Review changes and commit CI**
