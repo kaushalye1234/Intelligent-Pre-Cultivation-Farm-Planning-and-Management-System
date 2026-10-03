@@ -1,6 +1,7 @@
 ﻿using AgriAssist.Api.Models.Inspections;
 using AgriAssist.Api.Models.Shared;
 using AgriAssist.Api.Models.CropPlanning;
+using AgriAssist.Api.Dtos.Inspections;
 using System.Text.Json.Serialization;
 
 namespace AgriAssist.Api.Dtos.CropPlanning;
@@ -85,7 +86,8 @@ public sealed record FieldAnalysisInput(
     Guid? CropCycleId,
     IReadOnlyList<string> RequestedAnalysis,
     Guid? CropReferenceProfileId,
-    Guid? AgentStepId);
+    Guid? AgentStepId,
+    ReviewedImageAnalysisProjection? ReviewedImageAnalysis = null);
 
 [JsonConverter(typeof(JsonStringEnumConverter<PrePlantingSoilType>))]
 public enum PrePlantingSoilType { Sandy, Clay, Loamy, Silty, Mixed, Unknown, Other }
@@ -255,7 +257,22 @@ public sealed record FieldAnalysisOutput(
     IReadOnlyList<string>? FieldPreparationRequirements = null,
     string PlantingReadiness = "Unknown",
     IReadOnlyList<PrePlantingRisk>? IdentifiedRisks = null,
-    IReadOnlyList<string>? RecommendedPrePlantingActions = null);
+    IReadOnlyList<string>? RecommendedPrePlantingActions = null,
+    IReadOnlyList<ReviewedCropIssueActionResponse>? ReviewedCropIssueActions = null);
+
+public sealed record ReviewedCropIssueActionResponse(
+    CropHealthActionType ActionType,
+    int Order,
+    string Title,
+    string Description,
+    string TimingCategory,
+    string ResponsibleRole,
+    string Origin,
+    Guid InspectionId,
+    Guid InspectionImageId,
+    Guid AnalysisId,
+    Guid ReviewId,
+    IReadOnlyList<ImageAnalysisSourceReference> SourceReferences);
 
 public sealed record FieldAnalysisRunResponse(
     Guid WorkflowId,

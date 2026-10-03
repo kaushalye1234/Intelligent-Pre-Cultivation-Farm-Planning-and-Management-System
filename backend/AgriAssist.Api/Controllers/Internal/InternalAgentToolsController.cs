@@ -441,15 +441,32 @@ public sealed class InternalAgentToolsController(
         try
         {
             var image = analysis.InspectionImage;
+            using var snapshot = JsonDocument.Parse(analysis.InputSnapshotJson);
+            var root = snapshot.RootElement;
+            var snapshotImageId = root.GetProperty("inspectionImageId").GetGuid();
+            var snapshotPublicId = root.GetProperty("publicId").GetString();
+            var snapshotHash = root.GetProperty("contentSha256").GetString();
+            long? snapshotVersion = root.TryGetProperty("storageVersion", out var versionElement)
+                && versionElement.ValueKind == JsonValueKind.Number
+                ? versionElement.GetInt64()
+                : null;
+            if (snapshotImageId != image.Id
+                || !string.Equals(snapshotPublicId, image.PublicId, StringComparison.Ordinal)
+                || !string.Equals(snapshotHash, image.ContentSha256, StringComparison.OrdinalIgnoreCase)
+                || snapshotVersion != image.StorageVersion)
+            {
+                logger.LogWarning("Inspection image startup snapshot mismatch for analysis {AnalysisId}", analysisId);
+                return Conflict(new { code = "IMAGE_SNAPSHOT_MISMATCH", message = "Stored analysis image identity no longer matches its immutable startup snapshot." });
+            }
             var retrieved = await cloudinaryService.RetrieveInspectionImageAsync(
-                image.PublicId,
-                image.StorageVersion,
+                snapshotPublicId!,
+                snapshotVersion,
                 image.DeliveryType,
                 cancellationToken);
             var actualHash = Convert.ToHexString(SHA256.HashData(retrieved.Bytes)).ToLowerInvariant();
-            if (string.IsNullOrWhiteSpace(image.ContentSha256) ||
+            if (string.IsNullOrWhiteSpace(snapshotHash) ||
                 !CryptographicOperations.FixedTimeEquals(
-                    Encoding.ASCII.GetBytes(image.ContentSha256.ToLowerInvariant()),
+                    Encoding.ASCII.GetBytes(snapshotHash.ToLowerInvariant()),
                     Encoding.ASCII.GetBytes(actualHash)))
             {
                 logger.LogWarning("Inspection image integrity check failed for analysis {AnalysisId}", analysisId);

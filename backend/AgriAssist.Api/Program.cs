@@ -109,6 +109,7 @@ builder.Services.AddScoped<IRequestValidator<CropIssueRequest>, CropIssueRequest
 builder.Services.AddScoped<IRequestValidator<FollowUpRecommendationRequest>, FollowUpRecommendationRequestValidator>();
 builder.Services.AddHttpClient<ICloudinaryService, CloudinaryService>();
 builder.Services.AddScoped<IInspectionService, InspectionService>();
+builder.Services.AddScoped<IInspectionImageAnalysisService, InspectionImageAnalysisService>();
 builder.Services.AddScoped<IRequestValidator<ResourceCategoryRequest>, ResourceCategoryRequestValidator>();
 builder.Services.AddScoped<IRequestValidator<SupplierRequest>, SupplierRequestValidator>();
 builder.Services.AddScoped<IRequestValidator<ResourceRequest>, ResourceRequestValidator>();
@@ -126,6 +127,7 @@ builder.Services.AddHttpClient<IWeatherResourceAIClient, AgenticAIClient>();
 builder.Services.AddHttpClient<ISchedulingValidationAIClient, AgenticAIClient>();
 builder.Services.AddHttpClient<ICropFindingAIClient, AgenticAIClient>();
 builder.Services.AddHttpClient<IInspectionAssistanceAIClient, AgenticAIClient>();
+builder.Services.AddHttpClient<IInspectionImageAnalysisAIClient, AgenticAIClient>();
 // OpenWeatherMap takes the API key as a query parameter, so do not log request URLs for this client.
 builder.Services.AddHttpClient<IWeatherService, WeatherService>().RemoveAllLoggers();
 builder.Services.AddScoped<IWeatherResourceWorkflowService, WeatherResourceWorkflowService>();
