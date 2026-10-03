@@ -19,6 +19,7 @@ This is a demo plan. It does not claim the application is production-ready, and 
 - The API reads its AI service URL and shared service/tool tokens from configuration. The AI service reads its incoming service token and backend tool URL/token from environment configuration. The current AI Settings type accepts AI_PROVIDER=openai; do not configure Gemini unless a separately reviewed code change adds support.
 - The API invokes DotNetEnv.Env.Load() during startup. The deployment image must be tested without a .env file to confirm the process continues using Render-injected environment variables; if not, production startup behavior must be corrected before deployment.
 - The project startup guide applies EF Core migrations explicitly. There is no automatic production migration step in API startup.
+- Current Program.cs selects EF InMemory when the connection string is absent, regardless of environment, and ensures that in-memory database is created. The deployed profile must fail fast when its PostgreSQL connection string is missing so Render cannot appear healthy while using ephemeral storage.
 - A separate open security PR replaces credential-looking values in tracked environment examples with placeholders. That change must be merged before those sanitized examples are used for deployment. Any values that were genuine must be rotated with their providers; replacing a tracked sample does not remove older Git history.
 
 ## Architecture
@@ -78,13 +79,14 @@ Do not apply migrations automatically during API startup. Before changing the da
 Phase 4 implementation is ready for demo review when:
 
 1. The reviewed security-example cleanup is merged, and any exposed real credentials have been rotated or confirmed as non-credentials by their owners.
-2. API and AI Docker images build from a clean checkout and both processes bind to Render's assigned port. The API starts with Render-injected environment values when no .env file is present.
-3. The React static build succeeds and receives only the public API URL.
-4. Render dashboard configuration links the React origin, API URL, AI URL, and matching service-token pairs without exposing secrets.
-5. The operator has reviewed the exact Supabase target and applied pending migrations explicitly.
-6. Public HTTPS /health checks pass for API and AI; the React site loads; browser API calls pass CORS; an authenticated end-to-end workflow reaches the AI service and returns the existing safe response.
-7. Swagger remains unavailable in Production, and no service can create final tasks or irrigation schedules without explicit human approval.
-8. The group records actual deployed URLs, the deployment date, known cold-start limitations, and demo evidence only after a real deployment succeeds.
+2. A deployed API without ConnectionStrings:DefaultConnection fails startup with a clear configuration error; it never falls back to EF InMemory outside Testing or an explicitly supported local Development profile.
+3. API and AI Docker images build from a clean checkout and both processes bind to Render's assigned port. The API starts with Render-injected environment values when no .env file is present.
+4. The React static build succeeds and receives only the public API URL.
+5. Render dashboard configuration links the React origin, API URL, AI URL, and matching service-token pairs without exposing secrets.
+6. The operator has reviewed the exact Supabase target and applied pending migrations explicitly.
+7. Public HTTPS /health checks pass for API and AI; the React site loads; browser API calls pass CORS; an authenticated end-to-end workflow reaches the AI service and returns the existing safe response.
+8. Swagger remains unavailable in Production, and no service can create final tasks or irrigation schedules without explicit human approval.
+9. The group records actual deployed URLs, the deployment date, known cold-start limitations, and demo evidence only after a real deployment succeeds.
 
 ## Out of scope
 
