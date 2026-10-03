@@ -179,7 +179,7 @@
 
 Then run from ai-service: python -m compileall -q .; then python -m pytest.
 Run from frontend/react-app in order: npm ci; npm run lint; npm run build; npm test.
-Run from mobile/flutter_app: flutter pub get; flutter analyze; then Get-ChildItem .\\test\\*_test.dart | ForEach-Object { flutter test --no-pub $_.FullName } so each test file runs separately.
+Run from mobile/flutter_app: flutter pub get; flutter analyze; then Get-ChildItem .\test\*_test.dart | ForEach-Object { flutter test --no-pub $_.FullName } so each test file runs separately.
 Also build both Docker images. Expected: every applicable command exits 0; report any environment-blocked Flutter command separately and do not label it passing.
 
 - [ ] **Step 4: Review changes and commit CI**
