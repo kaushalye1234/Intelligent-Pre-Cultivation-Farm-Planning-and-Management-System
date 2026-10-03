@@ -18,7 +18,7 @@
 - Apply EF migrations only as a deliberate operator action after verifying the database target.
 - Keep service tokens, provider keys, database credentials, and JWT signing values in Render-managed secret configuration; never put them in source, Blueprint values, React, Flutter, or logs.
 - The current AI settings support AI_PROVIDER=openai; use OPENAI_API_KEY and AI_MODEL. Do not configure Gemini without a separately reviewed feature change.
-- API and AI containers must listen on Render's PORT; use 10000 as the local/default port when PORT is absent.
+- API and AI containers must listen on Render's PORT; use 10000 as the API default and retain 8001 as the AI local Docker fallback when PORT is absent.
 - Configure the API's App:ReactUrl to the exact deployed React origin and React's VITE_API_BASE_URL to the deployed API origin plus /api.
 - Keep Swagger disabled in Production and preserve the explicit human-approval requirement for final tasks and irrigation schedules.
 - Free-tier services may spin down; do not select a paid plan, paid add-on, or upgrade without explicit Group 04 approval.
@@ -77,7 +77,7 @@
   Expected: all three DeploymentConfigurationTests pass; the configured Production provider is Npgsql and the Production Swagger route returns 404.
 
 - [ ] **Step 5: Add the API Docker image**
-  Create a multi-stage .NET 8 Dockerfile using the API project as the build context. Publish AgriAssist.Api.dll into the ASP.NET 8 runtime image. Start Kestrel on http://0.0.0.0:${PORT:-10000}; add only required source files to .dockerignore.
+  Create a multi-stage .NET 8 Dockerfile using the API project as the build context. Publish AgriAssist.Api.dll into the ASP.NET 8 runtime image. Start Kestrel on http://0.0.0.0:${PORT:-10000}; exclude .git, .env files, bin, obj, and other generated output in .dockerignore.
 
 - [ ] **Step 6: Build and smoke-test the API image**
   Run: docker build -f backend/AgriAssist.Api/Dockerfile -t agriassist-api:phase4 backend/AgriAssist.Api
