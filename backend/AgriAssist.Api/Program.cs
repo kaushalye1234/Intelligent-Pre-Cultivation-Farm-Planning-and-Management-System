@@ -125,6 +125,7 @@ builder.Services.AddHttpClient<IAgenticAIClient, AgenticAIClient>();
 builder.Services.AddHttpClient<IWeatherResourceAIClient, AgenticAIClient>();
 builder.Services.AddHttpClient<ISchedulingValidationAIClient, AgenticAIClient>();
 builder.Services.AddHttpClient<ICropFindingAIClient, AgenticAIClient>();
+builder.Services.AddHttpClient<IInspectionAssistanceAIClient, AgenticAIClient>();
 // OpenWeatherMap takes the API key as a query parameter, so do not log request URLs for this client.
 builder.Services.AddHttpClient<IWeatherService, WeatherService>().RemoveAllLoggers();
 builder.Services.AddScoped<IWeatherResourceWorkflowService, WeatherResourceWorkflowService>();

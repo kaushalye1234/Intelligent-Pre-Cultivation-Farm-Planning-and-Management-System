@@ -26,7 +26,8 @@ public sealed class CropPlanningService(
     IRequestValidator<CropPlanRequestCreate> createRequestValidator,
     IRequestValidator<CropPlanRequestUpdate> updateRequestValidator,
     IRequestValidator<PrePlantingAssessmentRequest> prePlantingAssessmentValidator,
-    IAgenticAIClient agenticAIClient) : ICropPlanningService
+    IAgenticAIClient agenticAIClient,
+    IInspectionAssistanceAIClient inspectionAssistanceAIClient) : ICropPlanningService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private const string CoordinatorAgentName = "CropPlanningCoordinatorAgent";
@@ -47,7 +48,7 @@ public sealed class CropPlanningService(
         IRequestValidator<CropCycleRequest> cropCycleValidator,
         IRequestValidator<CropPlanRequestCreate> createRequestValidator,
         IRequestValidator<CropPlanRequestUpdate> updateRequestValidator)
-        : this(dbContext, currentUser, farmValidator, fieldValidator, cropTypeValidator, cropCycleValidator, createRequestValidator, updateRequestValidator, new PrePlantingAssessmentRequestValidator(), new UnavailableAgenticAIClient())
+        : this(dbContext, currentUser, farmValidator, fieldValidator, cropTypeValidator, cropCycleValidator, createRequestValidator, updateRequestValidator, new PrePlantingAssessmentRequestValidator(), new UnavailableAgenticAIClient(), new UnavailableInspectionAssistanceAIClient())
     {
     }
 
@@ -61,7 +62,22 @@ public sealed class CropPlanningService(
         IRequestValidator<CropPlanRequestCreate> createRequestValidator,
         IRequestValidator<CropPlanRequestUpdate> updateRequestValidator,
         IAgenticAIClient agenticAIClient)
-        : this(dbContext, currentUser, farmValidator, fieldValidator, cropTypeValidator, cropCycleValidator, createRequestValidator, updateRequestValidator, new PrePlantingAssessmentRequestValidator(), agenticAIClient)
+        : this(dbContext, currentUser, farmValidator, fieldValidator, cropTypeValidator, cropCycleValidator, createRequestValidator, updateRequestValidator, new PrePlantingAssessmentRequestValidator(), agenticAIClient, new UnavailableInspectionAssistanceAIClient())
+    {
+    }
+
+    public CropPlanningService(
+        AppDbContext dbContext,
+        ICurrentUserService currentUser,
+        IRequestValidator<FarmRequest> farmValidator,
+        IRequestValidator<FieldRequest> fieldValidator,
+        IRequestValidator<CropTypeRequest> cropTypeValidator,
+        IRequestValidator<CropCycleRequest> cropCycleValidator,
+        IRequestValidator<CropPlanRequestCreate> createRequestValidator,
+        IRequestValidator<CropPlanRequestUpdate> updateRequestValidator,
+        IRequestValidator<PrePlantingAssessmentRequest> prePlantingAssessmentValidator,
+        IAgenticAIClient agenticAIClient)
+        : this(dbContext, currentUser, farmValidator, fieldValidator, cropTypeValidator, cropCycleValidator, createRequestValidator, updateRequestValidator, prePlantingAssessmentValidator, agenticAIClient, new UnavailableInspectionAssistanceAIClient())
     {
     }
 
@@ -835,6 +851,59 @@ public sealed class CropPlanningService(
             planRequest.CultivationSeason,
             planRequest.PreferredStartDate,
             planRequest.PreferredEndDate);
+    }
+
+    public async Task<InspectionNoteAssistanceResponse> GenerateInspectionNoteSuggestionsAsync(
+        Guid requestId,
+        InspectionNoteAssistanceRequest request,
+        CancellationToken cancellationToken)
+    {
+        RequireFieldOfficer();
+        ValidateNoteAssistanceRequest(request);
+        await EnsurePlanRequestAccessAsync(requestId, cancellationToken);
+        var planRequest = await dbContext.CropPlanRequests.AsNoTracking()
+            .Include(item => item.Field)
+            .Include(item => item.CropType)
+            .Include(item => item.CropVariety)
+            .SingleOrDefaultAsync(item => item.Id == requestId && !item.IsDeleted, cancellationToken)
+            ?? throw NotFound("Crop plan request");
+        if (planRequest.Field is null)
+            throw new ApiException(HttpStatusCode.BadRequest, "PREPLANT_FIELD_REQUIRED", "A field is required for inspection note assistance.");
+
+        var workflow = await LatestWorkflowQuery(requestId).AsNoTracking().SingleOrDefaultAsync(cancellationToken)
+            ?? throw NotFound("AI workflow");
+        if (workflow.CurrentStep != FieldAnalysisAgentName)
+            throw new ApiException(HttpStatusCode.Conflict, "PREPLANT_STAGE_NOT_ACTIVE", "The workflow is not waiting for pre-planting field analysis.");
+
+        var assessment = await dbContext.FieldInspections.AsNoTracking().SingleOrDefaultAsync(item =>
+            item.CropPlanRequestId == requestId && item.Purpose == InspectionPurpose.PrePlanting && !item.IsDeleted,
+            cancellationToken);
+        if (assessment is not null && (assessment.Status != InspectionStatus.InProgress || assessment.InspectorUserId != RequireUser()))
+            throw new ApiException(HttpStatusCode.Conflict, "PREPLANT_NOTE_ASSISTANCE_UNAVAILABLE", "Note assistance is available only to the owning Field Officer while the assessment is in progress.");
+
+        try
+        {
+            var result = await inspectionAssistanceAIClient.GenerateNoteSuggestionsAsync(
+                new InspectionNoteAssistanceAiInput(
+                    InspectionNoteAssistanceContract.Version,
+                    planRequest.CropType?.Name ?? string.Empty,
+                    planRequest.CropVariety?.Name,
+                    planRequest.Field.Name,
+                    planRequest.Field.SoilType,
+                    request),
+                cancellationToken);
+            return result.ContractVersion == InspectionNoteAssistanceContract.Version
+                ? result
+                : UnavailableNoteAssistance("contract_version_mismatch");
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return UnavailableNoteAssistance("timeout");
+        }
+        catch (Exception exception) when (exception is HttpRequestException or InvalidOperationException)
+        {
+            return UnavailableNoteAssistance("provider_unavailable");
+        }
     }
 
     public async Task<PrePlantingAssessmentResponse> SavePrePlantingAssessmentAsync(
@@ -2024,6 +2093,23 @@ public sealed class CropPlanningService(
         }
     }
 
+    private static void ValidateNoteAssistanceRequest(InspectionNoteAssistanceRequest request)
+    {
+        if (request.IdentifiedRisks.Count > 12)
+            throw new ApiException(HttpStatusCode.BadRequest, "VALIDATION_ERROR", "At most 12 identified risks may be supplied.");
+        var values = new[] { request.MainWaterSource, request.SoilNotes, request.WaterConcerns, request.DrainageNotes, request.GeneralFieldNotes, request.RiskNotes, request.OfficerNotes };
+        if (values.Any(value => value?.Length > 1000))
+            throw new ApiException(HttpStatusCode.BadRequest, "VALIDATION_ERROR", "Draft note values must be 1000 characters or fewer.");
+    }
+
+    private static InspectionNoteAssistanceResponse UnavailableNoteAssistance(string category) => new(
+        InspectionNoteAssistanceContract.Version,
+        "Unavailable",
+        null,
+        [],
+        [],
+        category);
+
     private static ApiException NotFound(string name) => new(HttpStatusCode.NotFound, "NOT_FOUND", $"{name} was not found.");
 
     private static void Validate(IReadOnlyList<string> errors)
@@ -2038,6 +2124,12 @@ public sealed class CropPlanningService(
 
         public Task<FieldAnalysisOutput> RunFieldAnalysisAsync(FieldAnalysisInput input, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("AI service is not configured for this service instance.");
+    }
+
+    private sealed class UnavailableInspectionAssistanceAIClient : IInspectionAssistanceAIClient
+    {
+        public Task<InspectionNoteAssistanceResponse> GenerateNoteSuggestionsAsync(InspectionNoteAssistanceAiInput input, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Inspection note assistance is not configured for this service instance.");
     }
 
     private static FarmResponse MapFarm(Farm farm) => new(farm.Id, farm.Name, farm.Location, farm.TotalArea, farm.OwnerUserId, farm.CreatedAt, farm.District);

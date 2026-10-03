@@ -28,6 +28,14 @@ public sealed class CropPlansWorkflowController(
     public async Task<ActionResult<PrePlantingContextResponse>> GetPrePlantingContext(Guid id, CancellationToken cancellationToken) =>
         Ok(await cropPlanningService.GetPrePlantingContextAsync(id, cancellationToken));
 
+    [HttpPost("{id:guid}/pre-planting-assessment/note-suggestions")]
+    [Authorize(Roles = nameof(ApplicationRole.FieldOfficer))]
+    public async Task<ActionResult<InspectionNoteAssistanceResponse>> GenerateNoteSuggestions(
+        Guid id,
+        InspectionNoteAssistanceRequest request,
+        CancellationToken cancellationToken) =>
+        Ok(await cropPlanningService.GenerateInspectionNoteSuggestionsAsync(id, request, cancellationToken));
+
     [HttpPut("{id:guid}/pre-planting-assessment")]
     [Authorize(Roles = nameof(ApplicationRole.FieldOfficer))]
     public async Task<ActionResult<PrePlantingAssessmentResponse>> SavePrePlantingAssessment(

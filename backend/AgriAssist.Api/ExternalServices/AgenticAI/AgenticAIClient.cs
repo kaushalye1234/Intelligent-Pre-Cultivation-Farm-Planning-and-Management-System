@@ -10,7 +10,7 @@ namespace AgriAssist.Api.ExternalServices.AgenticAI;
 public sealed class AgenticAIClient(
     HttpClient httpClient,
     IConfiguration configuration,
-    ILogger<AgenticAIClient> logger) : IAgenticAIClient, IWeatherResourceAIClient, ISchedulingValidationAIClient, ICropFindingAIClient
+    ILogger<AgenticAIClient> logger) : IAgenticAIClient, IWeatherResourceAIClient, ISchedulingValidationAIClient, ICropFindingAIClient, IInspectionAssistanceAIClient
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -65,6 +65,15 @@ public sealed class AgenticAIClient(
             "/crop-finding/discover-references",
             input,
             "discover references",
+            cancellationToken);
+
+    public Task<InspectionNoteAssistanceResponse> GenerateNoteSuggestionsAsync(
+        InspectionNoteAssistanceAiInput input,
+        CancellationToken cancellationToken) =>
+        PostAssistanceAsync<InspectionNoteAssistanceAiInput, InspectionNoteAssistanceResponse>(
+            "/workflows/crop-planning/inspection-note-assistance",
+            input,
+            "inspection note assistance",
             cancellationToken);
 
     private async Task<TOutput> PostAsync<TInput, TOutput>(
@@ -134,5 +143,32 @@ public sealed class AgenticAIClient(
 
         var output = await response.Content.ReadFromJsonAsync<TOutput>(JsonOptions, timeout.Token);
         return output ?? throw new InvalidOperationException($"AI service returned an empty {operationName} response.");
+    }
+
+    private async Task<TOutput> PostAssistanceAsync<TInput, TOutput>(
+        string path,
+        TInput input,
+        string operationName,
+        CancellationToken cancellationToken)
+    {
+        var serviceUrl = configuration["AI:ServiceUrl"];
+        var serviceToken = configuration["AI:ServiceToken"];
+        if (string.IsNullOrWhiteSpace(serviceUrl) || string.IsNullOrWhiteSpace(serviceToken))
+            throw new InvalidOperationException("AI service URL or token is not configured.");
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{serviceUrl.TrimEnd('/')}{path}");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", serviceToken);
+        request.Content = JsonContent.Create(input, options: JsonOptions);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(35));
+        using var response = await httpClient.SendAsync(request, timeout.Token);
+        if (!response.IsSuccessStatusCode)
+        {
+            logger.LogWarning("AI service returned {StatusCode} for {OperationName}", response.StatusCode, operationName);
+            throw new HttpRequestException($"AI service failed to complete {operationName}.", null, response.StatusCode);
+        }
+
+        return await response.Content.ReadFromJsonAsync<TOutput>(JsonOptions, timeout.Token)
+            ?? throw new InvalidOperationException($"AI service returned an empty {operationName} response.");
     }
 }

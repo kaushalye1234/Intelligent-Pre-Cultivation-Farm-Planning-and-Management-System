@@ -11,6 +11,7 @@ from fastapi import HTTPException
 from agents.crop_field_analysis_agent import CropFieldAnalysisAgent
 from agents.crop_finding_agent import CropFindingAgent
 from agents.crop_planning_coordinator_agent import CropPlanningCoordinatorAgent
+from agents.inspection_note_assistant_agent import InspectionNoteAssistantAgent
 from agents.weather_resource_agent import WeatherResourceAgent
 from agents.scheduling_validation_agent import SchedulingValidationAgent
 from auth import require_service_token
@@ -28,6 +29,7 @@ from schemas.crop_finding import (
 )
 from schemas.crop_planning import CoordinatorInput, CropPlanningCoordinatorOutput
 from schemas.field_analysis import CropFieldAnalysisOutput, FieldAnalysisInput
+from schemas.inspection_note_assistance import InspectionNoteAssistanceInput, InspectionNoteAssistanceOutput
 from schemas.weather_resource import WeatherResourceInput, WeatherResourceOutput
 from schemas.scheduling_validation import SchedulingValidationInput, SchedulingValidationOutput
 from tools.backend_tool_client import BackendToolClient
@@ -245,6 +247,21 @@ async def run_crop_field_analysis(
     graph = build_field_analysis_graph(agent)
     state = await graph.ainvoke({"request": request, "output": None})
     return state["output"]
+
+
+@app.post(
+    "/workflows/crop-planning/inspection-note-assistance",
+    response_model=InspectionNoteAssistanceOutput,
+    dependencies=[Depends(require_service_token)],
+)
+async def run_inspection_note_assistance(
+    request: InspectionNoteAssistanceInput,
+    settings: Settings = Depends(get_settings),
+) -> InspectionNoteAssistanceOutput:
+    return await InspectionNoteAssistantAgent(
+        provider=create_provider(settings),
+        timeout_seconds=min(settings.provider_timeout_seconds, 30),
+    ).run(request)
 
 @app.post(
     "/workflows/crop-planning/weather-resource",

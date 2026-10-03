@@ -143,6 +143,18 @@ class LLMResponse:
 
 
 @dataclass(frozen=True)
+class StructuredGenerationRequest:
+    schema_name: str
+    contract_version: int
+    response_schema: dict[str, Any]
+    system_input: str
+    user_input: str
+    timeout_seconds: float
+    image_bytes: bytes | None = None
+    image_mime_type: str | None = None
+
+
+@dataclass(frozen=True)
 class WebSearchSource:
     url: str
     title: str = ""
@@ -180,6 +192,14 @@ class BaseLLMProvider(ABC):
             self.generate_json(prompt, response_schema=response_schema),
             timeout=timeout_seconds,
         )
+
+    async def generate_structured_json(self, request: StructuredGenerationRequest) -> LLMResponse:
+        """Generate strict structured output without adding domain behavior.
+
+        Existing providers remain source-compatible; providers that support this
+        additive capability override it explicitly.
+        """
+        raise ProviderConfigurationError(f"{self.provider_name} does not support strict structured generation.")
 
     async def search_web(
         self,
