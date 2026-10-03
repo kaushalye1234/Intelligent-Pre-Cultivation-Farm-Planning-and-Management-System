@@ -24,6 +24,12 @@
 - Free-tier services may spin down; do not select a paid plan, paid add-on, or upgrade without explicit Group 04 approval.
 - Do not commit .env files, credentials, build output, virtual environments, node_modules, __pycache__, or .pyc files.
 
+## Implementation Start Gate
+
+- Start code work only after PR #64's sanitized environment examples are merged to dev; confirm the latest dev commit and branch from a clean checkout.
+- Preserve current local edits and untracked files. Do not switch, reset, or pull over the existing dirty checkout; use a separate clean checkout/worktree for implementation.
+- Do not create Render services or apply a database migration during code preparation. Those remain explicit operator actions after the code PR is reviewed.
+
 ## File Map
 
 - Create backend/AgriAssist.Api/Dockerfile and backend/AgriAssist.Api/.dockerignore for a repeatable .NET 8 runtime image.
@@ -166,7 +172,16 @@
   Parse .github/workflows/ci.yml and render.yaml using the CI Python 3.12 environment with PyYAML installed. Expected: both parse without YAML errors.
 
 - [ ] **Step 3: Run required checks**
-  Run the repository checks required by AGENTS.md: backend restore/build/test, AI compileall/pytest, React npm ci/lint/build/test, and Flutter pub get/analyze/tests. Also build both Docker images. Expected: every applicable command exits 0; report any environment-blocked Flutter command separately and do not label it passing.
+  From the repository root, run the AGENTS.md backend checks in order:
+- dotnet restore backend/AgriAssist.Api.Tests/AgriAssist.Api.Tests.csproj
+- dotnet build backend/AgriAssist.Api.Tests/AgriAssist.Api.Tests.csproj --configuration Release --no-restore
+- $env:Logging__EventLog__LogLevel__Default = 'None'
+- dotnet test backend/AgriAssist.Api.Tests/AgriAssist.Api.Tests.csproj --configuration Release --no-build
+
+Then run the AI checks from ai-service: python -m compileall -q . and python -m pytest.
+Run React checks from frontend/react-app: npm ci, npm run lint, npm run build, and npm test.
+Run Flutter checks from mobile/flutter_app: flutter pub get, flutter analyze, and flutter test for each test file separately, matching the repository CI loop.
+Also build both Docker images. Expected: every applicable command exits 0; report any environment-blocked Flutter command separately and do not label it passing.
 
 - [ ] **Step 4: Review changes and commit CI**
   Run git diff --check, scan tracked source for conflict markers, and confirm no .env, credential, image, or build output is staged. Commit the CI job as a separate focused commit. Push the feature branch and open a PR to dev only after all clean-checkout jobs pass.
