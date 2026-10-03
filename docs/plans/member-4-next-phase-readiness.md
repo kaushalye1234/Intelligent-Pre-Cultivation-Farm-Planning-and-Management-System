@@ -2,6 +2,12 @@
 
 Updated 2026-10-01 for Group 04. The implementation phases are complete: the scheduling agent, candidate validation, officer approval, React review, Flutter farmer status, and PostgreSQL integration have been merged into `dev`. PR #59 passed backend, AI service, React, and Flutter CI before merge commit `46c50b4`.
 
+## Alignment update — 2026-10-03
+
+The approved single-tool ReAct design is a separate Member 4 follow-up: the AI may request one verified crop profile through an existing read-only tool, then the deterministic scheduler builds the proposal. The implementation is not yet started.
+
+This addition does not reopen or change the completed Phase 1–3 implementation and evidence. The deployment, demo video, and consolidated report remain separate Group 04 submission work. ReAct is not a deployment prerequisite; include it in the demo only if it is implemented, reviewed, and tested before the deployment freeze. The focused implementation plan is [here](../superpowers/plans/2026-10-03-member4-readonly-react.md), and the approved design is [here](../superpowers/specs/2026-10-03-member4-readonly-react-design.md).
+
 ## Verified for Member 4
 
 - Full backend suite: 197 passed, 0 skipped against disposable PostgreSQL; AI: 86 passed; React: 94 passed; Flutter: 42 passed on the PR #59 head.
