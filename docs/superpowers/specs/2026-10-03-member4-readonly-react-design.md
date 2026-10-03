@@ -1,164 +1,80 @@
-# Member 4 Read-Only ReAct Evidence Retrieval Design
+# Member 4 Single-Tool ReAct Evidence Retrieval Design
 
-**Status:** Draft for review  
+**Status:** Revised draft for review  
 **Date:** 2026-10-03  
 **Owner:** Member 4  
-**Target:** AgriAssist AI service and internal agent-tool API
+**Target:** AgriAssist AI service
 
-## 1. Purpose
+## Purpose
 
-Add a narrowly scoped ReAct (reasoning and acting) step to Member 4's Scheduling Validation Agent. The step may select from a fixed set of read-only tools to retrieve or refresh persisted evidence needed by the deterministic scheduler. It must not make scheduling decisions or change farm data.
+Let Member 4's Scheduling Validation Agent retrieve one missing verified crop-profile record through a real model tool call. Keep the feature small enough to explain clearly: the model can ask for the evidence; ordinary validated code checks it; the existing deterministic scheduler creates the proposal; an authorized officer decides whether to approve it.
 
-This is an enhancement to the existing proposal workflow. It does not replace the deterministic EvidenceScheduler, upstream Member 1–3 agents, ASP.NET authorization/business rules, or officer approval.
+## What already exists
 
-## 2. Current verified design
+- SchedulingValidationAgent uses EvidenceScheduler to create candidate tasks, irrigation entries, and candidate reservations deterministically.
+- The scheduling graph validates evidence before candidate generation and blocks when required evidence is missing.
+- SchedulingValidationInput carries the workflow, candidate revision, Member 1–3 outputs, crop-profile evidence, and source metadata.
+- InternalAgentToolsController exposes read-only GET routes for crop-plan context and verified crop reference profiles. Python already has typed crop-planning wrappers for those routes.
+- Current AI-service provider configuration supports OpenAI. The provider interface supports JSON generation but does not yet expose function/tool calls.
 
-On the current dev branch:
+## One recommended flow
 
-- SchedulingValidationAgent delegates to EvidenceScheduler, which checks persisted inputs and deterministically creates candidate tasks, irrigation entries, and candidate reservations. It does not write farm data.
-- The LangGraph scheduling workflow currently follows validate evidence → build candidate → assess risk → end. Invalid or incomplete dependencies stop at validation.
-- SchedulingValidationInput already carries the workflow ID, candidate revision, Member 1–3 outputs, evidence provenance, and snapshots of existing tasks and irrigation.
-- InternalAgentToolsController exposes GET-only routes under /api/internal/agent-tools. Relevant existing routes include crop-plan-context, fields, crop-reference-profiles, crop-resource-requirements, resource-availability, existing-reservations, low-stock-status, and weather-forecast. Each is wrapped in the internal tool response and workflow scope checks.
-- Python backend clients and typed wrappers already exist for several of those read routes.
-- The generic LLM provider contract supports JSON generation but does not currently define a provider-neutral tool-call response. A typed tool-call contract and allowlisted dispatcher are therefore required before a genuine model-selected ReAct loop can be implemented.
-- The current scheduling graph does not call those backend tools or an LLM. It must keep that fast, deterministic path when the supplied evidence is complete.
+1. **Check prerequisites in code.** Before any model call, require successful Member 1, 2, and 3 outputs for this workflow and the existing evidence bundle's upstream step IDs. Missing or failed upstream analysis is not refreshable.
+2. **Keep the fast path.** If the verified crop profile and its stages are already present and consistent, skip the model and all retrieval HTTP calls. Run the current scheduler unchanged.
+3. **Allow one model-selected action.** If the evidence bundle exists but its verified crop-profile identifier or stages are missing, give the OpenAI model exactly one tool: GetVerifiedCropProfile. Its schema has no caller-controlled identifiers. Trusted code supplies the crop-plan request and workflow IDs.
+4. **Read existing sources.** The Python tool wrapper uses existing GET operations to retrieve crop-plan context and then the matching verified crop reference profile. No API route or write operation is added.
+5. **Validate deterministically.** Check the typed response, crop type, workflow, profile status, source/version, verification timestamp, and presence of verified stages. If Member 3's persisted requirement source names a profile, the retrieved profile must match it.
+6. **Schedule using fixed logic.** Merge only the validated profile evidence into a copy of the request, then run the existing EvidenceScheduler. Ignore any free-text model suggestion; the model never chooses dates, durations, quantities, or approval outcomes.
+7. **Fail closed.** A refusal, invalid tool request, unavailable tool/provider, timeout, missing or mismatched profile, or invalid provenance keeps the original request and produces the existing safe MissingDependency result.
 
-## 3. Goals and non-goals
+The model's one tool action and its observation are the ReAct contribution. The tool budget is exactly one call; there is no autonomous multi-tool loop. Complete evidence stays on the no-model path.
 
-### Goals
+    validate prerequisites
+       ├─ missing Member 1–3 result or step IDs → safe block
+       ├─ verified profile complete → deterministic scheduler
+       └─ profile identifier/stages missing → one model tool call
+                                              ↓
+                                     existing read-only GETs
+                                              ↓
+                                   validate source/provenance
+                                       ├─ valid → scheduler
+                                       └─ invalid/error → safe block
 
-1. Recover eligible, persisted evidence when the scheduling request is missing or explicitly stale evidence that can be refreshed safely.
-2. Make model-selected actions visible, bounded, typed, and auditable.
-3. Ensure the refreshed evidence is checked for workflow, entity, provenance, and revision consistency before scheduling uses it.
-4. Preserve current candidate-only behavior and human approval requirements.
-5. Fail safely when tools, model calls, or evidence validation fail.
+## Tool boundary
 
-### Non-goals
+Expose one model-visible function, GetVerifiedCropProfile, with an empty argument object. Its implementation binds all IDs from the validated scheduling request and uses the existing CropPlanningTools wrapper. It may internally make the existing crop-plan-context GET followed by the crop-reference-profile GET, but the model can request this action only once.
 
-- Let the model select candidate dates, task content, irrigation quantities or durations, resource quantities, weather risk, or schedule ordering.
-- Let the model generate or approve the final candidate.
-- Create farm tasks, irrigation schedules, inventory reservations, or other persistent records during retrieval.
-- Expose arbitrary HTTP, database, filesystem, shell, or general web-search tools to the model.
-- Re-run Member 1–3 agents or synthesize missing upstream results.
-- Change the existing workflow or candidate revision protocol beyond what is needed to record the retrieval attempt and validate refreshed evidence.
-- Add a provider other than one that implements the typed, constrained tool-call contract. Provider selection remains a later implementation decision.
+Reject extra arguments, unknown tool names, model-supplied workflow or entity IDs, arbitrary URLs, and unexpected provider response shapes. Accept only an active, available, verified profile with matching crop context and at least one verified stage. A profile verified in the future or with a mismatched entity, source version, or Member 3 profile reference is stale/invalid. Do not invent a time-to-live.
 
-## 4. Proposed flow
+An empty verified irrigation-rule list remains valid: the deterministic scheduler may return zero irrigation entries with its existing warning. This retrieval feature must not invent irrigation rules or durations.
 
-The ReAct evidence retrieval node sits before deterministic dependency validation. It is conditional: complete supplied evidence proceeds directly to validation without an LLM call.
+## Safety and approval
 
-1. **Inspect request deterministically.** Check required fields and the existing evidence bundle. Identify only refreshable evidence gaps. Never ask the model to decide whether a business rule is satisfied.
-2. **Fast path.** If all required evidence and source metadata are present and match the request's workflow and candidate revision, skip ReAct and continue to existing deterministic validation.
-3. **Bounded ReAct retrieval.** If a gap is refreshable, provide the model a minimal request summary and the fixed tool schemas. The model may request one of the allowlisted reads. The dispatcher validates tool name and arguments, binds workflow ID, candidate revision, and agent step ID from trusted graph state, then invokes the typed read wrapper. The model receives a minimized, typed observation.
-4. **Validate refresh.** Deterministic code validates response schema, entity IDs, workflow scope, source/version/verified-at metadata, freshness policy, and candidate revision. Only accepted persisted evidence may update the in-memory request state.
-5. **Deterministic scheduling.** Run the existing EvidenceScheduler against the validated request. Its current rules remain the sole source for candidate generation and risk assessment.
-6. **Safe stop.** On an unrefreshable dependency, exhausted budget, refusal, timeout, tool error, malformed result, stale revision, or failed verification, use the existing MissingDependency or human-review/blocking result. Do not guess or fall through with partial evidence.
+- No model action can create or update farm records. Retrieval uses existing GET routes only.
+- Member 1–3 statuses, warnings, conclusions, and provenance are never synthesized or overwritten.
+- EvidenceScheduler remains the sole source of scheduling decisions and candidate content.
+- Candidates remain proposals. Only the existing authorized AgriculturalOfficer/Admin workflow may approve them.
+- Approval-time inventory and scheduling rechecks, workflow IDs, candidate revisions, concurrency controls, audit history, and rollback behavior remain unchanged.
+- Do not log prompts, credentials, complete farm records, or raw tool payloads. Record only sanitized workflow/step/revision IDs, tool name, source ID/version, result class, and elapsed time.
 
-Suggested graph shape:
+## Rollout
 
-    inspect_inputs
-      ├─ complete ───────────────> validate_evidence
-      └─ refreshable_gap ────────> react_select_tool
-                                      ↓
-                                  execute_read
-                                      ↓
-                                  validate_observation
-                                      ├─ more evidence needed and budget remains → react_select_tool
-                                      ├─ evidence complete → validate_evidence
-                                      └─ unsafe, stale, failed, or exhausted → safe blocked result
-    validate_evidence → build_candidate → assess_risk → END
+Add one disabled-by-default setting, SCHEDULING_PROFILE_RETRIEVAL_ENABLED=false. Use the existing provider and backend-tool timeouts with a single overall 45-second retrieval deadline. Reject observations larger than 16 KiB. Enable the feature only in a controlled demo/development environment after tests pass. Keep the normal deterministic fast path and safe block as the default behavior.
 
-The graph should make the number of tool calls explicit in state and enforce a hard maximum in code. Tool observations and model messages are data, not executable instructions.
+## Acceptance checks
 
-## 5. Tool allowlist and data limits
+1. Complete valid evidence produces the same deterministic result with zero provider and retrieval calls.
+2. Missing profile metadata can invoke only GetVerifiedCropProfile once, with IDs bound by trusted code.
+3. A matching verified profile fills only the missing profile evidence and allows the existing deterministic scheduler to run.
+4. Missing upstream outputs, missing step IDs, malformed tool calls, extra arguments, provider refusal/failure, timeout, missing backend token, oversized response, wrong workflow/crop/profile/source version, or invalid verification time produce no candidate from partial evidence.
+5. No tool write or approval occurs; candidate revision and workflow ID stay unchanged.
+6. Empty verified irrigation rules remain valid and produce no invented irrigation entries.
+7. Existing approval, stale-revision, authorization, inventory recheck, conflict, rollback, and concurrent-approval tests continue to pass.
+8. Logs contain no prompt, credential, or full tool payload.
 
-The initial allowlist should contain only existing read tools needed to resolve a known gap:
+## Out of scope
 
-| Tool | Intended use | Required scope |
-| --- | --- | --- |
-| GetCropReferenceProfile | Refresh verified stage and irrigation-rule evidence | Crop type/profile constrained to the workflow |
-| GetFieldDetails | Refresh field facts required to validate the selected field | Field ID must match the workflow request |
-| GetCropResourceRequirements | Refresh Member 3 persisted requirement output | Crop-plan request and workflow must match |
-| GetResourceAvailability | Refresh stock snapshot for resource IDs already present in verified requirements | IDs are derived from validated persisted requirements |
-| GetExistingReservations | Refresh reservation snapshot for the same resource IDs | Workflow and resource IDs are fixed by trusted state |
-| GetWeatherForecast | Refresh forecast evidence used by Member 3's persisted analysis | Workflow-bound; the model cannot supply location or external URL |
-
-Additional Member 1 or 2 read tools must be separately justified and added to the schema, dispatcher, scope checks, and tests. The model may choose only a tool name and schema-defined arguments. It may not provide workflow ID, candidate revision, authorization token, arbitrary resource IDs, arbitrary path, or URL; trusted graph state supplies those values.
-
-Do not automatically fetch an entire farm history or large inspection/image payload just because a model requests it. Retrieval should target the specific gap and use existing bounded typed responses. If no existing endpoint returns the exact data needed for a refresh, either keep the current safe block or propose a narrowly scoped read-only endpoint as a separate reviewed design change.
-
-## 6. Contract and validation requirements
-
-Implementation must introduce a typed provider-neutral tool-call result, or a clearly bounded provider adapter, with:
-
-- a tool name from the fixed allowlist;
-- arguments parsed into that tool's strict schema;
-- a stable call ID and bounded text/JSON observation;
-- an explicit terminal response when the model has no further tool calls.
-
-The dispatcher must reject unknown tools, extra argument fields, invalid IDs, oversized arguments, repeated calls beyond budget, and tool results above a configured size limit. It must use the existing BackendToolClient and typed tool wrappers instead of constructing URLs or issuing raw HTTP from model output.
-
-Before any refreshed result is accepted, deterministic validation must verify:
-
-- response envelope indicates success and matches the expected schema;
-- returned farm, field, crop plan, crop type, profile, resource, and workflow identifiers match trusted request context;
-- source and verification metadata are present wherever required by the scheduling contract;
-- verified-at/source-version policy is met; stale data is not silently treated as current;
-- output belongs to the active workflow and candidate revision, or is explicitly treated as a current read snapshot under a documented policy;
-- refreshed data does not overwrite a newer persisted upstream agent result;
-- data stays within existing count and string-size limits.
-
-A successful read is not by itself evidence that upstream analysis completed. ReAct must never synthesize Member 1–3 status, warnings, conclusions, or provenance.
-
-## 7. Limits, errors, and fallback
-
-Initial implementation defaults should be configurable and conservative: at most 3 model/tool rounds, at most 5 total tool calls, one overall retrieval deadline, and the existing backend tool timeout for each call. The concrete values and model token limits must be finalized against current configuration and tested. No unbounded loop or autonomous retry is allowed.
-
-Safe fallback behavior:
-
-- no configured tool-call-capable provider: skip retrieval and return the existing deterministic dependency result;
-- provider refuses, emits malformed or unsupported call, or returns no valid answer: stop safely;
-- timeout, cancellation, HTTP failure, missing token, or invalid envelope: stop safely;
-- result is missing, stale, mismatched, oversized, or unverified: reject it and stop safely;
-- call budget or total deadline is exhausted: stop safely;
-- when evidence is still incomplete after the loop: return MissingDependency or the existing human-review/blocking state with a precise constraint.
-
-Do not place credentials, full prompts, unnecessary personal data, or complete farm records in logs. Record sanitized tool name, workflow/step/revision IDs, source IDs and versions, result class, elapsed time, and stop reason using existing audit/logging facilities.
-
-## 8. Trust and approval boundary
-
-The AI service's backend tool token authenticates internal calls; it does not grant the model unrestricted authorization. Tool scope must be enforced again by ASP.NET for every request. Request ownership, workflow binding, and resource-to-workflow relationships remain backend responsibilities.
-
-All retrieval is read-only. Candidate tasks, irrigation schedules, and reservations remain proposals. Only the existing authorized officer workflow can approve them. The approval transaction must continue to recheck inventory and scheduling constraints, reject stale candidate revisions, and preserve existing concurrency and rollback guarantees. The ReAct node cannot call approval or persistence endpoints because they are absent from the allowlist and the internal retrieval controller.
-
-## 9. Acceptance criteria
-
-The follow-up implementation is ready for review only when tests prove:
-
-1. Complete evidence takes the no-model/no-tool fast path and produces the same deterministic candidate as before.
-2. A known refreshable gap can be filled only by a matching persisted read response.
-3. The agent can select only allowlisted tools; unknown tools and malformed/extra arguments are rejected without HTTP calls.
-4. Workflow, entity, source, freshness, and revision mismatches are rejected and cannot reach candidate generation.
-5. Tool/model timeout, failure, invalid JSON, refusal, missing token, and exhausted call budget end in safe blocked or human-review output.
-6. The loop has deterministic hard limits and cannot repeat indefinitely.
-7. Tool responses are read-only; no task, irrigation, reservation, or approval record is written.
-8. Candidate scheduling still comes exclusively from EvidenceScheduler and remains deterministic for identical validated inputs.
-9. Existing approval, stale-revision, authorization, inventory recheck, conflict, rollback, and concurrent-approval tests continue to pass.
-10. Logs include enough sanitized provenance to trace retrieval without recording secrets or unnecessary personal data.
-11. AI-service tests and the applicable backend, React, and Flutter CI jobs pass for changed projects.
-
-## 10. Rollout
-
-Implement behind a disabled-by-default feature setting. First ship the typed tool-call contract, strict dispatcher, validation, and unit tests. Then enable only for a provider with verified tool-call support and only for the allowlisted retrieval tools. Keep the deterministic fast path available as the default and fallback. Compare retrieval attempts, safe-stop reasons, latency, and deterministic scheduling outputs before enabling broadly.
-
-## 11. Open implementation decisions
-
-These are intentionally deferred until this spec is approved and the implementation plan is written:
-
-- which configured LLM provider will supply constrained function/tool calls;
-- exact freshness thresholds per evidence type;
-- final retrieval deadline, call limits, and response byte/token caps;
-- whether any exact missing field needs a new narrowly scoped internal GET endpoint;
-- feature-setting name, default, and operational metrics.
-
-No open decision may weaken the read-only allowlist, deterministic scheduler boundary, or explicit officer approval requirement.
+- Stock, reservation, weather, field, or inspection retrieval.
+- Multiple model-selected tools, multi-round planning, or autonomous retries.
+- Any model-generated schedule, risk score, resource amount, database write, task creation, reservation, or approval.
+- New ASP.NET endpoints or changes to Member 1–3 analysis.
