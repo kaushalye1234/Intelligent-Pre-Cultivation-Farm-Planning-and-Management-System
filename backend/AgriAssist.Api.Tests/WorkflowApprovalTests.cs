@@ -6,6 +6,7 @@ using AgriAssist.Api.Dtos.CropPlanning;
 using AgriAssist.Api.Dtos.Inspections;
 using AgriAssist.Api.ExternalServices.AgenticAI;
 using AgriAssist.Api.Models.CropPlanning;
+using AgriAssist.Api.Models.Inspections;
 using AgriAssist.Api.Models.Resources;
 using AgriAssist.Api.Models.Shared;
 using AgriAssist.Api.Models.TaskApproval;
@@ -21,6 +22,73 @@ namespace AgriAssist.Api.Tests;
 public sealed class WorkflowApprovalTests
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    [Fact]
+    public async Task Field_officer_can_search_and_open_unclaimed_pending_field_analysis_workflow()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedAsync(db);
+        data.Workflow.CurrentStep = "CropFieldAnalysisAgent";
+        data.Workflow.Status = AgentWorkflowStatus.Pending;
+        data.Workflow.Steps.Single(item => item.AgentName == "CropFieldAnalysisAgent").Status = AgentStepStatus.Pending;
+        await db.SaveChangesAsync();
+        var service = NewService(db, Guid.NewGuid(), Candidate, ApplicationRole.FieldOfficer);
+
+        var result = await service.SearchAsync(new WorkflowApprovalQuery(), CancellationToken.None);
+        var review = await service.GetAsync(data.Workflow.Id, CancellationToken.None);
+
+        Assert.Equal(data.Workflow.Id, Assert.Single(result.Items).Id);
+        Assert.Equal(data.Workflow.Id, review.Workflow.Id);
+    }
+
+    [Fact]
+    public async Task Field_officer_cannot_see_unclaimed_workflow_outside_pending_field_analysis()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedAsync(db);
+        var service = NewService(db, Guid.NewGuid(), Candidate, ApplicationRole.FieldOfficer);
+
+        var result = await service.SearchAsync(new WorkflowApprovalQuery(), CancellationToken.None);
+        var exception = await Assert.ThrowsAsync<ApiException>(() =>
+            service.GetAsync(data.Workflow.Id, CancellationToken.None));
+
+        Assert.Empty(result.Items);
+        Assert.Equal("NOT_FOUND", exception.Code);
+    }
+
+    [Fact]
+    public async Task Claimed_field_analysis_workflow_is_visible_only_to_owning_field_officer()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedAsync(db);
+        data.Workflow.CurrentStep = "CropFieldAnalysisAgent";
+        data.Workflow.Status = AgentWorkflowStatus.Pending;
+        var ownerId = Guid.NewGuid();
+        db.FieldInspections.Add(new FieldInspection
+        {
+            FieldId = data.Field.Id,
+            CropPlanRequestId = data.Request.Id,
+            Purpose = InspectionPurpose.PrePlanting,
+            InspectorUserId = ownerId,
+            ScheduledAt = DateTime.UtcNow,
+            Status = InspectionStatus.InProgress,
+            Summary = "Pre-planting assessment draft."
+        });
+        await db.SaveChangesAsync();
+        var owner = NewService(db, ownerId, Candidate, ApplicationRole.FieldOfficer);
+        var otherOfficer = NewService(db, Guid.NewGuid(), Candidate, ApplicationRole.FieldOfficer);
+
+        var ownerResult = await owner.SearchAsync(new WorkflowApprovalQuery(), CancellationToken.None);
+        var otherResult = await otherOfficer.SearchAsync(new WorkflowApprovalQuery(), CancellationToken.None);
+        var ownerReview = await owner.GetAsync(data.Workflow.Id, CancellationToken.None);
+        var exception = await Assert.ThrowsAsync<ApiException>(() =>
+            otherOfficer.GetAsync(data.Workflow.Id, CancellationToken.None));
+
+        Assert.Equal(data.Workflow.Id, Assert.Single(ownerResult.Items).Id);
+        Assert.Empty(otherResult.Items);
+        Assert.Equal(data.Workflow.Id, ownerReview.Workflow.Id);
+        Assert.Equal("NOT_FOUND", exception.Code);
+    }
 
     [Fact]
     public async Task Crop_health_guidance_requires_explicit_decision_and_catalog_task_semantics_stay_locked()
@@ -663,9 +731,10 @@ public sealed class WorkflowApprovalTests
     private static WorkflowApprovalService NewService(
         AppDbContext db,
         Guid userId,
-        Func<SchedulingValidationInput, SchedulingValidationOutput> response)
+        Func<SchedulingValidationInput, SchedulingValidationOutput> response,
+        ApplicationRole role = ApplicationRole.AgriculturalOfficer)
     {
-        var currentUser = new FixedCurrentUserService(ApplicationRole.AgriculturalOfficer, userId);
+        var currentUser = new FixedCurrentUserService(role, userId);
         var resources = new ResourceService(
             db,
             currentUser,
