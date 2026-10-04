@@ -69,6 +69,10 @@ class SchedulingValidationState(TypedDict):
 
 
 def build_scheduling_validation_graph(agent: SchedulingValidationAgent):
+    async def retrieve_profile(state: SchedulingValidationState) -> SchedulingValidationState:
+        request = await agent.retrieve_missing_profile(state["request"])
+        return {"request": request, "output": None}
+
     async def validate_evidence(state: SchedulingValidationState) -> SchedulingValidationState:
         output = agent.check_dependencies(state["request"])
         return {"request": state["request"], "output": output}
@@ -82,10 +86,12 @@ def build_scheduling_validation_graph(agent: SchedulingValidationAgent):
                 "output": agent.assess_risk(state["request"], state["output"])}
 
     graph = StateGraph(SchedulingValidationState)
+    graph.add_node("retrieve_missing_profile", retrieve_profile)
     graph.add_node("validate_evidence", validate_evidence)
     graph.add_node("build_candidate", build_candidate)
     graph.add_node("assess_risk", assess_risk)
-    graph.set_entry_point("validate_evidence")
+    graph.set_entry_point("retrieve_missing_profile")
+    graph.add_edge("retrieve_missing_profile", "validate_evidence")
     graph.add_conditional_edges("validate_evidence", lambda state: "blocked" if state["output"] is not None else "ready",
                                 {"blocked": END, "ready": "build_candidate"})
     graph.add_edge("build_candidate", "assess_risk")

@@ -1,0 +1,107 @@
+# Group 04 demo stack. All selected compute/datastore plans are Render Free.
+# Free web services are public and spin down after 15 minutes; keep both AI
+# routes protected by generated bearer tokens. The free database expires after
+# 30 days and must contain demo data only.
+databases:
+  - name: agriassist-demo-db
+    databaseName: agriassist
+    user: agriassist
+    plan: free
+    region: singapore
+    postgresMajorVersion: "16"
+
+services:
+  - type: web
+    name: agriassist-api
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: dev
+    autoDeployTrigger: checksPass
+    dockerfilePath: ./backend/Dockerfile.render
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: ForwardedHeaders__TrustAllProxies
+        value: "true"
+      - key: ConnectionStrings__DefaultConnection
+        fromDatabase:
+          name: agriassist-demo-db
+          property: connectionString
+      - key: Database__ApplyMigrationsOnStart
+        value: "true"
+      - key: ApiDocs__Enabled
+        value: "true"
+      - key: Jwt__Secret
+        generateValue: true
+      - key: Jwt__Issuer
+        value: AgriAssist
+      - key: Jwt__Audience
+        value: AgriAssistUsers
+      - key: AI__ServiceUrl
+        fromService:
+          name: agriassist-ai
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: AI__ServiceToken
+        generateValue: true
+      - key: AI__ToolToken
+        generateValue: true
+      - key: App__ReactUrl
+        fromService:
+          name: agriassist-react
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+
+  - type: web
+    name: agriassist-ai
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: dev
+    autoDeployTrigger: checksPass
+    dockerfilePath: ./ai-service/Dockerfile
+    dockerContext: ./ai-service
+    healthCheckPath: /health
+    envVars:
+      - key: AI_SERVICE_TOKEN
+        fromService:
+          name: agriassist-api
+          type: web
+          envVarKey: AI__ServiceToken
+      - key: AI_PROVIDER
+        value: openai
+      - key: AI_MODEL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: BACKEND_TOOL_BASE_URL
+        fromService:
+          name: agriassist-api
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: BACKEND_TOOL_TOKEN
+        fromService:
+          name: agriassist-api
+          type: web
+          envVarKey: AI__ToolToken
+
+  - type: web
+    name: agriassist-react
+    runtime: static
+    branch: dev
+    autoDeployTrigger: checksPass
+    buildCommand: cd frontend/react-app && npm ci && npm run build
+    staticPublishPath: frontend/react-app/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_BASE_URL
+        fromService:
+          name: agriassist-api
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL

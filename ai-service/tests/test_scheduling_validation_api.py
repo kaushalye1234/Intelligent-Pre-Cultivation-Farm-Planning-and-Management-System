@@ -3,6 +3,7 @@ import pytest
 
 from config import Settings, get_settings
 from main import app
+import main as main_module
 from test_scheduling_validation_agent import sourced_request
 
 
@@ -41,3 +42,15 @@ async def test_scheduling_http_contract_preserves_review_and_source_evidence(
         assert result["candidateReservations"][0]["sources"][0]["kind"] == "ResourceRequirement"
     else:
         assert result["candidateReservations"][0]["sources"][0]["kind"] == "ResourceRequirement"
+
+
+@pytest.mark.asyncio
+async def test_scheduling_api_does_not_construct_agent_clients_when_feature_is_disabled(monkeypatch):
+    def unexpected_provider(_settings):
+        raise AssertionError("The disabled retrieval feature must not construct an LLM client.")
+
+    monkeypatch.setattr(main_module, "create_provider", unexpected_provider)
+    result = await main_module.run_scheduling_validation(
+        sourced_request(), Settings(_env_file=None, SCHEDULING_PROFILE_RETRIEVAL_ENABLED=False)
+    )
+    assert result.status == "CandidateReady"

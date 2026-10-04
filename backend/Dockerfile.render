@@ -1,0 +1,18 @@
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+
+COPY backend/AgriAssist.Api/AgriAssist.Api.csproj backend/AgriAssist.Api/
+RUN dotnet restore backend/AgriAssist.Api/AgriAssist.Api.csproj
+
+COPY backend/AgriAssist.Api/ backend/AgriAssist.Api/
+RUN dotnet publish backend/AgriAssist.Api/AgriAssist.Api.csproj \
+    --configuration Release \
+    --no-restore \
+    --output /app/publish
+
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+WORKDIR /app
+ENV ASPNETCORE_ENVIRONMENT=Production
+EXPOSE 10000
+COPY --from=build /app/publish .
+CMD ["sh", "-c", "dotnet AgriAssist.Api.dll --urls http://0.0.0.0:${PORT:-10000}"]

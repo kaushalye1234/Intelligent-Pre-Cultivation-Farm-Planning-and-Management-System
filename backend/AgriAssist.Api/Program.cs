@@ -28,6 +28,7 @@ using AgriAssist.Api.ExternalServices.Weather;
 using DotNetEnv;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -62,21 +63,20 @@ builder.Services.AddOptions<SecurityRateLimitOptions>()
         "Security rate-limit values must be positive.")
     .ValidateOnStart();
 builder.Services.AddHttpContextAccessor();
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    if (builder.Configuration.GetValue<bool>("ForwardedHeaders:TrustAllProxies"))
+    {
+        options.KnownNetworks.Clear();
+        options.KnownProxies.Clear();
+    }
+});
 
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-if (builder.Environment.IsEnvironment("Testing") || string.IsNullOrWhiteSpace(connectionString))
-{
-    var inMemoryDatabaseName = builder.Environment.IsEnvironment("Testing")
-        ? $"AgriAssistTesting-{Guid.NewGuid():N}"
-        : "AgriAssistDevelopment";
-    builder.Services.AddDbContext<AppDbContext>(options =>
-        options.UseInMemoryDatabase(inMemoryDatabaseName));
-}
-else
-{
-    builder.Services.AddDbContext<AppDbContext>(options =>
-        options.UseNpgsql(connectionString));
-}
+AppDbContextRegistration.AddAppDbContext(
+    builder.Services,
+    builder.Configuration,
+    builder.Environment.EnvironmentName);
 
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<IRequestValidator<RegisterFarmerRequest>, RegisterFarmerRequestValidator>();
@@ -258,6 +258,8 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
+app.UseForwardedHeaders();
+
 if (args.Length == 1 && string.Equals(args[0], "bootstrap-admin", StringComparison.OrdinalIgnoreCase))
 {
     using var bootstrapScope = app.Services.CreateScope();
@@ -268,7 +270,9 @@ if (args.Length == 1 && string.Equals(args[0], "bootstrap-admin", StringComparis
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
-if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing"))
+if (app.Environment.IsDevelopment()
+    || app.Environment.IsEnvironment("Testing")
+    || app.Configuration.GetValue<bool>("ApiDocs:Enabled"))
 {
     app.UseSwagger();
     app.UseSwaggerUI();
@@ -280,6 +284,10 @@ using (var scope = app.Services.CreateScope())
     if (dbContext.Database.IsInMemory())
     {
         await dbContext.Database.EnsureCreatedAsync();
+    }
+    else if (app.Configuration.GetValue<bool>("Database:ApplyMigrationsOnStart"))
+    {
+        await dbContext.Database.MigrateAsync();
     }
 }
 

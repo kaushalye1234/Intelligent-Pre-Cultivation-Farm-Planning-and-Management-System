@@ -9,7 +9,22 @@ type ApiErrorPayload = {
   }
 }
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5087/api'
+export function resolveApiBaseUrl(configuredBaseUrl?: string): string {
+  const candidate = configuredBaseUrl?.trim()
+  if (!candidate) return 'http://localhost:5087/api'
+
+  try {
+    const url = new URL(candidate)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return 'http://localhost:5087/api'
+    const path = url.pathname.replace(/\/+$/, '')
+    const apiPath = /\/api$/i.test(path) ? path : `${path}/api`
+    return `${url.origin}${apiPath}`
+  } catch {
+    return 'http://localhost:5087/api'
+  }
+}
+
+const apiBaseUrl = resolveApiBaseUrl(import.meta.env.VITE_API_BASE_URL)
 
 export const api = axios.create({
   baseURL: apiBaseUrl,
