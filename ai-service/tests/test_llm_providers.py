@@ -34,7 +34,7 @@ def test_crop_finding_provider_uses_shared_openai_model_configuration():
     assert not hasattr(settings, "crop_finding_model")
     assert provider._web_search_timeout_seconds == 50
     assert provider._web_search_client.max_retries == 0
-    assert settings.crop_finding_structured_analysis_timeout_seconds == 45
+    assert settings.crop_finding_structured_analysis_timeout_seconds == 70
     assert settings.crop_finding_completion_safety_margin_seconds == 5
     assert settings.crop_finding_analysis_max_chars_per_source == 12_000
     assert settings.crop_finding_analysis_max_total_chars == 45_000

@@ -9,6 +9,7 @@ using AgriAssist.Api.Dtos.Shared;
 using AgriAssist.Api.Dtos.TaskApproval;
 using AgriAssist.Api.ExternalServices.AgenticAI;
 using AgriAssist.Api.Models.CropPlanning;
+using AgriAssist.Api.Models.Inspections;
 using AgriAssist.Api.Models.Shared;
 using AgriAssist.Api.Models.TaskApproval;
 using AgriAssist.Api.Services.Resources;
@@ -25,6 +26,7 @@ public sealed class WorkflowApprovalService(
     ISchedulingValidationAIClient aiClient,
     IResourceService resourceService) : IWorkflowApprovalService
 {
+    private const string FieldAnalysisAgentName = "CropFieldAnalysisAgent";
     private const string SchedulingAgentName = "SchedulingValidationAgent";
     private const string SchedulingStepName = "Scheduling";
     private const int MaxRevisionCount = 3;
@@ -1024,8 +1026,17 @@ public sealed class WorkflowApprovalService(
     {
         var userId = RequireUser();
         if (currentUser.Role == ApplicationRole.FieldOfficer)
-            return query.Where(item => item.CropPlanRequestId.HasValue && dbContext.FieldInspections.Any(inspection =>
-                inspection.CropPlanRequestId == item.CropPlanRequestId && inspection.InspectorUserId == userId && !inspection.IsDeleted));
+            return query.Where(item => item.CropPlanRequestId.HasValue &&
+                (dbContext.FieldInspections.Any(inspection =>
+                    inspection.CropPlanRequestId == item.CropPlanRequestId &&
+                    inspection.InspectorUserId == userId &&
+                    !inspection.IsDeleted)
+                || (item.Status == AgentWorkflowStatus.Pending &&
+                    item.CurrentStep == FieldAnalysisAgentName &&
+                    !dbContext.FieldInspections.Any(inspection =>
+                        inspection.CropPlanRequestId == item.CropPlanRequestId &&
+                        inspection.Purpose == InspectionPurpose.PrePlanting &&
+                        !inspection.IsDeleted))));
         if (currentUser.Role != ApplicationRole.Farmer) return query;
         return query.Where(item => item.CropPlanRequest != null &&
             (item.CropPlanRequest.RequestedByUserId == userId || item.CropPlanRequest.Farm!.OwnerUserId == userId));

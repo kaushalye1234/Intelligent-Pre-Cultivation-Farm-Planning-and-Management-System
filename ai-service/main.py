@@ -21,6 +21,7 @@ from graph.workflow_graph import build_crop_planning_graph, build_field_analysis
 from providers import create_crop_finding_provider, create_provider
 from providers.base_llm_provider import LLMProviderError, ProviderConfigurationError
 from schemas.crop_finding import (
+    CropFindingErrorDetail,
     CropSuggestionsResponse,
     DiscoverReferencesInput,
     ReferenceDiscoveryResponse,
@@ -71,12 +72,7 @@ async def _run_crop_finding(
 ) -> T:
     started = time.monotonic()
     request_id = str(uuid4())
-    agent = CropFindingAgent(
-        CropFindingTools(settings),
-        create_crop_finding_provider(settings),
-        request_id=request_id,
-        operation_started_at=started,
-    )
+    agent: CropFindingAgent | None = None
     logger.info(
         "CropFinding request started requestId=%s action=%s adminUserId=%s crop=%s variety=%s",
         request_id,
@@ -86,6 +82,12 @@ async def _run_crop_finding(
         variety,
     )
     try:
+        agent = CropFindingAgent(
+            CropFindingTools(settings),
+            create_crop_finding_provider(settings),
+            request_id=request_id,
+            operation_started_at=started,
+        )
         result = await asyncio.wait_for(operation(agent), timeout=settings.crop_finding_overall_timeout_seconds)
     except ProviderConfigurationError as exc:
         logger.warning(
@@ -95,19 +97,52 @@ async def _run_crop_finding(
             admin_user_id,
             type(exc).__name__,
         )
-        raise HTTPException(status_code=503, detail="CropFinding OpenAI configuration is unavailable.") from exc
+        detail = CropFindingErrorDetail(
+            code="CROP_FINDING_CONFIGURATION_UNAVAILABLE",
+            message="CropFinding OpenAI configuration is unavailable.",
+            requestId=request_id,
+            operation=agent.active_operation if agent else None,
+            stage=agent.active_stage if agent else None,
+            attempt=agent.active_attempt if agent else None,
+            category="configuration",
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=detail.model_dump(mode="json", by_alias=True, exclude_none=True),
+        ) from exc
     except asyncio.TimeoutError as exc:
+        operation_name = agent.active_operation if agent else None
+        stage = agent.active_stage if agent else None
+        attempt = agent.active_attempt if agent else None
         logger.warning(
-            "CropFinding timeout requestId=%s action=%s adminUserId=%s operation=overall_request "
+            "CropFinding timeout requestId=%s action=%s adminUserId=%s operation=%s stage=%s attempt=%s "
             "exceptionClass=%s rootCauseClass=%s category=timeout safeMessage=%s",
             request_id,
             action,
             admin_user_id,
+            operation_name,
+            stage,
+            attempt,
             type(exc).__name__,
             type(exc.__cause__).__name__ if exc.__cause__ else type(exc).__name__,
             "CropFinding exceeded the configured overall operation timeout.",
         )
-        raise HTTPException(status_code=504, detail="CropFinding timed out before a complete result was available.") from exc
+        timeout_seconds = settings.crop_finding_overall_timeout_seconds
+        detail = CropFindingErrorDetail(
+            code="CROP_FINDING_TIMEOUT",
+            message=f"CropFinding exceeded the {timeout_seconds:g}-second operational deadline.",
+            requestId=request_id,
+            operation=operation_name,
+            stage=stage,
+            attempt=attempt,
+            category="timeout",
+            configuredTimeoutSeconds=timeout_seconds,
+            effectiveTimeoutSeconds=timeout_seconds,
+        )
+        raise HTTPException(
+            status_code=504,
+            detail=detail.model_dump(mode="json", by_alias=True, exclude_none=True),
+        ) from exc
     except LLMProviderError as exc:
         logger.warning(
             "CropFinding provider failure requestId=%s action=%s adminUserId=%s operation=%s stage=%s attempt=%s "
@@ -135,7 +170,25 @@ async def _run_crop_finding(
             exc.chunk_count,
             exc.extracted_character_count,
         )
-        raise HTTPException(status_code=502, detail="CropFinding source discovery or analysis failed.") from exc
+        is_timeout = exc.category == "timeout"
+        detail = CropFindingErrorDetail(
+            code="CROP_FINDING_TIMEOUT" if is_timeout else "CROP_FINDING_PROVIDER_FAILURE",
+            message=str(exc),
+            requestId=exc.request_id or request_id,
+            operation=exc.operation,
+            stage=exc.stage,
+            attempt=exc.attempt,
+            category=exc.category,
+            upstreamStatus=exc.status_code,
+            providerErrorCode=exc.error_code,
+            providerRequestId=exc.provider_request_id,
+            configuredTimeoutSeconds=exc.configured_timeout_seconds,
+            effectiveTimeoutSeconds=exc.effective_timeout_seconds,
+        )
+        raise HTTPException(
+            status_code=504 if is_timeout else 502,
+            detail=detail.model_dump(mode="json", by_alias=True, exclude_none=True),
+        ) from exc
 
     duration_ms = round((time.monotonic() - started) * 1000)
     payload = result.model_dump(mode="json", by_alias=True) if hasattr(result, "model_dump") else {}

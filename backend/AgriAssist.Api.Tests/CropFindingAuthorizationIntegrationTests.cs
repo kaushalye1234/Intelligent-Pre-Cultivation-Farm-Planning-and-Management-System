@@ -17,6 +17,20 @@ namespace AgriAssist.Api.Tests;
 public sealed class CropFindingAuthorizationIntegrationTests
 {
     [Fact]
+    public async Task CropFinding_http_client_uses_the_operation_specific_timeout()
+    {
+        await using var factory = new WebApplicationFactory<Program>()
+            .WithWebHostBuilder(builder => builder.UseEnvironment("Testing"));
+        using var client = factory.Services
+            .GetRequiredService<IHttpClientFactory>()
+            .CreateClient(nameof(ICropFindingAIClient));
+        var configuration = factory.Services.GetRequiredService<IConfiguration>();
+
+        Assert.Equal(Timeout.InfiniteTimeSpan, client.Timeout);
+        Assert.Equal(180, configuration.GetValue<int>("AI:CropFindingTimeoutSeconds"));
+    }
+
+    [Fact]
     public async Task CropFinding_is_admin_only_and_never_persists_suggestions()
     {
         await using var factory = CreateFactory();

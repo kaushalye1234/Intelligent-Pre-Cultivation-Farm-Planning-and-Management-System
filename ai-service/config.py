@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     crop_finding_document_timeout_seconds: float = Field(default=18, alias="CROP_FINDING_DOCUMENT_TIMEOUT_SECONDS", gt=0, le=90)
     crop_finding_web_search_timeout_seconds: float = Field(default=50, alias="CROP_FINDING_WEB_SEARCH_TIMEOUT_SECONDS", gt=0, le=90)
     crop_finding_structured_analysis_timeout_seconds: float = Field(
-        default=45,
+        default=70,
         alias="CROP_FINDING_STRUCTURED_ANALYSIS_TIMEOUT_SECONDS",
         gt=0,
         le=90,
@@ -49,7 +49,7 @@ class Settings(BaseSettings):
         gt=0,
         le=30,
     )
-    crop_finding_overall_timeout_seconds: float = Field(default=105, alias="CROP_FINDING_OVERALL_TIMEOUT_SECONDS", gt=10, le=180)
+    crop_finding_overall_timeout_seconds: float = Field(default=175, alias="CROP_FINDING_OVERALL_TIMEOUT_SECONDS", gt=10, le=180)
     crop_finding_max_redirects: int = Field(default=3, alias="CROP_FINDING_MAX_REDIRECTS", ge=0, le=5)
     crop_finding_max_html_bytes: int = Field(default=2_000_000, alias="CROP_FINDING_MAX_HTML_BYTES", ge=100_000, le=5_000_000)
     crop_finding_max_pdf_bytes: int = Field(default=10_000_000, alias="CROP_FINDING_MAX_PDF_BYTES", ge=500_000, le=25_000_000)

@@ -366,7 +366,7 @@ async def test_structured_analysis_timeout_is_distinct_from_web_search_timeout()
     assert provider.search_stages == [1]
     assert tools.retrieve_calls == [1]
     assert provider.generate_calls == 1
-    assert provider.analysis_timeouts == [45]
+    assert provider.analysis_timeouts == [70]
 
 
 @pytest.mark.asyncio
@@ -408,7 +408,7 @@ async def test_structured_analysis_uses_configured_timeout_when_budget_is_suffic
         evidence=evidence_bundle(),
     )
 
-    assert provider.analysis_timeouts == [45]
+    assert provider.analysis_timeouts == [70]
 
 
 @pytest.mark.asyncio
@@ -419,7 +419,7 @@ async def test_structured_analysis_timeout_is_reduced_to_remaining_safe_budget()
         provider,
         request_id="request-budget-reduced",
         operation_started_at=0,
-        monotonic_clock=lambda: 80,
+        monotonic_clock=lambda: 150,
     )
 
     await agent._generate_payload(
@@ -442,7 +442,7 @@ async def test_structured_analysis_does_not_start_without_safe_remaining_budget(
         provider,
         request_id="request-budget-exhausted",
         operation_started_at=0,
-        monotonic_clock=lambda: 101,
+        monotonic_clock=lambda: 171,
     )
 
     with pytest.raises(LLMProviderError) as captured:
@@ -500,7 +500,7 @@ async def test_retryable_structured_analysis_failure_receives_at_most_one_retry(
     )
 
     assert provider.generate_calls == 2
-    assert provider.analysis_timeouts == [45, 45]
+    assert provider.analysis_timeouts == [70, 70]
 
 
 @pytest.mark.asyncio
@@ -585,8 +585,8 @@ async def test_structured_analysis_diagnostics_are_safe_and_include_payload_meta
             evidence=evidence_bundle(),
         )
 
-    assert "configuredTimeoutSeconds=45" in caplog.text
-    assert "effectiveTimeoutSeconds=45" in caplog.text
+    assert "configuredTimeoutSeconds=70" in caplog.text
+    assert "effectiveTimeoutSeconds=70" in caplog.text
     assert "sourceCount=1" in caplog.text
     assert "chunkCount=1" in caplog.text
     assert "extractedCharacterCount=19" in caplog.text

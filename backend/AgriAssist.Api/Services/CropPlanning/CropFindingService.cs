@@ -208,6 +208,41 @@ public sealed class CropFindingService(
                 "CROP_FINDING_TIMEOUT",
                 "The AI discovery request timed out. Existing form values were not changed.");
         }
+        catch (CropFindingAIException exception)
+        {
+            var detail = exception.Detail;
+            logger.LogWarning(
+                "CropFinding action {Action} received upstream status {StatusCode} request {RequestId} " +
+                "operation {Operation} stage {Stage} category {Category}",
+                action,
+                exception.ResponseStatusCode,
+                detail?.RequestId,
+                detail?.Operation,
+                detail?.Stage,
+                detail?.Category);
+
+            if (exception.ResponseStatusCode == HttpStatusCode.GatewayTimeout
+                || string.Equals(detail?.Category, "timeout", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ApiException(
+                    HttpStatusCode.GatewayTimeout,
+                    "CROP_FINDING_TIMEOUT",
+                    BuildFailureMessage("CropFinding timed out", detail));
+            }
+
+            if (exception.ResponseStatusCode == HttpStatusCode.ServiceUnavailable)
+            {
+                throw new ApiException(
+                    HttpStatusCode.ServiceUnavailable,
+                    "CROP_FINDING_CONFIGURATION_UNAVAILABLE",
+                    BuildFailureMessage("CropFinding configuration is unavailable", detail));
+            }
+
+            throw new ApiException(
+                HttpStatusCode.BadGateway,
+                "CROP_FINDING_FAILED",
+                BuildFailureMessage("CropFinding failed", detail));
+        }
         catch (HttpRequestException exception)
         {
             logger.LogWarning(exception, "CropFinding action {Action} could not reach the AI service", action);
@@ -262,6 +297,36 @@ public sealed class CropFindingService(
 
     private static string? CleanOptional(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string BuildFailureMessage(string summary, CropFindingErrorDetail? detail)
+    {
+        var operation = detail?.Operation switch
+        {
+            "web_search" => "web search",
+            "source_retrieval" => "source retrieval",
+            "structured_analysis" => "structured analysis",
+            _ => null
+        };
+        var stage = detail?.Stage switch
+        {
+            1 => "Sri Lankan evidence stage 1",
+            2 => "international fallback stage 2",
+            _ => null
+        };
+        var location = operation is null
+            ? string.Empty
+            : stage is null ? $" during {operation}" : $" during {operation} ({stage})";
+        var safeDetail = CleanErrorDetail(detail?.Message);
+        var reason = safeDetail is null ? string.Empty : $": {safeDetail}";
+        return $"{summary}{location}{reason} Existing form values were not changed.";
+    }
+
+    private static string? CleanErrorDetail(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var cleaned = string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return cleaned.Length <= 800 ? cleaned : $"{cleaned[..797]}...";
+    }
 
     private static void Validate(IReadOnlyList<string> errors)
     {

@@ -106,6 +106,104 @@ public sealed class CropFindingServiceTests
         Assert.NotEmpty(new DiscoverReferencesRequestValidator().Validate(new DiscoverReferencesRequest(Guid.Empty, Guid.Empty, new string('x', 121))));
     }
 
+    [Theory]
+    [InlineData(HttpStatusCode.GatewayTimeout, "server_error", HttpStatusCode.GatewayTimeout, "CROP_FINDING_TIMEOUT")]
+    [InlineData(HttpStatusCode.BadGateway, "timeout", HttpStatusCode.GatewayTimeout, "CROP_FINDING_TIMEOUT")]
+    [InlineData(HttpStatusCode.BadGateway, "server_error", HttpStatusCode.BadGateway, "CROP_FINDING_FAILED")]
+    [InlineData(HttpStatusCode.ServiceUnavailable, "configuration", HttpStatusCode.ServiceUnavailable, "CROP_FINDING_CONFIGURATION_UNAVAILABLE")]
+    public async Task Upstream_failures_are_mapped_with_stage_aware_messages(
+        HttpStatusCode upstreamStatus,
+        string category,
+        HttpStatusCode expectedStatus,
+        string expectedCode)
+    {
+        await using var db = NewDb();
+        var crop = new CropType { Name = "Rice" };
+        db.Add(crop);
+        await db.SaveChangesAsync();
+        var detail = new CropFindingErrorDetail(
+            "UPSTREAM_CODE",
+            "OpenAI returned a safe failure.",
+            "request-1",
+            "web_search",
+            1,
+            1,
+            category,
+            503,
+            "provider_code",
+            "provider-request-1",
+            50,
+            50);
+        var ai = new FakeCropFindingAIClient
+        {
+            Failure = new CropFindingAIException(upstreamStatus, detail)
+        };
+
+        var error = await Assert.ThrowsAsync<ApiException>(() =>
+            NewService(db, ai).DiscoverReferencesAsync(
+                new DiscoverReferencesRequest(crop.Id), CancellationToken.None));
+
+        Assert.Equal(expectedStatus, error.StatusCode);
+        Assert.Equal(expectedCode, error.Code);
+        Assert.Contains("web search", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Sri Lankan evidence stage 1", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("OpenAI returned a safe failure", error.Message, StringComparison.Ordinal);
+        Assert.Contains("Existing form values were not changed", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Transport_failure_is_the_only_failure_mapped_as_unavailable()
+    {
+        await using var db = NewDb();
+        var crop = new CropType { Name = "Rice" };
+        db.Add(crop);
+        await db.SaveChangesAsync();
+        var ai = new FakeCropFindingAIClient { Failure = new HttpRequestException("connection refused") };
+
+        var error = await Assert.ThrowsAsync<ApiException>(() =>
+            NewService(db, ai).DiscoverReferencesAsync(
+                new DiscoverReferencesRequest(crop.Id), CancellationToken.None));
+
+        Assert.Equal(HttpStatusCode.BadGateway, error.StatusCode);
+        Assert.Equal("CROP_FINDING_UNAVAILABLE", error.Code);
+    }
+
+    [Fact]
+    public async Task Local_deadline_is_mapped_as_timeout()
+    {
+        await using var db = NewDb();
+        var crop = new CropType { Name = "Rice" };
+        db.Add(crop);
+        await db.SaveChangesAsync();
+        var ai = new FakeCropFindingAIClient { Failure = new OperationCanceledException() };
+
+        var error = await Assert.ThrowsAsync<ApiException>(() =>
+            NewService(db, ai).DiscoverReferencesAsync(
+                new DiscoverReferencesRequest(crop.Id), CancellationToken.None));
+
+        Assert.Equal(HttpStatusCode.GatewayTimeout, error.StatusCode);
+        Assert.Equal("CROP_FINDING_TIMEOUT", error.Code);
+    }
+
+    [Fact]
+    public async Task Caller_cancellation_is_not_remapped()
+    {
+        await using var db = NewDb();
+        var crop = new CropType { Name = "Rice" };
+        db.Add(crop);
+        await db.SaveChangesAsync();
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var ai = new FakeCropFindingAIClient
+        {
+            Failure = new OperationCanceledException(cancellation.Token)
+        };
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            NewService(db, ai).DiscoverReferencesAsync(
+                new DiscoverReferencesRequest(crop.Id), cancellation.Token));
+    }
+
     private static CropFindingService NewService(AppDbContext db, ICropFindingAIClient ai) =>
         new(
             db,
@@ -149,6 +247,7 @@ public sealed class CropFindingServiceTests
 
     private sealed class FakeCropFindingAIClient : ICropFindingAIClient
     {
+        public Exception? Failure { get; init; }
         public CropSuggestionsResponse Crops { get; init; } = CropResponse();
         public VarietySuggestionsResponse Varieties { get; init; } = VarietyResponse(Guid.NewGuid(), "Crop");
         public ReferenceDiscoveryResponse References { get; init; } = new(
@@ -156,7 +255,8 @@ public sealed class CropFindingServiceTests
         public SuggestVarietiesInput? LastVarietyInput { get; private set; }
         public DiscoverReferencesInput? LastReferenceInput { get; private set; }
 
-        public Task<CropSuggestionsResponse> SuggestCropsAsync(SuggestCropsInput input, CancellationToken cancellationToken) => Task.FromResult(Crops);
+        public Task<CropSuggestionsResponse> SuggestCropsAsync(SuggestCropsInput input, CancellationToken cancellationToken) =>
+            Failure is null ? Task.FromResult(Crops) : Task.FromException<CropSuggestionsResponse>(Failure);
         public Task<VarietySuggestionsResponse> SuggestVarietiesAsync(SuggestVarietiesInput input, CancellationToken cancellationToken)
         {
             LastVarietyInput = input;
@@ -165,7 +265,9 @@ public sealed class CropFindingServiceTests
         public Task<ReferenceDiscoveryResponse> DiscoverReferencesAsync(DiscoverReferencesInput input, CancellationToken cancellationToken)
         {
             LastReferenceInput = input;
-            return Task.FromResult(References);
+            return Failure is null
+                ? Task.FromResult(References)
+                : Task.FromException<ReferenceDiscoveryResponse>(Failure);
         }
     }
 }
