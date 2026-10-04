@@ -172,3 +172,6 @@ Verified from a clean worktree on `member4/render-phase4-clean`, rebased onto `o
 - AI `python -m compileall -q agents graph providers schemas tools tests main.py` and `python -m pytest`: **186 passed, 0 failed**. This machine has Python 3.14.3 while the repository locks Pydantic 2.10.4, whose native core does not support Python 3.14. For this local run only, an isolated test environment used Pydantic 2.12.4; the committed requirements were not changed. The result is not equivalent to the Python 3.12 CI dependency set and should be confirmed by CI before merge. The run emitted dependency and Pydantic warnings.
 - No Flutter files changed in this follow-up, and Flutter was not run. Render YAML parsed locally; no Render account resources, hosted URLs, live provider calls, or hosted end-to-end checks were created.
 - The optional one-tool profile retrieval remains disabled by default. The user’s local AI-service `.env` was preserved in the main checkout; it does not define `SCHEDULING_PROFILE_RETRIEVAL_ENABLED`, so the code default applies.
+
+
+GitHub follow-up on 2026-10-05: draft PR #67 ran the backend, AI-service, React, and Flutter GitHub Actions jobs on commit `b5a6a29`; all four passed. A later report-only commit updates the handoff status and does not change application code.
