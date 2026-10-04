@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     crop_finding_document_timeout_seconds: float = Field(default=18, alias="CROP_FINDING_DOCUMENT_TIMEOUT_SECONDS", gt=0, le=90)
     crop_finding_web_search_timeout_seconds: float = Field(default=50, alias="CROP_FINDING_WEB_SEARCH_TIMEOUT_SECONDS", gt=0, le=90)
     crop_finding_structured_analysis_timeout_seconds: float = Field(
-        default=45,
+        default=70,
         alias="CROP_FINDING_STRUCTURED_ANALYSIS_TIMEOUT_SECONDS",
         gt=0,
         le=90,
