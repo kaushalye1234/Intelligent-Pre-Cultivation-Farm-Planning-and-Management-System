@@ -379,3 +379,35 @@ async def test_missing_inventory_snapshot_requires_review():
     assert result.requires_human_review is True
     assert result.resource_checks == []
     assert any("No active inventory rows" in warning for warning in result.warnings)
+
+
+def test_weather_resource_endpoint_runs_without_an_llm_provider(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    import main
+    from config import Settings, get_settings
+
+    # Member 3 is deterministic: the endpoint must not build an OpenAI client and must work with no OPENAI_API_KEY.
+    settings = Settings(_env_file=None, AI_SERVICE_TOKEN="test-service-token", AI_PROVIDER="openai", OPENAI_API_KEY="")
+    main.app.dependency_overrides[get_settings] = lambda: settings
+    tools = FakeTools()
+    monkeypatch.setattr(main, "WeatherResourceTools", lambda client: tools)
+
+    def fail_create_provider(_settings):
+        raise AssertionError("The weather-resource step must not create an LLM provider.")
+
+    monkeypatch.setattr(main, "create_provider", fail_create_provider)
+    try:
+        response = TestClient(main.app).post(
+            "/workflows/crop-planning/weather-resource",
+            json=request_input().model_dump(mode="json", by_alias=True),
+            headers={"X-AgriAssist-AI-Token": "test-service-token"},
+        )
+    finally:
+        main.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "Analyzed"
+    assert body["requirementStatus"] == "Insufficient"  # sample fixture: 50 kg required, 30 kg available
+    assert "GetResourceAvailability" in body["toolsUsed"]
