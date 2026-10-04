@@ -9,6 +9,22 @@ from schemas.common import CamelModel
 EvidenceStatus = Literal["Supported", "Partially Supported", "Unsupported", "Conflict", "Manual Review Required"]
 SourceClassification = Literal["Sri Lankan", "International fallback"]
 RetrievalStatus = Literal["Retrieved", "Manual Review Required", "Failed"]
+CropFindingOperation = Literal["web_search", "source_retrieval", "structured_analysis"]
+
+
+class CropFindingErrorDetail(CamelModel):
+    code: str = Field(min_length=1, max_length=120)
+    message: str = Field(min_length=1, max_length=800)
+    request_id: str = Field(min_length=1, max_length=200)
+    operation: CropFindingOperation | None = None
+    stage: int | None = Field(default=None, ge=1, le=2)
+    attempt: int | None = Field(default=None, ge=1)
+    category: str | None = Field(default=None, max_length=120)
+    upstream_status: int | None = Field(default=None, ge=100, le=599)
+    provider_error_code: str | None = Field(default=None, max_length=120)
+    provider_request_id: str | None = Field(default=None, max_length=200)
+    configured_timeout_seconds: float | None = Field(default=None, gt=0)
+    effective_timeout_seconds: float | None = Field(default=None, ge=0)
 
 
 class SuggestCropsInput(CamelModel):

@@ -419,7 +419,7 @@ async def test_structured_analysis_timeout_is_reduced_to_remaining_safe_budget()
         provider,
         request_id="request-budget-reduced",
         operation_started_at=0,
-        monotonic_clock=lambda: 80,
+        monotonic_clock=lambda: 150,
     )
 
     await agent._generate_payload(
@@ -442,7 +442,7 @@ async def test_structured_analysis_does_not_start_without_safe_remaining_budget(
         provider,
         request_id="request-budget-exhausted",
         operation_started_at=0,
-        monotonic_clock=lambda: 101,
+        monotonic_clock=lambda: 171,
     )
 
     with pytest.raises(LLMProviderError) as captured:

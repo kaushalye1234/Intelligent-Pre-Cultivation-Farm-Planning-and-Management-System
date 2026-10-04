@@ -156,6 +156,26 @@ class CropFindingAgent:
             operation_started_at + self._tools.settings.crop_finding_overall_timeout_seconds
             if operation_started_at is not None else None
         )
+        self._active_operation: str | None = None
+        self._active_stage: int | None = None
+        self._active_attempt: int | None = None
+
+    @property
+    def active_operation(self) -> str | None:
+        return self._active_operation
+
+    @property
+    def active_stage(self) -> int | None:
+        return self._active_stage
+
+    @property
+    def active_attempt(self) -> int | None:
+        return self._active_attempt
+
+    def _set_progress(self, operation: str, stage: int, attempt: int | None = None) -> None:
+        self._active_operation = operation
+        self._active_stage = stage
+        self._active_attempt = attempt
 
     async def suggest_crops(self, request: SuggestCropsInput) -> CropSuggestionsResponse:
         self._ensure_operation_clock()
@@ -349,6 +369,7 @@ class CropFindingAgent:
         request_id: str,
     ) -> tuple[list[RetrievedDocument], list[str]]:
         self._ensure_operation_clock()
+        self._set_progress("web_search", stage, 1)
         if self._provider is None:
             raise ProviderConfigurationError("CropFinding requires the server-side OpenAI API key and model.")
         hosts = self._tools.source_policy.allowed_hosts(stage)
@@ -356,6 +377,7 @@ class CropFindingAgent:
         search = None
         search_started = self._clock()
         for attempt in range(1, attempts + 1):
+            self._set_progress("web_search", stage, attempt)
             try:
                 search = await self._provider.search_web(query, hosts, self._tools.settings.crop_finding_candidate_limit)
                 break
@@ -404,6 +426,7 @@ class CropFindingAgent:
             if stage == 1 else self._tools.settings.crop_finding_stage2_retrieval_limit
         )
         retrieval_started = self._clock()
+        self._set_progress("source_retrieval", stage)
         documents, retrieval_warnings = await self._tools.retrieve_many(approved, stage, limit)
         warnings.extend(retrieval_warnings)
         readable = [document for document in documents if document.retrieval_status == "Retrieved"]
@@ -594,6 +617,7 @@ class CropFindingAgent:
         request_id: str,
         evidence: EvidenceBundle,
     ) -> dict[str, Any]:
+        self._set_progress("structured_analysis", stage, 1)
         if self._provider is None:
             raise ProviderConfigurationError("CropFinding requires OpenAI configuration.")
         configured_timeout = self._tools.settings.crop_finding_structured_analysis_timeout_seconds
@@ -603,6 +627,7 @@ class CropFindingAgent:
         effective_timeout = 0.0
         attempt = 1
         for attempt in range(1, attempts + 1):
+            self._set_progress("structured_analysis", stage, attempt)
             elapsed_ms, remaining_seconds = self._operation_timing()
             effective_timeout = min(configured_timeout, remaining_seconds - safety_margin)
             if effective_timeout <= 0:
