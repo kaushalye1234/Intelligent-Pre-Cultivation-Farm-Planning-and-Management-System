@@ -34,6 +34,22 @@ public sealed record DiscoverReferencesInput(
     string? VarietyName,
     string? Region);
 
+public sealed record CropFindingErrorEnvelope(CropFindingErrorDetail Detail);
+
+public sealed record CropFindingErrorDetail(
+    string Code,
+    string Message,
+    string RequestId,
+    string? Operation,
+    int? Stage,
+    int? Attempt,
+    string? Category,
+    int? UpstreamStatus,
+    string? ProviderErrorCode,
+    string? ProviderRequestId,
+    double? ConfiguredTimeoutSeconds,
+    double? EffectiveTimeoutSeconds);
+
 public sealed record EvidenceProvenance(
     string SourceId,
     string SourceName,

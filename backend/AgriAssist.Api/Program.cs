@@ -125,7 +125,8 @@ builder.Services.AddScoped<ITaskApprovalService, TaskApprovalService>();
 builder.Services.AddHttpClient<IAgenticAIClient, AgenticAIClient>();
 builder.Services.AddHttpClient<IWeatherResourceAIClient, AgenticAIClient>();
 builder.Services.AddHttpClient<ISchedulingValidationAIClient, AgenticAIClient>();
-builder.Services.AddHttpClient<ICropFindingAIClient, AgenticAIClient>();
+builder.Services.AddHttpClient<ICropFindingAIClient, AgenticAIClient>(client =>
+    client.Timeout = Timeout.InfiniteTimeSpan);
 builder.Services.AddHttpClient<IInspectionAssistanceAIClient, AgenticAIClient>();
 builder.Services.AddHttpClient<IInspectionImageAnalysisAIClient, AgenticAIClient>();
 // OpenWeatherMap takes the API key as a query parameter, so do not log request URLs for this client.

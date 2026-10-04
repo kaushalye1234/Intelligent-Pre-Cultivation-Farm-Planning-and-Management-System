@@ -142,25 +142,49 @@ public sealed class AgenticAIClient(
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", serviceToken);
         request.Content = JsonContent.Create(input, options: JsonOptions);
 
-        var timeoutSeconds = Math.Clamp(configuration.GetValue<int?>("AI:CropFindingTimeoutSeconds") ?? 110, 10, 180);
+        var timeoutSeconds = Math.Clamp(configuration.GetValue<int?>("AI:CropFindingTimeoutSeconds") ?? 180, 10, 180);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
 
         using var response = await httpClient.SendAsync(request, timeout.Token);
         if (!response.IsSuccessStatusCode)
         {
+            var detail = await ReadCropFindingErrorAsync(response, timeout.Token);
             logger.LogWarning(
-                "AI service returned {StatusCode} for CropFinding operation {OperationName}",
+                "AI service returned {StatusCode} for CropFinding operation {OperationName} request {RequestId} " +
+                "at {UpstreamOperation} stage {Stage} category {Category}",
                 response.StatusCode,
-                operationName);
-            throw new HttpRequestException(
-                $"AI service failed to {operationName}.",
-                null,
-                response.StatusCode);
+                operationName,
+                detail?.RequestId,
+                detail?.Operation,
+                detail?.Stage,
+                detail?.Category);
+            throw new CropFindingAIException(response.StatusCode, detail);
         }
 
         var output = await response.Content.ReadFromJsonAsync<TOutput>(JsonOptions, timeout.Token);
         return output ?? throw new InvalidOperationException($"AI service returned an empty {operationName} response.");
+    }
+
+    private static async Task<CropFindingErrorDetail?> ReadCropFindingErrorAsync(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var envelope = await response.Content.ReadFromJsonAsync<CropFindingErrorEnvelope>(
+                JsonOptions,
+                cancellationToken);
+            return envelope?.Detail;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+        catch (NotSupportedException)
+        {
+            return null;
+        }
     }
 
     private async Task<TOutput> PostAssistanceAsync<TInput, TOutput>(
