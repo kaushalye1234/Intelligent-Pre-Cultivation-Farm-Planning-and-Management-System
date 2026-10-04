@@ -67,6 +67,6 @@ PR #59 is recorded in the project report as the integrated Member 4 implementati
 
 Do not bypass manual approval, RBAC, validation, or backend service rules when adding AI.
 
-## Current branch handoff - 2026-10-04
+## Current branch handoff - 2026-10-05
 
-The clean `member4/render-phase4-clean` branch is based on `origin/dev` at `bf59852` and contains the bounded retrieval feature, its tests, and Render demo preparation. Backend xUnit passed 255 tests with 15 PostgreSQL-only tests skipped; React lint/build/tests passed (109 React tests); the full AI suite passed 178 tests using an isolated Python 3.14 environment with Pydantic 2.12.4 because the available system Python 3.14 cannot install the repository's pinned Pydantic 2.10.4 native core. These checks are local; this branch is not pushed, reviewed, merged, or deployed.
+The clean `member4/render-phase4-clean` branch is based on `origin/dev` at `bb3bd9d` and contains the bounded retrieval feature, its tests, and Render demo preparation. Backend xUnit passed 270 tests with 15 PostgreSQL-only tests skipped; React lint/build/tests passed (109 React tests); the full AI suite passed 186 tests using an isolated Python 3.14 environment with Pydantic 2.12.4 because the available system Python 3.14 cannot install the repository's pinned Pydantic 2.10.4 native core. These checks are local; this branch is not pushed, reviewed, merged, or deployed.
