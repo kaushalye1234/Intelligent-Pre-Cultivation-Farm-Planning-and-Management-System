@@ -1,6 +1,6 @@
 # Member 4 submission-phase readiness
 
-Updated 2026-10-05 for Group 04. The core scheduling agent, candidate validation, officer approval, React review, Flutter farmer status, and PostgreSQL integration remain merged into `dev`. A clean follow-up branch, `member4/render-phase4-clean`, is based on latest fetched `origin/dev` (`bb3bd9d`) and locally contains the optional, disabled-by-default single-tool profile retrieval feature and Render demo configuration. The branch is pushed and open as draft PR #67; all four GitHub Actions jobs passed on commit `b5a6a29`. It is not merged or deployed.
+Updated 2026-10-05 for Group 04. The core scheduling agent, candidate validation, officer approval, React review, Flutter farmer status, and PostgreSQL integration remain merged into `dev`. A clean follow-up branch, `member4/render-phase4-clean`, is based on latest fetched `origin/dev` (`bb3bd9d`) and locally contains the optional, disabled-by-default single-tool profile retrieval feature and Render demo configuration. The branch is pushed and PR #67 is ready for review; all four GitHub Actions jobs passed on commit `b5a6a29`. It is not merged or deployed.
 
 ## Verified for Member 4
 
