@@ -143,6 +143,19 @@ class LLMResponse:
 
 
 @dataclass(frozen=True)
+class LLMFunctionCall:
+    call_id: str
+    name: str
+    arguments: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class LLMToolCallResult:
+    function_call: LLMFunctionCall | None
+    terminal_text: str | None = None
+
+
+@dataclass(frozen=True)
 class StructuredGenerationRequest:
     schema_name: str
     contract_version: int
@@ -200,6 +213,10 @@ class BaseLLMProvider(ABC):
         additive capability override it explicitly.
         """
         raise ProviderConfigurationError(f"{self.provider_name} does not support strict structured generation.")
+
+    async def generate_tool_call(self, prompt: str, tool_schema: dict[str, Any]) -> LLMToolCallResult:
+        """Request a single typed function call without executing it."""
+        raise ProviderConfigurationError(f"{self.provider_name} does not support controlled tool calls.")
 
     async def search_web(
         self,

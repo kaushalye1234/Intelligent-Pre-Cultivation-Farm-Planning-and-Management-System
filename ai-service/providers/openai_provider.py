@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import json
 from typing import Any
 
 from openai import AsyncOpenAI
@@ -7,7 +8,9 @@ from openai import AsyncOpenAI
 from providers.base_llm_provider import (
     BaseLLMProvider,
     LLMProviderError,
+    LLMFunctionCall,
     LLMResponse,
+    LLMToolCallResult,
     ProviderConfigurationError,
     StructuredGenerationRequest,
     WebSearchResponse,
@@ -95,6 +98,80 @@ class OpenAIProvider(BaseLLMProvider):
 
         text = await asyncio.wait_for(_generate(), timeout=timeout_seconds)
         return LLMResponse(text=text)
+
+    async def generate_tool_call(self, prompt: str, tool_schema: dict[str, Any]) -> LLMToolCallResult:
+        name = tool_schema.get("name")
+        if not isinstance(name, str) or not name or not isinstance(tool_schema.get("parameters"), dict):
+            raise LLMProviderError(
+                "The controlled tool schema is invalid.",
+                category="invalid_tool_schema",
+                operation="tool_call",
+            )
+
+        async def _generate() -> Any:
+            client = self._client.with_options(timeout=self._timeout_seconds, max_retries=0)
+            return await client.chat.completions.create(
+                model=self._model,
+                messages=[{"role": "user", "content": prompt}],
+                tools=[{"type": "function", "function": tool_schema}],
+                tool_choice="auto",
+                parallel_tool_calls=False,
+            )
+
+        try:
+            response = await asyncio.wait_for(_generate(), timeout=self._timeout_seconds)
+        except Exception as exc:
+            raise classify_provider_exception(
+                exc,
+                operation="tool_call",
+                timeout_message="OpenAI controlled tool call timed out.",
+            ) from exc
+
+        choices = getattr(response, "choices", None)
+        if not isinstance(choices, (list, tuple)) or len(choices) != 1:
+            raise LLMProviderError(
+                "OpenAI returned an invalid controlled tool response.",
+                category="malformed_tool_response",
+                operation="tool_call",
+            )
+        message = getattr(choices[0], "message", None)
+        if message is None or getattr(message, "refusal", None):
+            raise LLMProviderError("OpenAI refused the controlled tool request.", category="refusal", operation="tool_call")
+        calls = getattr(message, "tool_calls", None) or []
+        if not calls:
+            return LLMToolCallResult(function_call=None, terminal_text=getattr(message, "content", None))
+        if len(calls) != 1:
+            raise LLMProviderError(
+                "OpenAI returned more than one tool call.",
+                category="multiple_tool_calls",
+                operation="tool_call",
+            )
+        call = calls[0]
+        function = getattr(call, "function", None)
+        call_id = getattr(call, "id", None)
+        function_name = getattr(function, "name", None)
+        raw_arguments = getattr(function, "arguments", None)
+        if not isinstance(call_id, str) or not call_id or function_name != name or not isinstance(raw_arguments, str):
+            raise LLMProviderError(
+                "OpenAI returned an unexpected controlled tool call.",
+                category="invalid_tool_call",
+                operation="tool_call",
+            )
+        try:
+            arguments = json.loads(raw_arguments)
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise LLMProviderError(
+                "OpenAI returned malformed controlled tool arguments.",
+                category="malformed_tool_arguments",
+                operation="tool_call",
+            ) from exc
+        if not isinstance(arguments, dict):
+            raise LLMProviderError(
+                "OpenAI returned malformed controlled tool arguments.",
+                category="malformed_tool_arguments",
+                operation="tool_call",
+            )
+        return LLMToolCallResult(function_call=LLMFunctionCall(call_id, function_name, arguments))
 
     async def generate_structured_json(self, request: StructuredGenerationRequest) -> LLMResponse:
         if bool(request.image_bytes) != bool(request.image_mime_type):

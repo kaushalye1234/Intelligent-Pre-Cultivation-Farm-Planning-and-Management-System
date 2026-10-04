@@ -15,6 +15,7 @@ from agents.inspection_note_assistant_agent import InspectionNoteAssistantAgent
 from agents.inspection_image_analysis_agent import InspectionImageAnalysisAgent
 from agents.weather_resource_agent import WeatherResourceAgent
 from agents.scheduling_validation_agent import SchedulingValidationAgent
+from agents.scheduling_profile_retriever import SchedulingProfileRetriever
 from auth import require_service_token
 from config import Settings, get_settings
 from graph.workflow_graph import build_crop_planning_graph, build_field_analysis_graph, build_scheduling_validation_graph, build_weather_resource_graph
@@ -44,6 +45,7 @@ from schemas.weather_resource import WeatherResourceInput, WeatherResourceOutput
 from schemas.scheduling_validation import SchedulingValidationInput, SchedulingValidationOutput
 from tools.backend_tool_client import BackendToolClient
 from tools.crop_planning_tools import CropPlanningTools
+from tools.scheduling_evidence_tools import SchedulingEvidenceTools
 from tools.crop_finding_tools import CropFindingTools
 from tools.inspection_tools import InspectionTools
 from tools.inspection_image_analysis_tools import InspectionImageAnalysisTools
@@ -407,8 +409,17 @@ async def run_weather_resource_analysis(
 )
 async def run_scheduling_validation(
     request: SchedulingValidationInput,
+    settings: Settings = Depends(get_settings),
 ) -> SchedulingValidationOutput:
-    agent = SchedulingValidationAgent()
+    profile_retriever = None
+    if settings.scheduling_profile_retrieval_enabled:
+        provider = create_provider(settings)
+        if provider is not None and settings.backend_tool_token:
+            profile_retriever = SchedulingProfileRetriever(
+                provider=provider,
+                tools=SchedulingEvidenceTools(CropPlanningTools(BackendToolClient(settings))),
+            )
+    agent = SchedulingValidationAgent(profile_retriever=profile_retriever)
     graph = build_scheduling_validation_graph(agent)
     state = await graph.ainvoke({"request": request, "output": None})
     return state["output"]

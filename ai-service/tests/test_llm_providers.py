@@ -129,6 +129,100 @@ async def test_openai_provider_preserves_json_object_mode_without_schema(monkeyp
 
 
 @pytest.mark.asyncio
+async def test_openai_provider_returns_one_typed_function_call(monkeypatch):
+    captured = {}
+    function = {"name": "GetVerifiedCropProfile", "parameters": {
+        "type": "object", "properties": {}, "required": [], "additionalProperties": False,
+    }, "strict": True}
+
+    class FakeCompletions:
+        async def create(self, **kwargs):
+            captured.update(kwargs)
+            call = SimpleNamespace(id="call-1", function=SimpleNamespace(name="GetVerifiedCropProfile", arguments="{}"))
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(tool_calls=[call], content=None, refusal=None))])
+
+    class FakeClient:
+        chat = SimpleNamespace(completions=FakeCompletions())
+        def with_options(self, **kwargs):
+            captured["options"] = kwargs
+            return self
+
+    monkeypatch.setattr(openai_provider_module, "AsyncOpenAI", lambda **kwargs: FakeClient())
+    provider = OpenAIProvider(api_key="test-key", model="test-model", timeout_seconds=1)
+    result = await provider.generate_tool_call("retrieve evidence", function)
+
+    assert result.function_call.call_id == "call-1"
+    assert result.function_call.name == "GetVerifiedCropProfile"
+    assert result.function_call.arguments == {}
+    assert captured["parallel_tool_calls"] is False
+    assert captured["tool_choice"] == "auto"
+    assert captured["tools"] == [{"type": "function", "function": function}]
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_returns_terminal_response_without_tool_call(monkeypatch):
+    class FakeCompletions:
+        async def create(self, **kwargs):
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+                tool_calls=None, content="No action", refusal=None,
+            ))])
+
+    class FakeClient:
+        chat = SimpleNamespace(completions=FakeCompletions())
+        def with_options(self, **kwargs):
+            return self
+
+    monkeypatch.setattr(openai_provider_module, "AsyncOpenAI", lambda **kwargs: FakeClient())
+    provider = OpenAIProvider(api_key="test-key", model="test-model", timeout_seconds=1)
+    result = await provider.generate_tool_call("retrieve", {"name": "GetVerifiedCropProfile", "parameters": {}})
+    assert result.function_call is None
+    assert result.terminal_text == "No action"
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_rejects_multiple_function_calls(monkeypatch):
+    class FakeCompletions:
+        async def create(self, **kwargs):
+            calls = [SimpleNamespace(id=f"call-{i}", function=SimpleNamespace(name="GetVerifiedCropProfile", arguments="{}")) for i in range(2)]
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(tool_calls=calls, content=None, refusal=None))])
+
+    class FakeClient:
+        chat = SimpleNamespace(completions=FakeCompletions())
+        def with_options(self, **kwargs):
+            return self
+
+    monkeypatch.setattr(openai_provider_module, "AsyncOpenAI", lambda **kwargs: FakeClient())
+    provider = OpenAIProvider(api_key="test-key", model="test-model", timeout_seconds=1)
+    with pytest.raises(LLMProviderError) as error:
+        await provider.generate_tool_call("retrieve evidence", {"name": "GetVerifiedCropProfile", "parameters": {}})
+    assert error.value.category == "multiple_tool_calls"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("name", "arguments", "category"), [
+    ("UnexpectedTool", "{}", "invalid_tool_call"),
+    ("GetVerifiedCropProfile", "not-json", "malformed_tool_arguments"),
+    ("GetVerifiedCropProfile", "[]", "malformed_tool_arguments"),
+])
+async def test_openai_provider_rejects_unknown_or_malformed_tool_calls(monkeypatch, name, arguments, category):
+    class FakeCompletions:
+        async def create(self, **kwargs):
+            call = SimpleNamespace(id="call-1", function=SimpleNamespace(name=name, arguments=arguments))
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(tool_calls=[call], content=None, refusal=None))])
+
+    class FakeClient:
+        chat = SimpleNamespace(completions=FakeCompletions())
+        def with_options(self, **kwargs):
+            return self
+
+    monkeypatch.setattr(openai_provider_module, "AsyncOpenAI", lambda **kwargs: FakeClient())
+    provider = OpenAIProvider(api_key="test-key", model="test-model", timeout_seconds=1)
+    with pytest.raises(LLMProviderError) as error:
+        await provider.generate_tool_call("retrieve", {"name": "GetVerifiedCropProfile", "parameters": {}})
+    assert error.value.category == category
+
+
+@pytest.mark.asyncio
 async def test_crop_finding_analysis_uses_dynamic_timeout_and_disables_sdk_retries(monkeypatch):
     captured = {"with_options": []}
 

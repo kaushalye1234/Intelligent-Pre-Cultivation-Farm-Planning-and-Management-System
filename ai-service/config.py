@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
     backend_tool_base_url: str = Field(default="http://localhost:5000", alias="BACKEND_TOOL_BASE_URL")
     backend_tool_token: str = Field(default="", alias="BACKEND_TOOL_TOKEN")
+    scheduling_profile_retrieval_enabled: bool = Field(default=False, alias="SCHEDULING_PROFILE_RETRIEVAL_ENABLED")
     tool_timeout_seconds: float = 8
     provider_timeout_seconds: float = 30
     inspection_image_overall_timeout_seconds: float = Field(default=120, alias="INSPECTION_IMAGE_OVERALL_TIMEOUT_SECONDS", ge=60, le=150)
