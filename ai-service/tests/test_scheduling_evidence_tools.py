@@ -111,6 +111,30 @@ async def test_profile_tool_rejects_crop_variety_or_future_verification(invalidi
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("source_name", [42, "   "])
+async def test_profile_tool_rejects_invalid_source_name_type_or_blank(source_name):
+    request = sourced_request()
+    context = crop_context(request)
+    reference = CropReferenceProfile(referenceDataStatus="Available", profile={
+        "id": str(uuid4()), "cropTypeId": str(context.crop_type_id), "varietyName": "Variety",
+        "sourceName": source_name, "sourceVersion": "v1",
+        "verifiedAt": datetime.now(timezone.utc).isoformat(), "isActive": True,
+    }, stages=[{
+        "id": str(uuid4()), "stageName": "Planting", "sequence": 1, "sourceName": "Guide",
+    }])
+
+    class FakeCropPlanningTools:
+        async def get_crop_plan_context(self, *args):
+            return context
+
+        async def get_crop_reference_profile(self, *args):
+            return reference
+
+    with pytest.raises(ValueError, match="sourceName"):
+        await SchedulingEvidenceTools(FakeCropPlanningTools()).get_verified_crop_profile(request)
+
+
+@pytest.mark.asyncio
 async def test_profile_tool_rejects_oversized_crop_context_before_profile_fetch():
     request = sourced_request()
     context = crop_context(request).model_copy(update={"objective": "x" * 17000})
@@ -129,3 +153,62 @@ async def test_profile_tool_rejects_oversized_crop_context_before_profile_fetch(
     with pytest.raises(ValueError, match="size limit"):
         await SchedulingEvidenceTools(tools).get_verified_crop_profile(request)
     assert tools.profile_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_profile_tool_rejects_invalid_stage_durations_and_sequences():
+    request = sourced_request()
+    context = crop_context(request)
+    reference = CropReferenceProfile(referenceDataStatus="Available", profile={
+        "id": str(uuid4()), "cropTypeId": str(context.crop_type_id), "varietyName": "Variety",
+        "sourceName": "Verified guide", "sourceVersion": "v1",
+        "verifiedAt": datetime.now(timezone.utc).isoformat(), "isActive": True,
+    }, stages=[{
+        "id": str(uuid4()), "stageName": "Planting", "sequence": 1,
+        "typicalMinDays": -1, "typicalMaxDays": 0, "sourceName": "Verified guide",
+    }])
+
+    class FakeCropPlanningTools:
+        async def get_crop_plan_context(self, *args):
+            return context
+
+        async def get_crop_reference_profile(self, *args):
+            return reference
+
+    with pytest.raises(ValueError, match="stage"):
+        await SchedulingEvidenceTools(FakeCropPlanningTools()).get_verified_crop_profile(request)
+
+
+@pytest.mark.asyncio
+async def test_profile_tool_maps_only_verified_irrigation_rules():
+    request = sourced_request()
+    context = crop_context(request)
+    profile_id, rule_id = uuid4(), uuid4()
+    reference = CropReferenceProfile(referenceDataStatus="Available", profile={
+        "id": str(profile_id), "cropTypeId": str(context.crop_type_id), "varietyName": "Variety",
+        "sourceName": "Verified guide", "sourceVersion": "v1",
+        "verifiedAt": datetime.now(timezone.utc).isoformat(), "isActive": True,
+    }, stages=[{
+        "id": str(uuid4()), "stageName": "Planting", "sequence": 1,
+        "typicalMinDays": 0, "typicalMaxDays": 1, "sourceName": "Verified guide",
+    }], rules=[{
+        "id": str(rule_id), "ruleType": "IrrigationSchedule", "ruleKey": "morning",
+        "structuredValueJson": '{"dayOffsetFromPlanting":1,"startTimeUtc":"06:30","durationMinutes":45}',
+        "sourceName": "Verified guide", "verifiedAt": datetime.now(timezone.utc).isoformat(),
+    }, {
+        "id": str(uuid4()), "ruleType": "ResourceRequirement", "ruleKey": "seed",
+        "structuredValueJson": "{}", "sourceName": "Verified guide",
+        "verifiedAt": datetime.now(timezone.utc).isoformat(),
+    }])
+
+    class FakeCropPlanningTools:
+        async def get_crop_plan_context(self, *args):
+            return context
+
+        async def get_crop_reference_profile(self, *args):
+            return reference
+
+    evidence = await SchedulingEvidenceTools(FakeCropPlanningTools()).get_verified_crop_profile(request)
+    assert len(evidence.irrigation_rules) == 1
+    assert evidence.irrigation_rules[0].id == rule_id
+    assert evidence.irrigation_rules[0].start_time_utc == "06:30"
