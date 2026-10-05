@@ -20,6 +20,8 @@ When Member 2 completes, the workflow's `CurrentStep` is `WeatherResourceAgent`.
 | GET | `/api/crop-plans/{id}/weather-resource-result` | Anyone who can see the crop plan request |
 | GET | `/api/crop-plans/{id}/member-3-handoff` | FieldOfficer, ResourceOfficer, AgriculturalOfficer, Admin; exact completed Member 2 workflow only |
 | GET | `/api/crop-plans/weather-resource-work-queue` | ResourceOfficer only |
+| GET | `/api/crop-plans/weather-resource-history` | ResourceOfficer only |
+| GET | `/api/crop-plans/weather-resource-history/{workflowId}` | ResourceOfficer only |
 
 On success the step is `Completed`, the workflow is `Pending` and `CurrentStep` is
 `SchedulingValidationAgent`. On failure the step is `Failed` and the workflow ends as `SafeFailure`
@@ -65,6 +67,28 @@ Operator flow:
 
 Member 3 stays inventory read-only throughout. Resource Officers get no Task Approval access.
 
+## Resource Officer analysis history
+
+An analysed plan leaves the queue, but its result is not lost: the dashboard's **Weather/Resource Analysis History**
+lists every analysis that was run, newest first, and **View** shows the saved plan next to the exact AI result stored
+for it. The history is a read-only projection of the existing `WeatherResourceAnalysis` steps; it adds no table or
+column and never rewrites the stored output that Member 4 reads.
+
+- `GET /api/crop-plans/weather-resource-history` returns `PagedResult<WeatherResourceHistoryItemResponse>`. A row is a
+  `WeatherResourceAnalysis` step that was started (`startedAt` set) and ended `Completed` or `Failed`, on a non-deleted
+  workflow and crop plan request. Each row holds the plan metadata (workflow, request and step IDs, objective, farm,
+  field, crop, variety, preferred dates), `stepStatus`, `analyzedAt` (step `completedAt`), `runByName` (the user
+  recorded on the run's `WeatherResourceOutputValidator` / `WeatherResourceAvailability` validation result) and a
+  summary of the stored output: `status`, `weatherRisk`, `requirementStatus`, `requiresHumanReview` and the
+  explanation `headline`. `page`, `pageSize` and `search` (objective, farm name or location, field, crop, variety)
+  work as for the queue; the order is fixed (newest first, then step ID).
+- `GET /api/crop-plans/weather-resource-history/{workflowId}` returns `{ plan, result }`: the same row plus the full
+  stored `WeatherResourceOutput` of that workflow. `404 NOT_FOUND` when the workflow has no finished analysis.
+- Like the queue, history JSON never includes `AgentStep` input JSON, Member 2 staff notes or user emails.
+
+After a run, the queue panel reads the new history entry to show the full result (weather explanation, factors,
+farmer actions, requirements) and the dashboard reloads the history list.
+
 The dashboard's `pendingTasks` figure keeps its Member 4 meaning: `FarmTask` rows in `PendingApproval`. It is not
 the Weather/Resource queue count. The queue panel shows its own `totalCount`.
 
@@ -78,6 +102,8 @@ the Weather/Resource queue count. The queue panel shows its own `totalCount`.
    `workflowId` and `agentStepId`; the backend scopes it to the workflow and records it as an `AgentToolExecution`.
 3. The agent reasons over the tool results with fixed rules: weather risk, low stock, and required vs. available
    quantity for each verified requirement. No LLM supplies any quantity, rate, stock figure or forecast value.
+   When OpenAI is configured (`OPENAI_API_KEY` and `AI_MODEL`), it only writes the narrative of
+   `weatherRiskAssessment` (see "Weather risk explanation"); otherwise a rule-based narrative is used.
 4. ASP.NET validates the output against the tool results **it recorded for this step** before saving it:
    stock figures and low-stock flags must equal the `GetResourceAvailability` rows, requirement quantities must
    equal the `GetCropResourceRequirements` result, every calculated requirement must be reported exactly once,
@@ -113,6 +139,31 @@ Weather risk rules: heavy rain (30 mm in a day or 80 mm total), heat (38 C or mo
 or more) is `High`; moderate rain (10 mm/day or 30 mm total), 34 C or more, or 10 m/s or more is
 `Medium`; otherwise `Low`. No forecast means `Unknown`.
 
+### Weather risk explanation
+
+`weatherRiskAssessment` explains the rule-based `weatherRisk` instead of leaving it as a bare label:
+
+- `contributingFactors`: the four measures behind the level (`DailyRainfall`, `TotalRainfall`, `MaxTemperature`,
+  `MaxWind`), each with the forecast `value`, `unit`, peak day `observedOn` (null for the total), the fixed
+  `mediumThreshold` / `highThreshold` and the `level` it reached. These are **calculated**, never generated.
+- `headline`, `explanation` (why the risk has this level), `potentialImpacts` (effect on this crop, field and plan,
+  using the Member 2 drainage/water context and resource shortages), `recommendedActions` (`action`, `timing`,
+  `priority` High/Medium/Low for the farmer) and `monitoringAdvice`.
+- `generatedBy`: `OpenAI` when the narrative was written by the model, `RuleBased` otherwise.
+
+The model receives only these facts (forecast days, factors, crop plan dates, Member 2 summary and assessments,
+requirement figures; no IDs) through strict structured output. The agent keeps the model's narrative only if it does
+not claim another risk level, every number in it appears in the facts (or is a small count of 0-10), and it does not
+suggest pesticides, fungicides, herbicides, insecticides, chemical treatments or doses. Otherwise, and when no provider
+is configured, the provider fails or the forecast is unavailable, the rule-based narrative is returned. The OpenAI
+call uses `provider_timeout_seconds`, and the step never fails because of the narrative.
+
+ASP.NET validation adds: `riskLevel` must equal `weatherRisk`; with a forecast, each measure is reported exactly once
+with the forecast's own value, a peak day that has that value, the fixed thresholds and the level they imply, and
+`weatherRisk` must be the highest factor level; without a forecast there are no factors; text and list sizes are
+bounded (headline 240, explanation 1600, monitoring 800, up to 6 impacts and actions of 400 characters). The field is
+optional: outputs stored before it existed still deserialize and validate.
+
 ## Output read by Member 4
 
 The top-level `status` stays `Analyzed | SafeFailure` (`SchedulingValidationAgent` requires `Analyzed`). The fields
@@ -146,7 +197,20 @@ below `recommendations` are additive; older stored outputs without them still de
   "requirementStatus": "Sufficient | Insufficient | ResourceRequirementUnknown | Incomplete",
   "requirementSource": { "cropReferenceProfileId": "guid", "sourceName": "...", "sourceUrl": "...", "sourceVersion": "...", "verifiedAt": "...", "region": null, "varietyName": null },
   "reason": "Required resource quantity exceeds currently available inventory: Urea (shortage 20 kg). Weather risk is Medium.",
-  "toolsUsed": ["GetCropResourceRequirements", "GetFieldDetails", "GetResourceAvailability", "GetExistingReservations", "GetLowStockStatus", "GetWeatherForecast"]
+  "toolsUsed": ["GetCropResourceRequirements", "GetFieldDetails", "GetResourceAvailability", "GetExistingReservations", "GetLowStockStatus", "GetWeatherForecast"],
+  "weatherRiskAssessment": {
+    "riskLevel": "Medium",
+    "headline": "Medium weather risk for Kurunegala, driven by heavy rain on a single day.",
+    "explanation": "The risk is Medium because of heavy rain on a single day. Heaviest daily rain is 12 mm on 2026-09-27, at or above the Medium threshold of 10 mm (High from 30 mm). ...",
+    "contributingFactors": [
+      { "metric": "DailyRainfall", "label": "Heaviest daily rain", "value": 12, "unit": "mm", "observedOn": "2026-09-27",
+        "mediumThreshold": 10, "highThreshold": 30, "level": "Medium", "detail": "Heaviest daily rain is 12 mm on 2026-09-27, ..." }
+    ],
+    "potentialImpacts": ["Heavy or prolonged rain can waterlog the field, delay land preparation and sowing, and wash freshly applied fertilizer away."],
+    "recommendedActions": [{ "action": "Clear drainage channels and field outlets so excess water can drain away.", "timing": "Before 2026-09-27", "priority": "Medium" }],
+    "monitoringAdvice": "The forecast covers 2026-09-27 to 2026-09-28. ...",
+    "generatedBy": "OpenAI | RuleBased"
+  }
 }
 ```
 
