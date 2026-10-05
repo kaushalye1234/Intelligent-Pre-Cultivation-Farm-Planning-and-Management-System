@@ -17,6 +17,7 @@ import type {
   InspectionNoteAssistanceResponse,
   InspectionNoteSuggestions,
   PrePlantingAssessment,
+  PrePlantingAssessmentImage,
   PrePlantingAssessmentInput,
   PrePlantingContext,
   PrePlantingDrainageCondition,
@@ -428,8 +429,8 @@ export function PrePlantingAssessmentPanel({
       await api.post(`/crop-plans/${requestId}/pre-planting-assessment/image-analysis/review`, {
         disposition,
         editedProjection: disposition === 'Edited' ? {
-          visibleFindings: imageEdit!.visibleFindings,
-          possibleConcerns: imageEdit!.possibleIssues,
+          visibleFindings: normalizedLines(imageEdit!.visibleFindings),
+          possibleConcerns: normalizedLines(imageEdit!.possibleIssues),
           severity: imageEdit!.severity,
           uncertainty: imageEdit!.uncertainty,
           actions: imageEdit!.recommendedNonChemicalActions,
@@ -709,34 +710,18 @@ export function PrePlantingAssessmentPanel({
         <Notice tone="info">Waiting for the owning Field Officer to save the linked pre-planting assessment.</Notice>
       )}
 
-      {assessment?.images?.length ? (
-        <div className="preplant-images" aria-label="Assessment evidence">
-          {(assessment.images ?? []).map((image, index) => <article key={image.id} className={image.isRepresentativeForAi ? 'preplant-image-card is-representative' : 'preplant-image-card'}>
-            <div className="row-actions">
-              <ImageIcon size={17} aria-hidden="true" />
-              <strong>Evidence {index + 1}</strong>
-              {image.isRepresentativeForAi ? <StatusPill label="Representative" tone="good" /> : null}
-            </div>
-            <span>{image.contentType} · {Math.ceil(image.sizeBytes / 1024)} KB</span>
-            <div className="row-actions">
-              <a href={image.url} target="_blank" rel="noreferrer">View evidence</a>
-              {canEdit && !image.isRepresentativeForAi ? <Button type="button" variant="ghost" disabled={busy} onClick={() => void selectRepresentativeImage(image.id)}>Select for AI</Button> : null}
-            </div>
-          </article>)}
-        </div>
-      ) : null}
-
       {assessment ? <ImageAnalysisPanel
         state={imageAnalysis}
         edit={imageEdit}
         history={imageHistory}
+        images={assessment.images ?? []}
         canEdit={canEdit}
         busy={busy}
-        hasRepresentative={assessment.images.some((image) => image.isRepresentativeForAi)}
         onAnalyze={() => void analyzeRepresentativeImage()}
         onAccept={() => void reviewImageAnalysis('Accepted')}
         onEdit={() => void reviewImageAnalysis('Edited')}
         onReject={() => void reviewImageAnalysis('Rejected')}
+        onSelectRepresentative={(imageId) => void selectRepresentativeImage(imageId)}
         onLoadHistory={() => void loadImageAnalysisHistory()}
         onEditChange={setImageEdit}
       /> : null}
@@ -822,31 +807,51 @@ function ImageAnalysisPanel({
   state,
   edit,
   history,
+  images,
   canEdit,
   busy,
-  hasRepresentative,
   onAnalyze,
   onAccept,
   onEdit,
   onReject,
+  onSelectRepresentative,
   onLoadHistory,
   onEditChange,
 }: {
   state: InspectionImageAnalysisState | null
   edit: InspectionImageAnalysisResult | null
   history: InspectionImageAnalysisAuditItem[] | null
+  images: PrePlantingAssessmentImage[]
   canEdit: boolean
   busy: boolean
-  hasRepresentative: boolean
   onAnalyze: () => void
   onAccept: () => void
   onEdit: () => void
   onReject: () => void
+  onSelectRepresentative: (imageId: string) => void
   onLoadHistory: () => void
   onEditChange: (value: InspectionImageAnalysisResult) => void
 }) {
+  const [editing, setEditing] = useState(false)
   const result = state?.result
+  const representative = images.find((image) => image.isRepresentativeForAi) ?? null
   const failed = state && ['Failed', 'TimedOut', 'Interrupted', 'Stale', 'Unavailable'].includes(state.status)
+
+  function beginEditing() {
+    if (!result) return
+    onEditChange(result)
+    setEditing(true)
+  }
+
+  function cancelEditing() {
+    if (result) onEditChange(result)
+    setEditing(false)
+  }
+
+  function saveEditedReview() {
+    onEdit()
+    setEditing(false)
+  }
   return (
     <section className="image-analysis-panel" aria-labelledby="image-analysis-title">
       <div className="image-analysis-heading">
@@ -857,52 +862,123 @@ function ImageAnalysisPanel({
         </div>
         <StatusPill label={state?.status ?? 'Not analyzed'} tone={state?.status === 'Succeeded' ? 'good' : failed ? 'bad' : 'info'} />
       </div>
-      {!hasRepresentative ? <Notice tone="info">Select one uploaded crop or leaf image as representative before requesting analysis.</Notice> : null}
+      {!representative ? <Notice tone="info">Select one uploaded crop or leaf image as representative before requesting analysis.</Notice> : null}
       {state?.status === 'Running' ? <Notice tone="info">Image analysis is running. You may keep editing or submit the inspection without waiting.</Notice> : null}
       {failed ? <Notice tone="warning">{state.message ?? 'AI image analysis is unavailable. Continue the inspection manually or retry explicitly while the draft is open.'}</Notice> : null}
-      {state?.isFrozen ? <Notice tone="info">This submitted inspection’s reviewed image evidence is frozen and read-only.</Notice> : null}
-      {canEdit && hasRepresentative && state?.status !== 'Running' ? (
-        <Button type="button" variant="secondary" icon={<Sparkles size={16} aria-hidden="true" />} disabled={busy} onClick={onAnalyze}>
-          {busy ? 'Working...' : result ? 'Analyze Image Again' : 'Analyze Image'}
-        </Button>
-      ) : null}
-      {result ? <div className="image-analysis-result">
-        <div className="row-actions"><strong>Original AI result</strong><StatusPill label="Read-only" tone="info" /></div>
-        <ResultList title="Visible findings" items={result.visibleFindings} />
-        <AssessmentItem label="Possible issue category" value={result.possibleIssueCategory} />
-        <ResultList title="Possible concerns" items={result.possibleIssues} />
-        <AssessmentItem label="Severity" value={result.severity} />
-        <AssessmentItem label="Uncertainty" value={result.uncertainty} />
-        <ResultList title="Suggested non-chemical actions" items={result.recommendedNonChemicalActions.map(humanize)} />
-        <AssessmentItem label="Further assessment" value={result.requiresFurtherAssessment ? 'Required' : 'Monitor as reviewed'} />
-        {result.validatedSourceReferences.length ? <div className="source-reference-list">
-          <h4>Trusted supporting sources</h4>
-          {result.validatedSourceReferences.map((source) => {
-            const url = safeExternalUrl(source.url)
-            return <p key={`${source.sourcePolicyId}-${source.url}`}>{source.organization}: {url ? <a href={url} target="_blank" rel="noreferrer">{source.title}</a> : source.title} ({source.sourceStage})</p>
-          })}
-        </div> : <Notice tone="warning">Trusted external grounding was unavailable; conservative precautions only.</Notice>}
-      </div> : null}
-      {result && edit && canEdit && state?.isReviewable ? <section className="officer-review-editor" aria-label="Structured Field Officer image analysis review">
-        <div className="row-actions"><strong>Field Officer review</strong><StatusPill label="Officer Edited when saved" tone="warn" /></div>
-        <TextAreaInput label="Visible findings (one per line)" value={edit.visibleFindings.join('\n')} rows={4} disabled={busy} onChange={(value) => onEditChange({ ...edit, visibleFindings: nonEmptyLines(value) })} />
-        <TextAreaInput label="Possible concerns (one per line)" value={edit.possibleIssues.join('\n')} rows={4} disabled={busy} onChange={(value) => onEditChange({ ...edit, possibleIssues: nonEmptyLines(value) })} />
-        <SelectInput label="Severity" value={edit.severity} options={options(['Low', 'Moderate', 'High', 'Unknown'] as const)} disabled={busy} onChange={(value) => onEditChange({ ...edit, severity: value as InspectionImageAnalysisResult['severity'] })} />
-        <TextAreaInput label="Uncertainty" value={edit.uncertainty} rows={3} disabled={busy} onChange={(value) => onEditChange({ ...edit, uncertainty: value })} />
-        <fieldset className="preplant-risk-list">
-          <legend>Allowed non-chemical actions</legend>
-          {cropHealthActions.map((action) => <label key={action}><input type="checkbox" checked={edit.recommendedNonChemicalActions.includes(action)} disabled={busy} onChange={(event) => onEditChange({ ...edit, recommendedNonChemicalActions: event.target.checked ? [...edit.recommendedNonChemicalActions, action] : edit.recommendedNonChemicalActions.filter((item) => item !== action) })} /><span>{humanize(action)}</span></label>)}
-        </fieldset>
-        <label className="review-checkbox"><input type="checkbox" checked={edit.requiresFurtherAssessment} disabled={busy} onChange={(event) => onEditChange({ ...edit, requiresFurtherAssessment: event.target.checked })} /> Requires further assessment</label>
-        <div className="preplant-actions">
-          <Button type="button" disabled={busy} onClick={onAccept}>Accept</Button>
-          <Button type="button" variant="secondary" disabled={busy} onClick={onEdit}>Save Officer Edited review</Button>
-          <Button type="button" variant="danger" disabled={busy} onClick={onReject}>Reject</Button>
-        </div>
-      </section> : null}
-      {state?.effectiveReview ? <Notice tone={state.effectiveReview.disposition === 'Rejected' ? 'warning' : 'success'}>
-        Latest review: {state.effectiveReview.disposition}{state.effectiveReview.officerEditedFields.length ? ` · Officer Edited (${state.effectiveReview.officerEditedFields.join(', ')})` : ''}.
-      </Notice> : null}
+      {state?.isFrozen ? <Notice tone="info">This submitted inspection's reviewed image evidence is frozen and read-only.</Notice> : null}
+
+      <div className="image-analysis-workspace">
+        <aside className="image-analysis-evidence" aria-label="Representative image selection">
+          <div className="image-workspace-section-heading">
+            <div><span>Selected evidence</span><h4>Image used for analysis</h4></div>
+            {representative ? <StatusPill label="Representative" tone="good" /> : null}
+          </div>
+
+          {representative ? (
+            <figure className="representative-image-preview">
+              <a href={representative.url} target="_blank" rel="noreferrer" aria-label="Open representative evidence in a new tab">
+                <img src={representative.url} alt="Representative evidence for AI analysis" />
+              </a>
+              <figcaption><span>{representative.contentType}</span><span>{Math.ceil(representative.sizeBytes / 1024)} KB</span></figcaption>
+            </figure>
+          ) : (
+            <div className="representative-image-empty">
+              <ImageIcon size={28} aria-hidden="true" />
+              <strong>No representative image selected</strong>
+              <span>Choose one uploaded crop or leaf image below.</span>
+            </div>
+          )}
+
+          {images.length > 0 ? (
+            <div className="evidence-selector" aria-label="Uploaded assessment evidence">
+              {images.map((image, index) => (
+                <article key={image.id} className={`evidence-selector-item${image.isRepresentativeForAi ? ' is-representative' : ''}`}>
+                  <a href={image.url} target="_blank" rel="noreferrer" aria-label={`Open evidence ${index + 1} in a new tab`}>
+                    <img src={image.url} alt={`Evidence ${index + 1}`} />
+                  </a>
+                  <div><strong>Evidence {index + 1}</strong><span>{Math.ceil(image.sizeBytes / 1024)} KB</span></div>
+                  {image.isRepresentativeForAi ? (
+                    <CheckCircle2 size={18} aria-label="Selected representative" />
+                  ) : canEdit ? (
+                    <Button type="button" variant="ghost" disabled={busy} aria-label={`Select evidence ${index + 1} for AI`} onClick={() => onSelectRepresentative(image.id)}>Select</Button>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          ) : <p className="muted-text">Upload evidence from the assessment form to select an analysis image.</p>}
+
+          {canEdit && representative && state?.status !== 'Running' ? (
+            <Button type="button" variant="secondary" icon={<Sparkles size={16} aria-hidden="true" />} disabled={busy} onClick={() => { setEditing(false); onAnalyze() }}>
+              {busy ? 'Working...' : result ? 'Analyze Image Again' : 'Analyze Image'}
+            </Button>
+          ) : null}
+        </aside>
+
+        <section className="image-analysis-findings" aria-labelledby="ai-findings-title">
+          <div className="image-workspace-section-heading">
+            <div><span>Analysis output</span><h3 id="ai-findings-title">AI findings</h3></div>
+            {result ? <StatusPill label="Original AI result" tone="info" /> : null}
+          </div>
+
+          {result ? (
+            <>
+              <div className="image-analysis-result">
+                <ResultList title="Visible findings" items={result.visibleFindings} />
+                <ResultList title="Possible concerns" items={result.possibleIssues} />
+                <dl className="image-analysis-summary">
+                  <AssessmentItem label="Issue category" value={result.possibleIssueCategory} />
+                  <AssessmentItem label="Severity" value={result.severity} />
+                  <AssessmentItem label="Further assessment" value={result.requiresFurtherAssessment ? 'Required' : 'Monitor as reviewed'} />
+                  <AssessmentItem label="Uncertainty" value={result.uncertainty} />
+                </dl>
+                <ResultList title="Suggested non-chemical actions" items={result.recommendedNonChemicalActions.map(humanize)} />
+                {result.validatedSourceReferences.length ? <div className="source-reference-list">
+                  <h4>Trusted supporting sources</h4>
+                  {result.validatedSourceReferences.map((source) => {
+                    const url = safeExternalUrl(source.url)
+                    return <p key={`${source.sourcePolicyId}-${source.url}`}>{source.organization}: {url ? <a href={url} target="_blank" rel="noreferrer">{source.title}</a> : source.title} ({source.sourceStage})</p>
+                  })}
+                </div> : <Notice tone="warning">Trusted external grounding was unavailable; conservative precautions only.</Notice>}
+              </div>
+
+              {canEdit && state?.isReviewable && !editing ? (
+                <div className="image-review-actions" aria-label="Image analysis review actions">
+                  <Button type="button" disabled={busy} onClick={onAccept}>Accept result</Button>
+                  <Button type="button" variant="secondary" disabled={busy} onClick={beginEditing}>Edit findings</Button>
+                  <Button type="button" variant="danger" disabled={busy} onClick={onReject}>Reject result</Button>
+                </div>
+              ) : null}
+
+              {edit && canEdit && state?.isReviewable && editing ? <section className="officer-review-editor" aria-label="Structured Field Officer image analysis review">
+                <div className="row-actions"><strong>Field Officer review</strong><StatusPill label="Officer Edited when saved" tone="warn" /></div>
+                <TextAreaInput label="Visible findings (one per line)" value={edit.visibleFindings.join('\n')} rows={4} disabled={busy} onChange={(value) => onEditChange({ ...edit, visibleFindings: editableLines(value) })} />
+                <TextAreaInput label="Possible concerns (one per line)" value={edit.possibleIssues.join('\n')} rows={4} disabled={busy} onChange={(value) => onEditChange({ ...edit, possibleIssues: editableLines(value) })} />
+                <SelectInput label="Severity" value={edit.severity} options={options(['Low', 'Moderate', 'High', 'Unknown'] as const)} disabled={busy} onChange={(value) => onEditChange({ ...edit, severity: value as InspectionImageAnalysisResult['severity'] })} />
+                <TextAreaInput label="Uncertainty" value={edit.uncertainty} rows={3} disabled={busy} onChange={(value) => onEditChange({ ...edit, uncertainty: value })} />
+                <fieldset className="preplant-risk-list">
+                  <legend>Allowed non-chemical actions</legend>
+                  {cropHealthActions.map((action) => <label key={action}><input type="checkbox" checked={edit.recommendedNonChemicalActions.includes(action)} disabled={busy} onChange={(event) => onEditChange({ ...edit, recommendedNonChemicalActions: event.target.checked ? [...edit.recommendedNonChemicalActions, action] : edit.recommendedNonChemicalActions.filter((item) => item !== action) })} /><span>{humanize(action)}</span></label>)}
+                </fieldset>
+                <label className="review-checkbox"><input type="checkbox" checked={edit.requiresFurtherAssessment} disabled={busy} onChange={(event) => onEditChange({ ...edit, requiresFurtherAssessment: event.target.checked })} /> Requires further assessment</label>
+                <div className="image-review-actions">
+                  <Button type="button" disabled={busy} onClick={saveEditedReview}>Save Officer Edited review</Button>
+                  <Button type="button" variant="ghost" disabled={busy} onClick={cancelEditing}>Cancel edit</Button>
+                </div>
+              </section> : null}
+            </>
+          ) : (
+            <div className="image-findings-empty">
+              <BrainCircuit size={28} aria-hidden="true" />
+              <strong>No AI findings to review</strong>
+              <span>Manual inspection remains available whether or not image assistance is used.</span>
+            </div>
+          )}
+
+          {state?.effectiveReview ? <Notice tone={state.effectiveReview.disposition === 'Rejected' ? 'warning' : 'success'}>
+            Latest review: {state.effectiveReview.disposition}{state.effectiveReview.officerEditedFields.length ? ` / Officer Edited (${state.effectiveReview.officerEditedFields.join(', ')})` : ''}.
+          </Notice> : null}
+        </section>
+      </div>
       <details className="image-analysis-history">
         <summary onClick={() => { if (history === null && !busy) onLoadHistory() }}>Staff audit history</summary>
         {history === null ? <p className="muted-text">Open to load immutable analysis and review history.</p> : history.length === 0
@@ -922,8 +998,12 @@ function ImageAnalysisPanel({
   )
 }
 
-function nonEmptyLines(value: string): string[] {
-  return value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean)
+function editableLines(value: string): string[] {
+  return value.split(/\r?\n/).filter((item) => item.length > 0)
+}
+
+function normalizedLines(items: string[]): string[] {
+  return items.map((item) => item.trim()).filter(Boolean)
 }
 
 function safeExternalUrl(value: string): string | null {
