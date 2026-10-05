@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import axios from 'axios'
-import { BrainCircuit, Camera, CheckCircle2, Image as ImageIcon, Save, Send, Sparkles, Upload, X } from 'lucide-react'
+import { BrainCircuit, Camera, CheckCircle2, ChevronDown, Image as ImageIcon, Save, Send, Sparkles, Upload, X } from 'lucide-react'
 import { api, getErrorMessage } from '../api/client'
 import { SelectInput, TextAreaInput, TextInput } from '../components/FormControls'
 import { ErrorState, LoadingState } from '../components/States'
@@ -35,6 +35,7 @@ import type {
 import './PrePlantingAssessmentPanel.css'
 
 type RiskAssessmentState = 'unassessed' | 'none' | 'selected'
+type AssessmentSectionKey = 'soil' | 'water' | 'readiness' | 'risks'
 type ActionState = 'save' | 'upload' | 'submit' | 'run' | 'notes' | 'select-image' | 'analyze-image' | 'review-image' | null
 type NoteFieldKey = keyof InspectionNoteSuggestions
 type NoteDecision = 'Accepted' | 'Officer Edited' | 'Rejected'
@@ -169,6 +170,7 @@ export function PrePlantingAssessmentPanel({
   const [imageEdit, setImageEdit] = useState<InspectionImageAnalysisResult | null>(null)
   const [imageHistory, setImageHistory] = useState<InspectionImageAnalysisAuditItem[] | null>(null)
   const [files, setFiles] = useState<File[]>([])
+  const [openSections, setOpenSections] = useState<Set<AssessmentSectionKey>>(() => new Set(['soil']))
   const [isLoading, setIsLoading] = useState(true)
   const [assessmentLoadFailed, setAssessmentLoadFailed] = useState(false)
   const [action, setAction] = useState<ActionState>(null)
@@ -223,9 +225,12 @@ export function PrePlantingAssessmentPanel({
         setAssessment(nextAssessment)
         if (nextAssessment) {
           applySavedAssessment(nextAssessment, setForm, setRiskState, setSelectedRisks)
+          const nextRiskState = riskStateFromAssessment(nextAssessment)
+          setOpenSections(initialOpenSections(nextAssessment, nextRiskState, nextAssessment.identifiedRisks ?? []))
           await loadImageAnalysis()
         } else {
           resetAssessmentForm(setForm, setRiskState, setSelectedRisks)
+          setOpenSections(new Set(['soil']))
           setImageAnalysis(null)
         }
       } catch (err) {
@@ -236,6 +241,7 @@ export function PrePlantingAssessmentPanel({
     } else if (isNotFound(assessmentOutcome.reason)) {
       setAssessment(null)
       resetAssessmentForm(setForm, setRiskState, setSelectedRisks)
+      setOpenSections(new Set(['soil']))
     } else {
       setAssessment(null)
       setAssessmentLoadFailed(true)
@@ -276,6 +282,8 @@ export function PrePlantingAssessmentPanel({
   const busy = action !== null
   const submissionAiWarning = imageAnalysis?.status === 'Running'
     || (imageAnalysis?.status === 'Succeeded' && imageAnalysis.effectiveReview == null)
+  const sectionCompletion = assessmentSectionCompletion(form, riskState, selectedRisks)
+  const completedSectionCount = Object.values(sectionCompletion).filter(Boolean).length
 
   function updateField<K extends keyof PrePlantingAssessmentInput>(name: K, value: PrePlantingAssessmentInput[K]) {
     setForm((current) => ({ ...current, [name]: value }))
@@ -300,6 +308,24 @@ export function PrePlantingAssessmentPanel({
     }
   }
 
+  function toggleAssessmentSection(section: AssessmentSectionKey) {
+    setOpenSections((current) => {
+      const next = new Set(current)
+      if (next.has(section)) next.delete(section)
+      else next.add(section)
+      return next
+    })
+  }
+
+  function revealAssessmentSection(section: AssessmentSectionKey, focusTrigger = true) {
+    setOpenSections((current) => new Set([...current, section]))
+    if (focusTrigger) {
+      window.requestAnimationFrame(() => {
+        document.getElementById(`assessment-trigger-${section}`)?.focus()
+      })
+    }
+  }
+
   async function generateNoteSuggestions() {
     setAction('notes')
     setError('')
@@ -312,6 +338,10 @@ export function PrePlantingAssessmentPanel({
       )
       setNoteAssistance(response.data)
       setNoteDecisions({})
+      const suggestedSections = sectionsWithNoteSuggestions(response.data.suggestions)
+      if (suggestedSections.length > 0) {
+        setOpenSections((current) => new Set([...current, ...suggestedSections]))
+      }
       if (response.data.status !== 'Available') {
         setWarning('AI note assistance is currently unavailable. You can continue entering the inspection manually.')
       }
@@ -478,13 +508,24 @@ export function PrePlantingAssessmentPanel({
       setError('This workflow is not linked to a crop plan request.')
       return
     }
-    if (!formRef.current?.reportValidity()) return
+    const invalidControl = formRef.current?.querySelector<HTMLElement>('input:invalid, select:invalid, textarea:invalid')
+    if (invalidControl) {
+      const section = invalidControl.closest<HTMLElement>('[data-assessment-section]')?.dataset.assessmentSection as AssessmentSectionKey | undefined
+      if (section) revealAssessmentSection(section, false)
+      window.requestAnimationFrame(() => {
+        invalidControl.focus()
+        formRef.current?.reportValidity()
+      })
+      return
+    }
     if (riskState === 'unassessed') {
       setError('Assess structured risks before submitting, even when none are identified.')
+      revealAssessmentSection('risks')
       return
     }
     if (riskState === 'selected' && selectedRisks.length === 0) {
       setError('Select at least one structured risk or choose None identified.')
+      revealAssessmentSection('risks')
       return
     }
 
@@ -512,7 +553,10 @@ export function PrePlantingAssessmentPanel({
         setWarning('Optional evidence upload failed: ' + optionalEvidenceError + ' The assessment was submitted without that evidence.')
       }
     } catch (err) {
-      setError(getErrorMessage(err))
+      const message = getErrorMessage(err)
+      setError(message)
+      const section = sectionFromValidationMessage(message)
+      if (section) revealAssessmentSection(section)
     } finally {
       setAction(null)
     }
@@ -568,14 +612,24 @@ export function PrePlantingAssessmentPanel({
           </section>
           {(noteAssistance?.contradictionWarnings ?? []).map((item) => <Notice key={`contradiction-${item}`} tone="warning">Contradiction to verify: {item}</Notice>)}
           {(noteAssistance?.missingDataWarnings ?? []).map((item) => <Notice key={`missing-${item}`} tone="info">Missing data: {item}</Notice>)}
-          <AssessmentSection title="Soil profile" description="Record present soil properties, not crop symptoms.">
+          <section className="assessment-progress" aria-label="Assessment completion">
+            <div>
+              <strong>{completedSectionCount} of 4 sections complete</strong>
+              <span>Complete each observation group before submitting.</span>
+            </div>
+            <div className="assessment-progress-track" aria-hidden="true">
+              <span style={{ width: `${completedSectionCount * 25}%` }} />
+            </div>
+          </section>
+          <div className="assessment-accordion">
+          <AssessmentSection sectionKey="soil" title="Soil profile" description="Record present soil properties, not crop symptoms." open={openSections.has('soil')} complete={sectionCompletion.soil} onToggle={() => toggleAssessmentSection('soil')}>
             <SelectInput label="Soil type" value={form.soilType ?? ''} options={soilTypeOptions} required disabled={busy} onChange={(value) => updateField('soilType', (value || null) as PrePlantingSoilType | null)} />
             <SelectInput label="Soil condition" value={form.soilCondition ?? ''} options={soilConditionOptions} required disabled={busy} onChange={(value) => updateField('soilCondition', (value || null) as PrePlantingSoilCondition | null)} />
             <SelectInput label="Soil moisture" value={form.soilMoisture ?? ''} options={soilMoistureOptions} required disabled={busy} onChange={(value) => updateField('soilMoisture', (value || null) as PrePlantingSoilMoisture | null)} />
             <SuggestedNoteField field="soilNotes" label="Soil notes" value={form.soilNotes ?? ''} suggestion={noteAssistance?.suggestions?.soilNotes} decision={noteDecisions.soilNotes} required={form.soilType === 'Other' || form.soilCondition === 'Other'} disabled={busy} onChange={(value) => updateText('soilNotes', value)} onAccept={() => applyNoteSuggestion('soilNotes', 'Accepted')} onEdit={() => applyNoteSuggestion('soilNotes', 'Officer Edited')} onReject={() => rejectNoteSuggestion('soilNotes')} />
           </AssessmentSection>
 
-          <AssessmentSection title="Water and irrigation" description="These are Field Officer observations and become read-only context for Member 3.">
+          <AssessmentSection sectionKey="water" title="Water and irrigation" description="These are Field Officer observations and become read-only context for Member 3." open={openSections.has('water')} complete={sectionCompletion.water} onToggle={() => toggleAssessmentSection('water')}>
             <SelectInput label="Water availability" value={form.waterAvailability ?? ''} options={waterAvailabilityOptions} required disabled={busy} onChange={(value) => updateField('waterAvailability', (value || null) as PrePlantingWaterAvailability | null)} />
             <TextInput label="Main water source" value={form.mainWaterSource ?? ''} required={requiresWaterSource(form.waterAvailability)} disabled={busy} onChange={(value) => updateText('mainWaterSource', value)} />
             <SelectInput label="Irrigation availability" value={form.irrigationAvailability ?? ''} options={irrigationOptions} required disabled={busy} onChange={(value) => updateField('irrigationAvailability', (value || null) as PrePlantingIrrigationAvailability | null)} />
@@ -583,7 +637,7 @@ export function PrePlantingAssessmentPanel({
             <SuggestedNoteField field="waterConcerns" label="Water concerns" value={form.waterConcerns ?? ''} suggestion={noteAssistance?.suggestions?.waterConcerns} decision={noteDecisions.waterConcerns} required={requiresWaterConcern(form.waterAvailability)} disabled={busy} onChange={(value) => updateText('waterConcerns', value)} onAccept={() => applyNoteSuggestion('waterConcerns', 'Accepted')} onEdit={() => applyNoteSuggestion('waterConcerns', 'Officer Edited')} onReject={() => rejectNoteSuggestion('waterConcerns')} />
           </AssessmentSection>
 
-          <AssessmentSection title="Drainage and field readiness" description="Keep drainage quality and waterlogging risk as separate observations.">
+          <AssessmentSection sectionKey="readiness" title="Drainage and field readiness" description="Keep drainage quality and waterlogging risk as separate observations." open={openSections.has('readiness')} complete={sectionCompletion.readiness} onToggle={() => toggleAssessmentSection('readiness')}>
             <SelectInput label="Drainage condition" value={form.drainageCondition ?? ''} options={drainageOptions} required disabled={busy} onChange={(value) => updateField('drainageCondition', (value || null) as PrePlantingDrainageCondition | null)} />
             <SelectInput label="Waterlogging risk" value={form.waterloggingRisk ?? ''} options={waterloggingOptions} required disabled={busy} onChange={(value) => updateField('waterloggingRisk', (value || null) as PrePlantingWaterloggingRisk | null)} />
             <SuggestedNoteField field="drainageNotes" label="Drainage notes" value={form.drainageNotes ?? ''} suggestion={noteAssistance?.suggestions?.drainageNotes} decision={noteDecisions.drainageNotes} required={form.drainageCondition === 'Poor' || form.waterloggingRisk === 'Moderate' || form.waterloggingRisk === 'High'} disabled={busy} onChange={(value) => updateText('drainageNotes', value)} onAccept={() => applyNoteSuggestion('drainageNotes', 'Accepted')} onEdit={() => applyNoteSuggestion('drainageNotes', 'Officer Edited')} onReject={() => rejectNoteSuggestion('drainageNotes')} />
@@ -592,7 +646,7 @@ export function PrePlantingAssessmentPanel({
             <SelectInput label="Planting readiness" value={form.plantingReadiness ?? ''} options={readinessOptions} required disabled={busy} onChange={(value) => updateField('plantingReadiness', (value || null) as PrePlantingPlantingReadiness | null)} />
           </AssessmentSection>
 
-          <AssessmentSection title="Structured risks" description="Not assessed is different from an explicit finding of no risk.">
+          <AssessmentSection sectionKey="risks" title="Structured risks" description="Not assessed is different from an explicit finding of no risk." open={openSections.has('risks')} complete={sectionCompletion.risks} onToggle={() => toggleAssessmentSection('risks')}>
             <SelectInput
               label="Risk assessment"
               value={riskState}
@@ -629,6 +683,7 @@ export function PrePlantingAssessmentPanel({
             <SuggestedNoteField field="riskNotes" label="Risk notes" value={form.riskNotes ?? ''} suggestion={noteAssistance?.suggestions?.riskNotes} decision={noteDecisions.riskNotes} required={selectedRisks.includes('Other')} disabled={busy} onChange={(value) => updateText('riskNotes', value)} onAccept={() => applyNoteSuggestion('riskNotes', 'Accepted')} onEdit={() => applyNoteSuggestion('riskNotes', 'Officer Edited')} onReject={() => rejectNoteSuggestion('riskNotes')} />
             <SuggestedNoteField field="officerNotes" label="Officer notes" value={form.officerNotes ?? ''} suggestion={noteAssistance?.suggestions?.officerNotes} decision={noteDecisions.officerNotes} disabled={busy} onChange={(value) => updateText('officerNotes', value)} onAccept={() => applyNoteSuggestion('officerNotes', 'Accepted')} onEdit={() => applyNoteSuggestion('officerNotes', 'Officer Edited')} onReject={() => rejectNoteSuggestion('officerNotes')} />
           </AssessmentSection>
+          </div>
 
           <label className="preplant-evidence">
             <span><Camera size={17} aria-hidden="true" /> Photos / evidence</span>
@@ -880,13 +935,129 @@ function safeExternalUrl(value: string): string | null {
   }
 }
 
-function AssessmentSection({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
+const sectionOrder: AssessmentSectionKey[] = ['soil', 'water', 'readiness', 'risks']
+
+function assessmentSectionCompletion(
+  form: PrePlantingAssessmentInput,
+  riskState: RiskAssessmentState,
+  selectedRisks: PrePlantingRisk[],
+): Record<AssessmentSectionKey, boolean> {
+  const soilNotesRequired = form.soilType === 'Other' || form.soilCondition === 'Other'
+  const drainageNotesRequired = form.drainageCondition === 'Poor'
+    || form.waterloggingRisk === 'Moderate'
+    || form.waterloggingRisk === 'High'
+  const generalNotesRequired = form.generalFieldCondition === 'Other'
+
+  return {
+    soil: Boolean(
+      form.soilType
+      && form.soilCondition
+      && form.soilMoisture
+      && (!soilNotesRequired || hasText(form.soilNotes)),
+    ),
+    water: Boolean(
+      form.waterAvailability
+      && form.irrigationAvailability
+      && form.waterReliability
+      && (!requiresWaterSource(form.waterAvailability) || hasText(form.mainWaterSource))
+      && (!requiresWaterConcern(form.waterAvailability) || hasText(form.waterConcerns)),
+    ),
+    readiness: Boolean(
+      form.drainageCondition
+      && form.waterloggingRisk
+      && form.generalFieldCondition
+      && form.plantingReadiness
+      && (!drainageNotesRequired || hasText(form.drainageNotes))
+      && (!generalNotesRequired || hasText(form.generalFieldNotes)),
+    ),
+    risks: riskState === 'none' || (
+      riskState === 'selected'
+      && selectedRisks.length > 0
+      && (!selectedRisks.includes('Other') || hasText(form.riskNotes))
+    ),
+  }
+}
+
+function hasText(value?: string | null): boolean {
+  return Boolean(value?.trim())
+}
+
+function riskStateFromAssessment(assessment: PrePlantingAssessment): RiskAssessmentState {
+  if (assessment.identifiedRisks === null) return 'unassessed'
+  return assessment.identifiedRisks.length === 0 ? 'none' : 'selected'
+}
+
+function initialOpenSections(
+  form: PrePlantingAssessmentInput,
+  riskState: RiskAssessmentState,
+  selectedRisks: PrePlantingRisk[],
+): Set<AssessmentSectionKey> {
+  const completion = assessmentSectionCompletion(form, riskState, selectedRisks)
+  const firstIncomplete = sectionOrder.find((section) => !completion[section])
+  return new Set(firstIncomplete ? [firstIncomplete] : [])
+}
+
+function sectionFromValidationMessage(message: string): AssessmentSectionKey | null {
+  const normalized = message.toLowerCase()
+  if (/soil|moisture/.test(normalized)) return 'soil'
+  if (/water availability|water source|water concern|irrigation|reliability/.test(normalized)) return 'water'
+  if (/drainage|waterlogging|field condition|field note|planting readiness/.test(normalized)) return 'readiness'
+  if (/risk|officer note/.test(normalized)) return 'risks'
+  return null
+}
+
+function sectionsWithNoteSuggestions(suggestions: InspectionNoteSuggestions | null): AssessmentSectionKey[] {
+  if (!suggestions) return []
+  const sections = new Set<AssessmentSectionKey>()
+  if (suggestions.soilNotes) sections.add('soil')
+  if (suggestions.waterConcerns) sections.add('water')
+  if (suggestions.drainageNotes || suggestions.generalFieldNotes) sections.add('readiness')
+  if (suggestions.riskNotes || suggestions.officerNotes) sections.add('risks')
+  return [...sections]
+}
+
+function AssessmentSection({
+  sectionKey,
+  title,
+  description,
+  open,
+  complete,
+  onToggle,
+  children,
+}: {
+  sectionKey: AssessmentSectionKey
+  title: string
+  description: string
+  open: boolean
+  complete: boolean
+  onToggle: () => void
+  children: React.ReactNode
+}) {
   return (
-    <fieldset className="preplant-form-section">
-      <legend>{title}</legend>
-      <p>{description}</p>
-      <div className="preplant-form-grid">{children}</div>
-    </fieldset>
+    <section className={`preplant-form-section${complete ? ' is-complete' : ''}`} data-assessment-section={sectionKey}>
+      <button
+        id={`assessment-trigger-${sectionKey}`}
+        className="assessment-section-trigger"
+        type="button"
+        aria-expanded={open}
+        aria-controls={`assessment-section-${sectionKey}`}
+        onClick={onToggle}
+      >
+        <span className="assessment-section-title">
+          <span className="assessment-section-status" aria-hidden="true">
+            {complete ? <CheckCircle2 size={18} /> : <span>{sectionOrder.indexOf(sectionKey) + 1}</span>}
+          </span>
+          <span><strong>{title}</strong><small>{description}</small></span>
+        </span>
+        <span className={`assessment-section-state${complete ? ' is-complete' : ''}`}>
+          {complete ? 'Complete' : 'Needs attention'}
+        </span>
+        <ChevronDown className="assessment-section-chevron" size={19} aria-hidden="true" />
+      </button>
+      <div id={`assessment-section-${sectionKey}`} className="assessment-section-content" hidden={!open}>
+        <div className="preplant-form-grid">{children}</div>
+      </div>
+    </section>
   )
 }
 

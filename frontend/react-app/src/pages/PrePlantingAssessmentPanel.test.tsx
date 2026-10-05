@@ -139,6 +139,70 @@ function axiosError(status: number, message: string) {
 }
 
 describe('PrePlantingAssessmentPanel', () => {
+  it('opens the first incomplete assessment section and reports section progress', async () => {
+    mockLoads(null)
+
+    render(<PrePlantingAssessmentPanel review={review} role={Roles.FieldOfficer} onWorkflowChanged={vi.fn()} />)
+
+    const soil = await screen.findByRole('button', { name: /soil profile.*needs attention/i })
+    expect(soil).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('button', { name: /water and irrigation.*needs attention/i })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByRole('button', { name: /drainage and field readiness.*needs attention/i })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByRole('button', { name: /structured risks.*needs attention/i })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByText('0 of 4 sections complete')).toBeInTheDocument()
+  })
+
+  it('shows completed sections compactly and lets the officer reopen them', async () => {
+    mockLoads(savedAssessment)
+    const user = userEvent.setup()
+
+    render(<PrePlantingAssessmentPanel review={review} role={Roles.FieldOfficer} onWorkflowChanged={vi.fn()} />)
+
+    const soil = await screen.findByRole('button', { name: /soil profile.*complete/i })
+    expect(screen.getByText('4 of 4 sections complete')).toBeInTheDocument()
+    expect(soil).toHaveAttribute('aria-expanded', 'false')
+
+    await user.click(soil)
+
+    expect(soil).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByLabelText(/^soil type/i)).toBeVisible()
+  })
+
+  it('reopens structured risks when custom submission validation fails', async () => {
+    mockLoads(savedAssessment)
+    const user = userEvent.setup()
+
+    render(<PrePlantingAssessmentPanel review={review} role={Roles.FieldOfficer} onWorkflowChanged={vi.fn()} />)
+
+    const risks = await screen.findByRole('button', { name: /structured risks.*complete/i })
+    await user.click(risks)
+    await user.selectOptions(screen.getByLabelText(/risk assessment/i), 'unassessed')
+    await user.click(risks)
+    expect(risks).toHaveAttribute('aria-expanded', 'false')
+
+    await user.click(screen.getByRole('button', { name: /submit assessment/i }))
+
+    expect(screen.getByText(/assess structured risks before submitting/i)).toBeInTheDocument()
+    expect(risks).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('reopens the section containing the first invalid native control', async () => {
+    mockLoads({ ...savedAssessment, waterAvailability: null })
+    const user = userEvent.setup()
+
+    render(<PrePlantingAssessmentPanel review={review} role={Roles.FieldOfficer} onWorkflowChanged={vi.fn()} />)
+
+    const water = await screen.findByRole('button', { name: /water and irrigation.*needs attention/i })
+    expect(water).toHaveAttribute('aria-expanded', 'true')
+    await user.click(water)
+    expect(water).toHaveAttribute('aria-expanded', 'false')
+
+    await user.click(screen.getByRole('button', { name: /submit assessment/i }))
+
+    await waitFor(() => expect(water).toHaveAttribute('aria-expanded', 'true'))
+    expect(screen.getByLabelText(/^water availability/i)).toBeVisible()
+  })
+
   it('renders a valid linked assessment payload', async () => {
     mockLoads(savedAssessment)
 
