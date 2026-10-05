@@ -5,6 +5,7 @@ import { api, getErrorMessage } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { EmptyState, ErrorState, LoadingState } from '../components/States'
 import { MetricCard, PageHeader } from '../components/Ui'
+import { WeatherResourceHistoryPanel } from '../components/WeatherResourceHistoryPanel'
 import { WeatherResourceWorkQueuePanel } from '../components/WeatherResourceWorkQueuePanel'
 import { roleLabels } from '../labels'
 import { Roles } from '../routing'
@@ -80,6 +81,8 @@ export function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
+  // Bumped when the queue saves a new analysis so the history panel reloads.
+  const [historyReloadKey, setHistoryReloadKey] = useState(0)
 
   useEffect(() => {
     api
@@ -136,7 +139,12 @@ export function DashboardPage() {
         )}
       </section>
 
-      {user?.role === Roles.ResourceOfficer ? <WeatherResourceWorkQueuePanel /> : null}
+      {user?.role === Roles.ResourceOfficer ? (
+        <>
+          <WeatherResourceWorkQueuePanel onAnalysisSaved={() => setHistoryReloadKey((key) => key + 1)} />
+          <WeatherResourceHistoryPanel reloadKey={historyReloadKey} />
+        </>
+      ) : null}
 
       {user?.role === Roles.Admin ? (
         <section className="work-section dashboard-section">

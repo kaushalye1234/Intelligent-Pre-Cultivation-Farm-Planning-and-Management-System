@@ -686,15 +686,107 @@ export type Member3Handoff = {
   recommendedPrePlantingActions: string[] | null
 }
 
+export type WeatherRiskLevel = 'Low' | 'Medium' | 'High' | 'Unknown'
+
 export type WeatherResourceRunResult = {
   workflowId: string
   cropPlanRequestId: string
   weatherResourceStepId: string
   status: 'Analyzed' | 'SafeFailure'
-  weatherRisk: 'Low' | 'Medium' | 'High' | 'Unknown'
+  weatherRisk: WeatherRiskLevel
   requiresHumanReview: boolean
   warnings: string[] | null
   requirementStatus: string
+}
+
+// One forecast measure compared with the fixed weather-risk thresholds; every figure comes from the forecast.
+export type WeatherRiskFactor = {
+  metric: 'DailyRainfall' | 'TotalRainfall' | 'MaxTemperature' | 'MaxWind'
+  label: string
+  value: number
+  unit: string
+  observedOn: string | null
+  mediumThreshold: number
+  highThreshold: number
+  level: 'Low' | 'Medium' | 'High'
+  detail: string
+}
+
+export type WeatherRiskAction = {
+  action: string
+  timing: string
+  priority: 'Low' | 'Medium' | 'High'
+}
+
+// Explains the rule-based weather risk. generatedBy is OpenAI when the narrative was written by the AI model.
+export type WeatherRiskAssessment = {
+  riskLevel: WeatherRiskLevel
+  headline: string
+  explanation: string
+  contributingFactors: WeatherRiskFactor[] | null
+  potentialImpacts: string[] | null
+  recommendedActions: WeatherRiskAction[] | null
+  monitoringAdvice: string | null
+  generatedBy: 'OpenAI' | 'RuleBased'
+}
+
+export type WeatherResourceRequirement = {
+  ruleId: string | null
+  resourceId: string | null
+  resourceName: string
+  unit: string | null
+  requiredQuantity: number | null
+  availableQuantity: number | null
+  reservedQuantity: number | null
+  shortageQuantity: number | null
+  sufficient: boolean | null
+  requirementStatus: string
+  basis: string | null
+  reason: string | null
+}
+
+// The stored Weather/Resource AI result for one crop plan workflow (read-only).
+export type WeatherResourceResult = {
+  workflowId: string
+  status: 'Analyzed' | 'SafeFailure'
+  requiresHumanReview: boolean
+  warnings: string[] | null
+  weatherRisk: WeatherRiskLevel
+  weatherSummary: string | null
+  recommendations: string[] | null
+  resourceRequirements: WeatherResourceRequirement[] | null
+  requirementStatus: string
+  reason: string | null
+  weatherRiskAssessment?: WeatherRiskAssessment | null
+}
+
+// Resource Officer history row: a crop plan that was analysed, with a summary of its stored AI result.
+export type WeatherResourceHistoryItem = {
+  workflowId: string
+  cropPlanRequestId: string
+  weatherResourceStepId: string
+  objective: string | null
+  farmName: string | null
+  farmLocation: string | null
+  fieldName: string | null
+  cropName: string | null
+  cropVarietyName: string | null
+  preferredStartDate: string
+  preferredEndDate: string
+  // AgentStepStatus: 3 Completed, 4 Failed
+  stepStatus: number
+  analyzedAt: string
+  runByName: string | null
+  status: 'Analyzed' | 'SafeFailure' | null
+  weatherRisk: WeatherRiskLevel | null
+  requirementStatus: string | null
+  requiresHumanReview: boolean
+  headline: string | null
+}
+
+export type WeatherResourceHistoryDetail = {
+  plan: WeatherResourceHistoryItem
+  result: WeatherResourceResult
 }
 
 

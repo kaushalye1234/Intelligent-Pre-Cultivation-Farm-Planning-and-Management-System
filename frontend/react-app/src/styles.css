@@ -1879,3 +1879,89 @@
   display: grid;
   gap: var(--space-3);
 }
+
+/* Weather/Resource AI result (queue run result and analysis history) */
+.weather-analysis {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.weather-risk-card {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-left-width: 4px;
+  border-radius: var(--radius-md);
+}
+
+.weather-risk-low {
+  border-left-color: var(--tone-good-border);
+}
+
+.weather-risk-medium {
+  border-left-color: var(--tone-warn-border);
+}
+
+.weather-risk-high {
+  border-left-color: var(--tone-bad-border);
+}
+
+.weather-risk-card h4 {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.weather-risk-card p,
+.weather-analysis-note {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.weather-risk-card-header,
+.weather-action-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.weather-risk-source,
+.weather-action-heading .muted-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.weather-analysis-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--space-4);
+}
+
+.weather-actions {
+  display: grid;
+  gap: var(--space-3);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.weather-actions li {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.history-headline {
+  max-width: 320px;
+  font-size: 12px;
+}
