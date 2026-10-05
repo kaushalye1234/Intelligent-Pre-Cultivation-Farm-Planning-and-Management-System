@@ -1,7 +1,7 @@
-# Group 04 demo stack. All selected compute/datastore plans are Render Free.
-# Free web services are public and spin down after 15 minutes; keep both AI
-# routes protected by generated bearer tokens. The free database expires after
-# 30 days and must contain demo data only.
+# Group 04 demo stack. The API uses the existing Supabase database.
+# Configure its connection string in Render, never in this file. Startup
+# migrations stay disabled; review and apply schema changes separately.
+# Retain the old Render database resource to avoid deleting it during a sync.
 databases:
   - name: agriassist-demo-db
     databaseName: agriassist
@@ -27,11 +27,21 @@ services:
       - key: ForwardedHeaders__TrustAllProxies
         value: "true"
       - key: ConnectionStrings__DefaultConnection
-        fromDatabase:
-          name: agriassist-demo-db
-          property: connectionString
+        sync: false
       - key: Database__ApplyMigrationsOnStart
-        value: "true"
+        value: "false"
+      - key: AdminBootstrap__Enabled
+        value: "false"
+      - key: Weather__BaseUrl
+        value: https://api.openweathermap.org/data/2.5
+      - key: Weather__ApiKey
+        sync: false
+      - key: Cloudinary__CloudName
+        sync: false
+      - key: Cloudinary__ApiKey
+        sync: false
+      - key: Cloudinary__ApiSecret
+        sync: false
       - key: ApiDocs__Enabled
         value: "true"
       - key: Jwt__Secret
