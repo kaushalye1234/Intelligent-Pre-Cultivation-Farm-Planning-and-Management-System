@@ -38,4 +38,4 @@ Local generated artifacts for the group leader (excluded from this Git contribut
 - The workflow timing data is a local deterministic-fallback fixture and is not a production performance claim.
 - Earlier Windows APK attempts stalled; the 2026-10-01 build and emulator launch passed. Only the login screen was checked on the emulator, without a live backend sign-in.
 - No external LLM-provider run is claimed without a configured provider key.
-- Group 04 has not supplied a demonstration video or the other members' personal report sections. The Supabase-preserving deployment update and Member 4 retrieval hardening remain in open PRs #71 and #72. The linked report is a draft for assembly, not a final submitted group report.
+- Group 04 has not supplied a demonstration video or the other members' personal report sections. The Supabase-preserving deployment update merged in PR #71; Member 4 retrieval hardening remains in open PR #72. The linked report is a draft for assembly, not a final submitted group report.

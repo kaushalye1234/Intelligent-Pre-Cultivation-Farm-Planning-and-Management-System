@@ -23,7 +23,7 @@
 - The local workflow used deterministic AI fallback because no LLM provider key was configured.
 - Weather, inspection, and inventory warnings remained human-review inputs in the disposable fixture.
 - The previous Windows Gradle attempts stalled; the 2026-10-01 clean-worktree build completed in 286.8 seconds. The debug APK uses the project's debug signing configuration and is not a production release package.
-- Public React/API/Swagger/AI URLs respond, but these reachability checks do not prove Supabase database readiness, authenticated end-to-end workflow, or a live AI scheduling run. The Supabase-preserving Render/mobile update is in open PR #71; the Member 4 profile-retrieval hardening is in open PR #72.
+- Public React/API/Swagger/AI URLs respond, but these reachability checks alone do not prove Supabase database readiness, authenticated end-to-end workflow, or a live AI scheduling run. The Supabase-preserving Render/mobile update merged in PR #71; the Member 4 profile-retrieval hardening remains in open PR #72.
 - A demonstration video has not been supplied or checked for access.
 - The single consolidated group PDF still needs the other three members' own sections, AI logs and reflections, signed declarations, and a group AI declaration. Those must be supplied and reviewed by the students.
 - No external LLM-provider run or load-test percentile claim is made.

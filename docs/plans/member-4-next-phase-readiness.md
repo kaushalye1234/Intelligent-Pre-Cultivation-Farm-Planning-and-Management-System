@@ -17,12 +17,12 @@ The publicly shared Render endpoints were checked read-only on 2026-10-05:
 - ASP.NET Swagger document: HTTP 200 — <https://agriassist-api-sl97.onrender.com/swagger/v1/swagger.json>
 - AI service health: HTTP 200 after a retry — <https://agriassist-ai-3boo.onrender.com/health>
 
-These checks prove endpoint reachability only. They do not prove database readiness, a successful authenticated workflow, or a full live AI scheduling run. PR [#71](https://github.com/kaushalye1234/Intelligent-Pre-Cultivation-Farm-Planning-and-Management-System/pull/71) contains a Supabase-preserving Render configuration and mobile build update; its CI passed, but it is still open. Verify the intended Supabase-backed login and workflow after that change is reviewed and merged. Do not run schema migrations against the existing Supabase database without a separate backup and explicit deployment operation.
+These checks prove endpoint reachability only. They do not prove database readiness, a successful authenticated workflow, or a full live AI scheduling run. PR [#71](https://github.com/kaushalye1234/Intelligent-Pre-Cultivation-Farm-Planning-and-Management-System/pull/71), which preserves the Supabase configuration and updates the mobile build path, is merged into `dev`; its four CI jobs passed. Its PR notes report a live login, weather, and image check, but those authenticated/integration checks were not independently repeated here. Do not run schema migrations against the existing Supabase database without a separate backup and explicit deployment operation.
 
 ## Still required for final Group 04 submission
 
-1. Review and merge the outstanding deployment and Member 4 hardening PRs through the group's normal review process.
-2. After deployment changes are merged, run one authenticated end-to-end workflow using the group's evaluator account and confirm that final tasks/schedules appear only after officer approval.
+1. Review and merge the outstanding Member 4 hardening PR #72 through the group's normal review process.
+2. With PR #71 merged, verify one authenticated Supabase-backed end-to-end workflow using the group's evaluator account and confirm that final tasks/schedules appear only after officer approval.
 3. Record the exact tested React, API, Swagger, and AI URLs and the database mode in the report; do not include credentials.
 4. Record and share the demonstration video, then verify access in a private browser.
 5. Obtain each member's own contribution section, AI log/reflection, and signed declaration. Member 4 must write and sign their own reflection/declaration as well.
