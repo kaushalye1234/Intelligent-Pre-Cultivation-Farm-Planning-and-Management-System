@@ -21,6 +21,26 @@ The blueprint generates JWT, API-to-AI, and AI-to-API secrets. It obtains servic
 - `/health` only reports process health; it does not prove database readiness or the approval workflow. Check migrations, authenticated API behavior, AI health, and one full officer approval flow separately.
 - The AI service is bearer-token protected on its workflow routes but has a public host and health/docs surface. Do not expose any API tool token in browser code.
 
+## Create the first staff login
+
+The application does not seed an Admin account, and public farmer registration creates only the Farmer role. On a Render Free API service, use the guarded startup bootstrap instead of trying to open a Shell:
+
+1. In the Render dashboard, open the `agriassist-api` service's **Environment** settings.
+2. Temporarily add these variables. Use your group's chosen Admin name/email (the email must not already belong to another account) and a unique password of at least 12 characters, no more than 72 UTF-8 bytes, and different from the name/email. The normal password policy also rejects known compromised passwords.
+
+   ```text
+   AdminBootstrap__Enabled=true
+   AdminBootstrap__FullName=<admin full name>
+   AdminBootstrap__Email=<admin email>
+   AdminBootstrap__Password=<new unique password>
+   ```
+
+3. Save the settings and wait for the API to redeploy. The API applies configured database migrations first, then creates an Admin only if no Admin account exists. Check the API logs for `Initial Admin account created from AdminBootstrap settings`.
+4. Remove all four `AdminBootstrap__...` variables from the Render API service and save again. This triggers another deploy. Removing the variables does not remove the created Admin account.
+5. Sign in at the React site using that Admin email/password. Create a separate Agricultural Officer account in the user-management screen for routine workflow testing.
+
+If an Admin already exists, startup logs that bootstrap was skipped and does not change its password. Do not use this flow to reset an existing account. If enabled settings are incomplete or invalid, startup fails closed; correct them in Render and redeploy. Never put the password in Git, a screenshot, or chat. The Render service logs must not contain the password.
+
 ## After deployment
 
 Record the actual values in the report only after live verification:

@@ -87,6 +87,7 @@ builder.Services.AddScoped<IRequestValidator<ResetStaffPasswordRequest>, ResetSt
 builder.Services.AddSingleton<ICompromisedPasswordChecker, ConfiguredCompromisedPasswordChecker>();
 builder.Services.AddSingleton<IPasswordPolicyService, PasswordPolicyService>();
 builder.Services.AddScoped<IAdminBootstrapService, AdminBootstrapService>();
+builder.Services.AddScoped<AdminBootstrapOnStartupService>();
 builder.Services.AddScoped<AdminBootstrapCommand>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserService, UserService>();
@@ -288,6 +289,19 @@ using (var scope = app.Services.CreateScope())
     else if (app.Configuration.GetValue<bool>("Database:ApplyMigrationsOnStart"))
     {
         await dbContext.Database.MigrateAsync();
+    }
+
+    var bootstrapResult = await scope.ServiceProvider
+        .GetRequiredService<AdminBootstrapOnStartupService>()
+        .RunIfEnabledAsync(CancellationToken.None);
+    if (bootstrapResult == AdminBootstrapStartupResult.Created)
+    {
+        app.Logger.LogWarning(
+            "Initial Admin account created from AdminBootstrap settings. Remove all AdminBootstrap environment variables after verifying sign-in.");
+    }
+    else if (bootstrapResult == AdminBootstrapStartupResult.AdminAlreadyExists)
+    {
+        app.Logger.LogInformation("Initial Admin bootstrap skipped because an Admin account already exists.");
     }
 }
 
