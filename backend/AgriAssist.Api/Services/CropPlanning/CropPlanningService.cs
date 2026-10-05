@@ -44,6 +44,7 @@ public sealed class CropPlanningService(
     private const string RiskAssessmentObservationType = "IdentifiedRisksAssessment";
     private const string RiskObservationType = "IdentifiedRisk";
     private const string RiskAssessmentCompleteValue = "Assessed";
+    private static readonly CropPlanCancellationRequestValidator CancellationValidator = new();
 
     public CropPlanningService(
         AppDbContext dbContext,
@@ -602,6 +603,134 @@ public sealed class CropPlanningService(
         return MapRequest(entity);
     }
 
+    public async Task<CropPlanRequestResponse> CancelCropPlanRequestAsync(
+        Guid id,
+        CropPlanCancellationRequest cancellation,
+        CancellationToken cancellationToken)
+    {
+        Validate(CancellationValidator.Validate(cancellation));
+        var actor = RequireUser();
+        var actorRole = currentUser.Role;
+        if (actorRole is not (ApplicationRole.Farmer or ApplicationRole.Admin))
+            throw new ApiException(HttpStatusCode.Forbidden, "CROP_PLAN_CANCELLATION_FORBIDDEN", "Only the owning Farmer or an administrator may cancel a crop plan request.");
+
+        var reason = cancellation.Reason?.Trim();
+        if (actorRole == ApplicationRole.Admin && string.IsNullOrWhiteSpace(reason))
+            throw new ApiException(HttpStatusCode.BadRequest, "CROP_PLAN_CANCELLATION_REASON_REQUIRED", "An administrator must provide a cancellation reason.");
+        reason = actorRole == ApplicationRole.Farmer && string.IsNullOrWhiteSpace(reason)
+            ? "Cancelled by farmer."
+            : reason;
+
+        await using var transaction = await BeginCapacityTransactionAsync(cancellationToken);
+        var requestQuery = UsesPostgreSql
+            ? dbContext.CropPlanRequests.FromSqlInterpolated(
+                $@"SELECT * FROM ""CropPlanRequests"" WHERE ""Id"" = {id} FOR UPDATE")
+            : dbContext.CropPlanRequests;
+        var request = await requestQuery
+            .Include(item => item.Farm)
+            .SingleOrDefaultAsync(item => item.Id == id, cancellationToken)
+            ?? throw NotFound("Crop plan request");
+
+        if (actorRole == ApplicationRole.Farmer && request.Farm?.OwnerUserId != actor)
+            throw NotFound("Crop plan request");
+        if (request.IsDeleted)
+            throw new ApiException(HttpStatusCode.Conflict, "CROP_PLAN_ALREADY_ARCHIVED", "An archived crop plan request cannot be cancelled.");
+        if (request.Status is CropPlanRequestStatus.Approved or CropPlanRequestStatus.Rejected or CropPlanRequestStatus.Cancelled)
+            throw new ApiException(HttpStatusCode.Conflict, "CROP_PLAN_CANCELLATION_NOT_ALLOWED", "Approved, rejected, or cancelled crop plan requests cannot be cancelled.");
+
+        var now = DateTime.UtcNow;
+        var previousStatus = request.Status;
+        var workflow = await LatestWorkflowQuery(id)
+            .Include(item => item.Steps)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (workflow is not null)
+        {
+            foreach (var step in workflow.Steps.Where(item => item.Status is AgentStepStatus.Pending or AgentStepStatus.Running))
+            {
+                step.Status = AgentStepStatus.Skipped;
+                step.CompletedAt = now;
+                step.ErrorCode = "CROP_PLAN_CANCELLED";
+                step.ErrorMessageSafe = "The crop plan request was cancelled before this step completed.";
+                step.UpdatedAt = now;
+                step.UpdatedByUserId = actor;
+            }
+
+            workflow.Status = AgentWorkflowStatus.Cancelled;
+            workflow.CurrentStep = "Cancelled";
+            workflow.CompletedAt = now;
+            workflow.Version = checked(workflow.Version + 1);
+            workflow.UpdatedAt = now;
+            workflow.UpdatedByUserId = actor;
+        }
+
+        var inspection = await dbContext.FieldInspections.SingleOrDefaultAsync(item =>
+            item.CropPlanRequestId == id
+            && item.Purpose == InspectionPurpose.PrePlanting
+            && !item.IsDeleted,
+            cancellationToken);
+        if (inspection is not null && inspection.Status is InspectionStatus.Scheduled or InspectionStatus.InProgress)
+        {
+            inspection.Status = InspectionStatus.Cancelled;
+            inspection.CompletedAt = now;
+            inspection.UpdatedAt = now;
+            inspection.UpdatedByUserId = actor;
+        }
+
+        request.Status = CropPlanRequestStatus.Cancelled;
+        request.UpdatedAt = now;
+        request.UpdatedByUserId = actor;
+        AddHistory(
+            request.Id,
+            previousStatus,
+            CropPlanRequestStatus.Cancelled,
+            actorRole == ApplicationRole.Admin ? "Crop plan request cancelled by administrator." : "Crop plan request cancelled by farmer.",
+            CropPlanHistoryAction.Cancelled,
+            reason);
+
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
+            throw new ApiException(HttpStatusCode.Conflict, "CROP_PLAN_CANCELLATION_CONFLICT", "The crop plan workflow changed while cancellation was being saved. Refresh and try again.");
+        }
+
+        return MapRequest(request, workflow);
+    }
+
+    public async Task ArchiveCropPlanRequestAsync(Guid id, CancellationToken cancellationToken)
+    {
+        RequireAdmin();
+        var actor = RequireUser();
+        await using var transaction = await BeginCapacityTransactionAsync(cancellationToken);
+        var requestQuery = UsesPostgreSql
+            ? dbContext.CropPlanRequests.FromSqlInterpolated(
+                $@"SELECT * FROM ""CropPlanRequests"" WHERE ""Id"" = {id} FOR UPDATE")
+            : dbContext.CropPlanRequests;
+        var request = await requestQuery.SingleOrDefaultAsync(item => item.Id == id, cancellationToken)
+            ?? throw NotFound("Crop plan request");
+        if (request.IsDeleted)
+            throw new ApiException(HttpStatusCode.Conflict, "CROP_PLAN_ALREADY_ARCHIVED", "The crop plan request is already archived.");
+        if (request.Status is not (CropPlanRequestStatus.Cancelled or CropPlanRequestStatus.Rejected))
+            throw new ApiException(HttpStatusCode.Conflict, "CROP_PLAN_ARCHIVE_NOT_ALLOWED", "Only cancelled or rejected crop plan requests can be removed from normal lists.");
+
+        AddHistory(
+            request.Id,
+            request.Status,
+            request.Status,
+            "Crop plan request removed from normal administration lists.",
+            CropPlanHistoryAction.Archived,
+            "Archived by administrator.");
+        request.IsDeleted = true;
+        request.UpdatedAt = DateTime.UtcNow;
+        request.UpdatedByUserId = actor;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<CropPlanHistoryResponse>> GetCropPlanHistoryAsync(Guid requestId, CancellationToken cancellationToken)
     {
         var exists = await ApplyPlanRequestAccess(dbContext.CropPlanRequests.AsNoTracking()).AnyAsync(item => item.Id == requestId, cancellationToken);
@@ -609,7 +738,7 @@ public sealed class CropPlanningService(
         return await dbContext.CropPlanRequestHistories.AsNoTracking()
             .Where(item => item.CropPlanRequestId == requestId)
             .OrderBy(item => item.CreatedAt)
-            .Select(item => new CropPlanHistoryResponse(item.Id, item.CropPlanRequestId, item.FromStatus, item.ToStatus, item.Note, item.ChangedByUserId, item.CreatedAt))
+            .Select(item => new CropPlanHistoryResponse(item.Id, item.CropPlanRequestId, item.FromStatus, item.ToStatus, item.Note, item.ChangedByUserId, item.CreatedAt, item.Action, item.ChangedByRole, item.Reason))
             .ToListAsync(cancellationToken);
     }
 
@@ -775,6 +904,18 @@ public sealed class CropPlanningService(
             await dbContext.SaveChangesAsync(cancellationToken);
             return new CropPlanningWorkflowStartResponse(workflow.Id, request.Id, step.Id, output.Status, output.RequiresHumanReview, output.Warnings);
         }
+        catch (DbUpdateConcurrencyException)
+        {
+            dbContext.ChangeTracker.Clear();
+            var wasCancelled = await dbContext.CropPlanRequests.AsNoTracking()
+                .AnyAsync(item => item.Id == requestId && item.Status == CropPlanRequestStatus.Cancelled, cancellationToken);
+            throw new ApiException(
+                HttpStatusCode.Conflict,
+                wasCancelled ? "CROP_PLAN_CANCELLED_DURING_AI" : "AI_WORKFLOW_CONCURRENCY_CONFLICT",
+                wasCancelled
+                    ? "The crop plan request was cancelled while AI planning was running. The AI result was not applied."
+                    : "The crop plan workflow changed while AI planning was completing. Refresh before retrying.");
+        }
         catch (Exception)
         {
             var warnings = new[] { "AI service is unavailable or timed out. No crop facts were generated." };
@@ -795,7 +936,22 @@ public sealed class CropPlanningService(
                 ErrorsJson = JsonSerializer.Serialize(warnings, JsonOptions),
                 CreatedByUserId = userId
             });
-            await dbContext.SaveChangesAsync(cancellationToken);
+            try
+            {
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                dbContext.ChangeTracker.Clear();
+                var wasCancelled = await dbContext.CropPlanRequests.AsNoTracking()
+                    .AnyAsync(item => item.Id == requestId && item.Status == CropPlanRequestStatus.Cancelled, cancellationToken);
+                throw new ApiException(
+                    HttpStatusCode.Conflict,
+                    wasCancelled ? "CROP_PLAN_CANCELLED_DURING_AI" : "AI_WORKFLOW_CONCURRENCY_CONFLICT",
+                    wasCancelled
+                        ? "The crop plan request was cancelled while AI planning was running. The AI result was not applied."
+                        : "The crop plan workflow changed while AI planning was completing. Refresh before retrying.");
+            }
             return new CropPlanningWorkflowStartResponse(workflow.Id, request.Id, step.Id, safeOutput.Status, true, warnings);
         }
     }
@@ -2191,9 +2347,26 @@ public sealed class CropPlanningService(
             return ["Stored coordinator warnings could not be read safely."];
         }
     }
-    private void AddHistory(Guid requestId, CropPlanRequestStatus from, CropPlanRequestStatus to, string note)
+    private void AddHistory(
+        Guid requestId,
+        CropPlanRequestStatus from,
+        CropPlanRequestStatus to,
+        string note,
+        CropPlanHistoryAction action = CropPlanHistoryAction.StatusChanged,
+        string? reason = null)
     {
-        dbContext.CropPlanRequestHistories.Add(new CropPlanRequestHistory { CropPlanRequestId = requestId, FromStatus = from, ToStatus = to, Note = note, ChangedByUserId = RequireUser(), CreatedByUserId = currentUser.UserId });
+        dbContext.CropPlanRequestHistories.Add(new CropPlanRequestHistory
+        {
+            CropPlanRequestId = requestId,
+            FromStatus = from,
+            ToStatus = to,
+            Note = note,
+            ChangedByUserId = RequireUser(),
+            ChangedByRole = currentUser.Role,
+            Action = action,
+            Reason = reason,
+            CreatedByUserId = currentUser.UserId
+        });
     }
 
     private Guid RequireUser() => currentUser.UserId ?? throw new ApiException(HttpStatusCode.Unauthorized, "AUTH_REQUIRED", "Authentication is required.");

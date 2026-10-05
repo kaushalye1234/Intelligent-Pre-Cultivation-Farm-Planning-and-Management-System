@@ -1,5 +1,7 @@
 .preplant-panel {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   gap: 18px;
   padding: clamp(20px, 3vw, 30px);
   background:
@@ -23,6 +25,11 @@
 .preplant-header {
   justify-content: space-between;
   align-items: flex-start;
+  min-width: 0;
+}
+
+.preplant-header > div {
+  min-width: 0;
 }
 
 .preplant-header h2,
@@ -46,7 +53,56 @@
 .preplant-form,
 .preplant-result {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   gap: 18px;
+}
+
+.assessment-progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(160px, 0.42fr);
+  gap: 20px;
+  align-items: center;
+  padding: 14px 16px;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.assessment-progress > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.assessment-progress strong {
+  color: var(--color-text);
+  font-size: 14px;
+}
+
+.assessment-progress span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.assessment-progress-track {
+  height: 8px;
+  overflow: hidden;
+  background: var(--color-border);
+  border-radius: 999px;
+}
+
+.assessment-progress-track > span {
+  width: 0;
+  height: 100%;
+  display: block;
+  background: var(--color-primary);
+  border-radius: inherit;
+  transition: width 180ms ease;
+}
+
+.assessment-accordion {
+  display: grid;
+  gap: 10px;
 }
 
 .ai-assistance-panel,
@@ -74,6 +130,7 @@
 .ai-assistance-panel > div,
 .image-analysis-heading > div {
   display: grid;
+  min-width: 0;
   gap: 6px;
 }
 
@@ -133,26 +190,114 @@
 
 .preplant-form-section {
   display: grid;
-  gap: 12px;
   min-width: 0;
   margin: 0;
-  padding: 18px;
   background: var(--color-surface-raised);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
+  overflow: hidden;
 }
 
-.preplant-form-section > legend {
-  padding: 0 8px;
-  color: var(--color-primary);
+.preplant-form-section.is-complete {
+  border-color: var(--tone-good-border);
+}
+
+.assessment-section-trigger {
+  width: 100%;
+  min-height: 72px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 24px;
+  gap: 14px;
+  align-items: center;
+  padding: 14px 16px;
+  color: var(--color-text);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.assessment-section-trigger:hover {
+  background: var(--color-row-hover);
+}
+
+.assessment-section-trigger:focus-visible {
+  outline: 3px solid var(--color-glow-strong);
+  outline-offset: -3px;
+}
+
+.assessment-section-title {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.assessment-section-title > span:last-child {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.assessment-section-title strong {
   font-size: 15px;
+}
+
+.assessment-section-title small {
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.assessment-section-status {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  color: var(--color-text-muted);
+  background: var(--tone-neutral-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  font-size: 13px;
   font-weight: 900;
 }
 
-.preplant-form-section > p {
-  margin: 0 0 2px;
+.is-complete .assessment-section-status {
+  color: var(--color-primary-text);
+  background: var(--color-primary-soft);
+  border-color: var(--tone-good-border);
+}
+
+.assessment-section-state {
+  color: var(--tone-warn-text);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.assessment-section-state.is-complete {
+  color: var(--color-primary-text);
+}
+
+.assessment-section-chevron {
   color: var(--color-text-muted);
-  font-size: 13px;
+  transition: transform 160ms ease;
+}
+
+.assessment-section-trigger[aria-expanded="true"] .assessment-section-chevron {
+  transform: rotate(180deg);
+}
+
+.assessment-section-content {
+  padding: 18px;
+  border-top: 1px solid var(--color-border);
+}
+
+.assessment-section-content[hidden] {
+  display: none;
 }
 
 .preplant-form-grid,
@@ -242,81 +387,252 @@
   line-height: 1.5;
 }
 
-.preplant-images {
+.image-analysis-panel {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  gap: 16px;
+  padding: 20px;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--color-primary);
+  border-radius: var(--radius-md);
+}
+
+.image-analysis-workspace {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.2fr);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.image-analysis-evidence,
+.image-analysis-findings {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  padding: 18px;
+}
+
+.image-analysis-evidence {
+  background: var(--color-surface-muted);
+  border-right: 1px solid var(--color-border);
+}
+
+.image-analysis-findings {
+  background: var(--color-surface);
+}
+
+.image-workspace-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.image-workspace-section-heading > div {
+  display: grid;
+  gap: 3px;
+}
+
+.image-workspace-section-heading span:not(.status-pill) {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.image-workspace-section-heading h3,
+.image-workspace-section-heading h4 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.representative-image-preview {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.representative-image-preview > a {
+  aspect-ratio: 4 / 3;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.representative-image-preview img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+}
+
+.evidence-image-state {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  color: var(--color-text-muted);
+  background: var(--color-surface-muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.evidence-image-state.is-error {
+  color: var(--tone-warn-text);
+  background: var(--tone-warn-bg);
+}
+
+.representative-image-preview figcaption {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.representative-image-empty,
+.image-findings-empty {
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 7px;
+  padding: 24px;
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  text-align: center;
+}
+
+.representative-image-empty strong,
+.image-findings-empty strong {
+  color: var(--color-text);
+}
+
+.evidence-selector {
+  display: grid;
   gap: 8px;
 }
 
-.preplant-image-card {
+.evidence-selector-item {
   display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
   gap: 10px;
-  padding: 14px;
-  background: var(--color-surface-muted);
+  align-items: center;
+  padding: 8px;
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-}
-
-.preplant-image-card.is-representative {
-  border-color: var(--tone-good-border);
-  box-shadow: inset 0 0 0 1px var(--tone-good-border);
-}
-
-.preplant-image-card > span {
-  color: var(--color-text-muted);
-  font-size: 13px;
-}
-
-.preplant-images a,
-.source-reference-list a {
-  padding: 8px 12px;
-  color: var(--color-primary);
-  background: var(--color-primary-soft);
   border-radius: var(--radius-sm);
-  font-size: 13px;
-  font-weight: 800;
 }
 
-.image-analysis-panel,
-.image-analysis-result,
-.officer-review-editor {
+.evidence-selector-item.is-representative {
+  border-color: var(--tone-good-border);
+  box-shadow: inset 3px 0 0 var(--color-primary);
+}
+
+.evidence-selector-item > a {
+  width: 52px;
+  height: 44px;
+  display: block;
+  overflow: hidden;
+  background: var(--color-surface-muted);
+  border-radius: 5px;
+}
+
+.evidence-selector-item img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.evidence-selector-item > div {
+  min-width: 0;
   display: grid;
-  gap: 14px;
-  padding: 18px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  gap: 2px;
 }
 
-.image-analysis-history {
-  margin-top: 1rem;
-  border-top: 1px solid var(--border);
-  padding-top: 0.75rem;
+.evidence-selector-item > div span {
+  color: var(--color-text-muted);
+  font-size: 12px;
 }
 
-.image-analysis-history summary {
-  cursor: pointer;
-  font-weight: 700;
+.evidence-selector-item > svg {
+  color: var(--color-primary);
 }
 
-.audit-history-item {
-  margin-top: 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: 0.75rem;
-  padding: 0.85rem;
-}
-
-.image-analysis-panel {
-  background: var(--color-surface-raised);
-  border-left: 4px solid var(--color-primary);
+.evidence-selector-item .ui-button {
+  min-height: 36px;
+  padding-inline: 10px;
 }
 
 .image-analysis-result {
+  display: grid;
+  gap: 16px;
+}
+
+.image-analysis-result .preplant-result-list,
+.source-reference-list {
+  min-width: 0;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.image-analysis-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.image-analysis-summary > div {
+  min-width: 0;
+  padding: 12px;
   background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.image-analysis-summary dt {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.image-analysis-summary dd {
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+
+.image-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-border);
 }
 
 .officer-review-editor {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
   background: var(--tone-warn-bg);
-  border-color: var(--tone-warn-border);
+  border: 1px solid var(--tone-warn-border);
+  border-radius: var(--radius-sm);
 }
 
 .review-checkbox {
@@ -333,6 +649,33 @@
 
 .source-reference-list p {
   margin: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+
+.source-reference-list a {
+  color: var(--color-primary);
+  font-weight: 800;
+}
+
+.image-analysis-history {
+  padding-top: 14px;
+  border-top: 1px solid var(--color-border);
+}
+
+.image-analysis-history summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.audit-history-item {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 14px;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
 }
 
 .preplant-result {
@@ -369,6 +712,21 @@
   padding-left: 20px;
 }
 
+@media (max-width: 1080px) {
+  .image-analysis-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .image-analysis-evidence {
+    border-right: 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .representative-image-preview > a {
+    max-height: 440px;
+  }
+}
+
 @media (max-width: 760px) {
   .preplant-header,
   .preplant-actions,
@@ -386,7 +744,62 @@
     grid-template-columns: 1fr;
   }
 
+  .assessment-progress {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .assessment-section-trigger {
+    grid-template-columns: minmax(0, 1fr) 22px;
+  }
+
+  .assessment-section-state {
+    grid-column: 1 / -1;
+    padding-left: 46px;
+  }
+
+  .assessment-section-chevron {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .assessment-section-content {
+    padding: 16px;
+  }
+
+  .image-analysis-panel,
+  .image-analysis-evidence,
+  .image-analysis-findings {
+    padding: 16px;
+  }
+
+  .image-workspace-section-heading,
+  .representative-image-preview figcaption {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .image-analysis-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .image-review-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .image-review-actions .ui-button {
+    width: 100%;
+  }
+
   .preplant-actions .ui-button {
     width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assessment-progress-track > span,
+  .assessment-section-chevron {
+    transition: none;
   }
 }

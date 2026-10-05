@@ -130,7 +130,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             entity.Property(history => history.FromStatus).HasConversion<string>().HasMaxLength(40);
             entity.Property(history => history.ToStatus).HasConversion<string>().HasMaxLength(40);
+            entity.Property(history => history.Action).HasConversion<string>().HasMaxLength(40);
+            entity.Property(history => history.ChangedByRole).HasConversion<string>().HasMaxLength(40);
             entity.Property(history => history.Note).HasMaxLength(500);
+            entity.Property(history => history.Reason).HasMaxLength(500);
             entity.HasOne(history => history.CropPlanRequest).WithMany(request => request.History).HasForeignKey(history => history.CropPlanRequestId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(history => history.ChangedByUser).WithMany().HasForeignKey(history => history.ChangedByUserId).OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(history => history.CropPlanRequestId);

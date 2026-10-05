@@ -224,6 +224,14 @@ class ApiClient {
     return CropPlanRecord.fromJson(response);
   }
 
+  Future<CropPlanRecord> cancelCropPlanRequest(String cropPlanRequestId) async {
+    final response = await _post(
+      '/crop-planning/requests/$cropPlanRequestId/cancel',
+      <String, dynamic>{},
+    );
+    return CropPlanRecord.fromJson(response);
+  }
+
   Future<CropPlanningWorkflowStatus> cropPlanningWorkflowStatus(
     String cropPlanRequestId,
   ) async {

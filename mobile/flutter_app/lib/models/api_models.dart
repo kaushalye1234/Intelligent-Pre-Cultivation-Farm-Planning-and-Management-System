@@ -370,6 +370,8 @@ class CropPlanRecord {
     createdAt: json['createdAt'] as String? ?? '',
   );
 
+  bool get canCancel => status != 4 && status != 5 && status != 6;
+
   bool get isLifecycleActive => const {
     'pending',
     'ai_planning',

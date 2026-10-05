@@ -214,7 +214,7 @@ public sealed class InternalAgentToolsController(
                     .Where(item => item.CropPlanRequestId == cropPlanRequestId && !item.IsDeleted)
                     .OrderByDescending(item => item.CreatedAt)
                     .Take(5)
-                    .Select(item => new CropPlanHistoryResponse(item.Id, item.CropPlanRequestId, item.FromStatus, item.ToStatus, item.Note, item.ChangedByUserId, item.CreatedAt))
+                    .Select(item => new CropPlanHistoryResponse(item.Id, item.CropPlanRequestId, item.FromStatus, item.ToStatus, item.Note, item.ChangedByUserId, item.CreatedAt, item.Action, item.ChangedByRole, item.Reason))
                     .ToListAsync(cancellationToken);
             },
             cancellationToken);

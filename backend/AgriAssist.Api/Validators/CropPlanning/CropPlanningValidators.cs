@@ -173,6 +173,16 @@ public sealed class CropPlanRequestUpdateValidator : IRequestValidator<CropPlanR
     }
 }
 
+public sealed class CropPlanCancellationRequestValidator : IRequestValidator<CropPlanCancellationRequest>
+{
+    public IReadOnlyList<string> Validate(CropPlanCancellationRequest request)
+    {
+        var errors = new List<string>();
+        if (request.Reason?.Length > 500) errors.Add("Cancellation reason must be 500 characters or fewer.");
+        return errors;
+    }
+}
+
 public sealed class PrePlantingAssessmentRequestValidator : IRequestValidator<PrePlantingAssessmentRequest>
 {
     public IReadOnlyList<string> Validate(PrePlantingAssessmentRequest request)

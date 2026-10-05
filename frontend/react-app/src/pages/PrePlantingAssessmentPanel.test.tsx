@@ -1,10 +1,11 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from '../api/client'
 import { Roles } from '../routing'
 import type {
   FieldAnalysisResult,
+  InspectionImageAnalysisState,
   PrePlantingAssessment,
   PrePlantingContext,
   WorkflowReview,
@@ -102,6 +103,41 @@ const submittedAssessment: PrePlantingAssessment = {
   images: [{ id: 'image-1', url: 'https://example.test/field.jpg', contentType: 'image/jpeg', sizeBytes: 2048, isRepresentativeForAi: false }],
 }
 
+const assessmentWithEvidence: PrePlantingAssessment = {
+  ...savedAssessment,
+  images: [
+    { id: 'image-1', url: '/api/inspections/inspection-1/images/image-1/content', contentType: 'image/jpeg', sizeBytes: 4096, isRepresentativeForAi: true },
+    { id: 'image-2', url: '/api/inspections/inspection-1/images/image-2/content', contentType: 'image/jpeg', sizeBytes: 2048, isRepresentativeForAi: false },
+  ],
+}
+
+const succeededImageAnalysis: InspectionImageAnalysisState = {
+  analysisId: 'analysis-1',
+  status: 'Succeeded',
+  isCurrent: true,
+  isReviewable: true,
+  isFrozen: false,
+  result: {
+    contractVersion: 1,
+    visibleFindings: ['Brown lesions are visible on two leaves.'],
+    possibleIssueCategory: 'Leaf disease concern',
+    possibleIssues: ['Possible bacterial leaf spot'],
+    severity: 'Moderate',
+    uncertainty: 'Image-only review cannot confirm the cause.',
+    validatedSourceReferences: [{
+      sourcePolicyId: 'source-1',
+      organization: 'Department of Agriculture',
+      title: 'Leaf disease field guide',
+      url: 'https://example.test/leaf-guide',
+      sourceStage: 'Stage1',
+    }],
+    recommendedNonChemicalActions: ['InspectNearbyPlants', 'RemoveAffectedResidue'],
+    requiresFurtherAssessment: true,
+    groundingStatus: 'Grounded',
+  },
+  effectiveReview: null,
+}
+
 const fieldResult: FieldAnalysisResult = {
   workflowId: 'workflow-1',
   status: 'Analyzed',
@@ -120,13 +156,36 @@ const fieldResult: FieldAnalysisResult = {
   recommendedPrePlantingActions: ['Recheck the field before sowing.'],
 }
 
-afterEach(() => vi.restoreAllMocks())
+const originalCreateObjectUrl = URL.createObjectURL
+const originalRevokeObjectUrl = URL.revokeObjectURL
+
+beforeEach(() => {
+  Object.defineProperty(URL, 'createObjectURL', { configurable: true, writable: true, value: vi.fn(() => 'blob:inspection-evidence') })
+  Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, writable: true, value: vi.fn() })
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
+  Object.defineProperty(URL, 'createObjectURL', { configurable: true, writable: true, value: originalCreateObjectUrl })
+  Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, writable: true, value: originalRevokeObjectUrl })
+})
 
 function mockLoads(assessment: PrePlantingAssessment | null, result?: FieldAnalysisResult) {
   return vi.spyOn(api, 'get').mockImplementation(async (url) => {
     if (url === '/crop-plans/plan-1/pre-planting-context') return { data: context } as never
     if (url === '/crop-plans/plan-1/pre-planting-assessment') return { data: assessment } as never
     if (url === '/crop-plans/plan-1/field-analysis-result' && result) return { data: result } as never
+    throw new Error('Unexpected GET ' + url)
+  })
+}
+
+function mockImageAnalysisLoads() {
+  return vi.spyOn(api, 'get').mockImplementation(async (url) => {
+    if (url === '/crop-plans/plan-1/pre-planting-context') return { data: context } as never
+    if (url === '/crop-plans/plan-1/pre-planting-assessment') return { data: assessmentWithEvidence } as never
+    if (url === '/crop-plans/plan-1/pre-planting-assessment/image-analysis') return { data: succeededImageAnalysis } as never
+    if (url === '/crop-plans/plan-1/pre-planting-assessment/image-analysis/history') return { data: [] } as never
+    if (url.startsWith('/inspections/inspection-1/images/')) return { data: new Blob(['evidence'], { type: 'image/jpeg' }) } as never
     throw new Error('Unexpected GET ' + url)
   })
 }
@@ -139,6 +198,70 @@ function axiosError(status: number, message: string) {
 }
 
 describe('PrePlantingAssessmentPanel', () => {
+  it('opens the first incomplete assessment section and reports section progress', async () => {
+    mockLoads(null)
+
+    render(<PrePlantingAssessmentPanel review={review} role={Roles.FieldOfficer} onWorkflowChanged={vi.fn()} />)
+
+    const soil = await screen.findByRole('button', { name: /soil profile.*needs attention/i })
+    expect(soil).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('button', { name: /water and irrigation.*needs attention/i })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByRole('button', { name: /drainage and field readiness.*needs attention/i })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByRole('button', { name: /structured risks.*needs attention/i })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByText('0 of 4 sections complete')).toBeInTheDocument()
+  })
+
+  it('shows completed sections compactly and lets the officer reopen them', async () => {
+    mockLoads(savedAssessment)
+    const user = userEvent.setup()
+
+    render(<PrePlantingAssessmentPanel review={review} role={Roles.FieldOfficer} onWorkflowChanged={vi.fn()} />)
+
+    const soil = await screen.findByRole('button', { name: /soil profile.*complete/i })
+    expect(screen.getByText('4 of 4 sections complete')).toBeInTheDocument()
+    expect(soil).toHaveAttribute('aria-expanded', 'false')
+
+    await user.click(soil)
+
+    expect(soil).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByLabelText(/^soil type/i)).toBeVisible()
+  })
+
+  it('reopens structured risks when custom submission validation fails', async () => {
+    mockLoads(savedAssessment)
+    const user = userEvent.setup()
+
+    render(<PrePlantingAssessmentPanel review={review} role={Roles.FieldOfficer} onWorkflowChanged={vi.fn()} />)
+
+    const risks = await screen.findByRole('button', { name: /structured risks.*complete/i })
+    await user.click(risks)
+    await user.selectOptions(screen.getByLabelText(/risk assessment/i), 'unassessed')
+    await user.click(risks)
+    expect(risks).toHaveAttribute('aria-expanded', 'false')
+
+    await user.click(screen.getByRole('button', { name: /submit assessment/i }))
+
+    expect(screen.getByText(/assess structured risks before submitting/i)).toBeInTheDocument()
+    expect(risks).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('reopens the section containing the first invalid native control', async () => {
+    mockLoads({ ...savedAssessment, waterAvailability: null })
+    const user = userEvent.setup()
+
+    render(<PrePlantingAssessmentPanel review={review} role={Roles.FieldOfficer} onWorkflowChanged={vi.fn()} />)
+
+    const water = await screen.findByRole('button', { name: /water and irrigation.*needs attention/i })
+    expect(water).toHaveAttribute('aria-expanded', 'true')
+    await user.click(water)
+    expect(water).toHaveAttribute('aria-expanded', 'false')
+
+    await user.click(screen.getByRole('button', { name: /submit assessment/i }))
+
+    await waitFor(() => expect(water).toHaveAttribute('aria-expanded', 'true'))
+    expect(screen.getByLabelText(/^water availability/i)).toBeVisible()
+  })
+
   it('renders a valid linked assessment payload', async () => {
     mockLoads(savedAssessment)
 
@@ -185,6 +308,89 @@ describe('PrePlantingAssessmentPanel', () => {
     expect(post).toHaveBeenCalledWith(
       '/crop-plans/plan-1/pre-planting-assessment/note-suggestions',
       expect.objectContaining({ soilType: 'Loamy', identifiedRisks: [] }),
+    )
+  })
+
+  it('presents representative evidence and AI findings in one inline review workspace', async () => {
+    const get = mockImageAnalysisLoads()
+    const user = userEvent.setup()
+
+    render(<PrePlantingAssessmentPanel review={review} role={Roles.FieldOfficer} onWorkflowChanged={vi.fn()} />)
+
+    const preview = await screen.findByRole('img', { name: /representative evidence/i })
+    expect(preview).toHaveAttribute('src', 'blob:inspection-evidence')
+    expect(preview.closest('a')).toHaveAttribute('href', 'blob:inspection-evidence')
+    expect(get).toHaveBeenCalledWith(
+      '/inspections/inspection-1/images/image-1/content',
+      expect.objectContaining({ responseType: 'blob', signal: expect.any(AbortSignal) }),
+    )
+    expect(screen.getByRole('heading', { name: 'AI findings' })).toBeInTheDocument()
+    expect(screen.getByText('Brown lesions are visible on two leaves.')).toBeInTheDocument()
+    expect(screen.getByText('Possible bacterial leaf spot')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Accept result' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Edit findings' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reject result' })).toBeInTheDocument()
+
+    const history = screen.getByText('Staff audit history').closest('details')
+    expect(history).not.toHaveAttribute('open')
+    expect(get).not.toHaveBeenCalledWith('/crop-plans/plan-1/pre-planting-assessment/image-analysis/history')
+    await user.click(screen.getByText('Staff audit history'))
+    await waitFor(() => expect(get).toHaveBeenCalledWith('/crop-plans/plan-1/pre-planting-assessment/image-analysis/history'))
+  })
+
+  it('keeps representative image selection in the left analysis context', async () => {
+    mockImageAnalysisLoads()
+    const put = vi.spyOn(api, 'put').mockResolvedValue({ data: {} } as never)
+    const user = userEvent.setup()
+
+    render(<PrePlantingAssessmentPanel review={review} role={Roles.FieldOfficer} onWorkflowChanged={vi.fn()} />)
+
+    await user.click(await screen.findByRole('button', { name: 'Select evidence 2 for AI' }))
+
+    expect(put).toHaveBeenCalledWith('/crop-plans/plan-1/pre-planting-assessment/representative-image/image-2')
+  })
+
+  it('reveals structured editing only when requested and saves the existing edited projection', async () => {
+    mockImageAnalysisLoads()
+    const post = vi.spyOn(api, 'post').mockResolvedValue({ data: {} } as never)
+    const user = userEvent.setup()
+
+    render(<PrePlantingAssessmentPanel review={review} role={Roles.FieldOfficer} onWorkflowChanged={vi.fn()} />)
+
+    expect(screen.queryByLabelText('Visible findings (one per line)')).not.toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: 'Edit findings' }))
+    const findings = screen.getByLabelText('Visible findings (one per line)')
+    await user.clear(findings)
+    await user.type(findings, 'Officer confirmed brown leaf lesions.')
+    await user.click(screen.getByRole('button', { name: 'Save Officer Edited review' }))
+
+    expect(post).toHaveBeenCalledWith(
+      '/crop-plans/plan-1/pre-planting-assessment/image-analysis/review',
+      expect.objectContaining({
+        disposition: 'Edited',
+        editedProjection: expect.objectContaining({
+          visibleFindings: ['Officer confirmed brown leaf lesions.'],
+          possibleConcerns: ['Possible bacterial leaf spot'],
+        }),
+      }),
+    )
+  })
+
+  it.each([
+    ['Accept result', 'Accepted'],
+    ['Reject result', 'Rejected'],
+  ])('records %s with the existing review endpoint', async (buttonName, disposition) => {
+    mockImageAnalysisLoads()
+    const post = vi.spyOn(api, 'post').mockResolvedValue({ data: {} } as never)
+    const user = userEvent.setup()
+
+    render(<PrePlantingAssessmentPanel review={review} role={Roles.FieldOfficer} onWorkflowChanged={vi.fn()} />)
+
+    await user.click(await screen.findByRole('button', { name: buttonName }))
+
+    expect(post).toHaveBeenCalledWith(
+      '/crop-plans/plan-1/pre-planting-assessment/image-analysis/review',
+      { disposition, editedProjection: null, staffNote: null },
     )
   })
 

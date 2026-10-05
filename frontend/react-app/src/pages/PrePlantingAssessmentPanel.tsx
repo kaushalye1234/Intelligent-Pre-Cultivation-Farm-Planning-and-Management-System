@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import axios from 'axios'
-import { BrainCircuit, Camera, CheckCircle2, Image as ImageIcon, Save, Send, Sparkles, Upload, X } from 'lucide-react'
+import { BrainCircuit, Camera, CheckCircle2, ChevronDown, Image as ImageIcon, Save, Send, Sparkles, Upload, X } from 'lucide-react'
 import { api, getErrorMessage } from '../api/client'
 import { SelectInput, TextAreaInput, TextInput } from '../components/FormControls'
 import { ErrorState, LoadingState } from '../components/States'
@@ -17,6 +17,7 @@ import type {
   InspectionNoteAssistanceResponse,
   InspectionNoteSuggestions,
   PrePlantingAssessment,
+  PrePlantingAssessmentImage,
   PrePlantingAssessmentInput,
   PrePlantingContext,
   PrePlantingDrainageCondition,
@@ -35,9 +36,12 @@ import type {
 import './PrePlantingAssessmentPanel.css'
 
 type RiskAssessmentState = 'unassessed' | 'none' | 'selected'
+type AssessmentSectionKey = 'soil' | 'water' | 'readiness' | 'risks'
 type ActionState = 'save' | 'upload' | 'submit' | 'run' | 'notes' | 'select-image' | 'analyze-image' | 'review-image' | null
 type NoteFieldKey = keyof InspectionNoteSuggestions
 type NoteDecision = 'Accepted' | 'Officer Edited' | 'Rejected'
+
+const noAssessmentImages: PrePlantingAssessmentImage[] = []
 
 const noteFieldToFormField: Record<NoteFieldKey, keyof PrePlantingAssessmentInput> = {
   soilNotes: 'soilNotes',
@@ -169,6 +173,7 @@ export function PrePlantingAssessmentPanel({
   const [imageEdit, setImageEdit] = useState<InspectionImageAnalysisResult | null>(null)
   const [imageHistory, setImageHistory] = useState<InspectionImageAnalysisAuditItem[] | null>(null)
   const [files, setFiles] = useState<File[]>([])
+  const [openSections, setOpenSections] = useState<Set<AssessmentSectionKey>>(() => new Set(['soil']))
   const [isLoading, setIsLoading] = useState(true)
   const [assessmentLoadFailed, setAssessmentLoadFailed] = useState(false)
   const [action, setAction] = useState<ActionState>(null)
@@ -223,9 +228,12 @@ export function PrePlantingAssessmentPanel({
         setAssessment(nextAssessment)
         if (nextAssessment) {
           applySavedAssessment(nextAssessment, setForm, setRiskState, setSelectedRisks)
+          const nextRiskState = riskStateFromAssessment(nextAssessment)
+          setOpenSections(initialOpenSections(nextAssessment, nextRiskState, nextAssessment.identifiedRisks ?? []))
           await loadImageAnalysis()
         } else {
           resetAssessmentForm(setForm, setRiskState, setSelectedRisks)
+          setOpenSections(new Set(['soil']))
           setImageAnalysis(null)
         }
       } catch (err) {
@@ -236,6 +244,7 @@ export function PrePlantingAssessmentPanel({
     } else if (isNotFound(assessmentOutcome.reason)) {
       setAssessment(null)
       resetAssessmentForm(setForm, setRiskState, setSelectedRisks)
+      setOpenSections(new Set(['soil']))
     } else {
       setAssessment(null)
       setAssessmentLoadFailed(true)
@@ -276,6 +285,8 @@ export function PrePlantingAssessmentPanel({
   const busy = action !== null
   const submissionAiWarning = imageAnalysis?.status === 'Running'
     || (imageAnalysis?.status === 'Succeeded' && imageAnalysis.effectiveReview == null)
+  const sectionCompletion = assessmentSectionCompletion(form, riskState, selectedRisks)
+  const completedSectionCount = Object.values(sectionCompletion).filter(Boolean).length
 
   function updateField<K extends keyof PrePlantingAssessmentInput>(name: K, value: PrePlantingAssessmentInput[K]) {
     setForm((current) => ({ ...current, [name]: value }))
@@ -300,6 +311,24 @@ export function PrePlantingAssessmentPanel({
     }
   }
 
+  function toggleAssessmentSection(section: AssessmentSectionKey) {
+    setOpenSections((current) => {
+      const next = new Set(current)
+      if (next.has(section)) next.delete(section)
+      else next.add(section)
+      return next
+    })
+  }
+
+  function revealAssessmentSection(section: AssessmentSectionKey, focusTrigger = true) {
+    setOpenSections((current) => new Set([...current, section]))
+    if (focusTrigger) {
+      window.requestAnimationFrame(() => {
+        document.getElementById(`assessment-trigger-${section}`)?.focus()
+      })
+    }
+  }
+
   async function generateNoteSuggestions() {
     setAction('notes')
     setError('')
@@ -312,6 +341,10 @@ export function PrePlantingAssessmentPanel({
       )
       setNoteAssistance(response.data)
       setNoteDecisions({})
+      const suggestedSections = sectionsWithNoteSuggestions(response.data.suggestions)
+      if (suggestedSections.length > 0) {
+        setOpenSections((current) => new Set([...current, ...suggestedSections]))
+      }
       if (response.data.status !== 'Available') {
         setWarning('AI note assistance is currently unavailable. You can continue entering the inspection manually.')
       }
@@ -398,8 +431,8 @@ export function PrePlantingAssessmentPanel({
       await api.post(`/crop-plans/${requestId}/pre-planting-assessment/image-analysis/review`, {
         disposition,
         editedProjection: disposition === 'Edited' ? {
-          visibleFindings: imageEdit!.visibleFindings,
-          possibleConcerns: imageEdit!.possibleIssues,
+          visibleFindings: normalizedLines(imageEdit!.visibleFindings),
+          possibleConcerns: normalizedLines(imageEdit!.possibleIssues),
           severity: imageEdit!.severity,
           uncertainty: imageEdit!.uncertainty,
           actions: imageEdit!.recommendedNonChemicalActions,
@@ -478,13 +511,24 @@ export function PrePlantingAssessmentPanel({
       setError('This workflow is not linked to a crop plan request.')
       return
     }
-    if (!formRef.current?.reportValidity()) return
+    const invalidControl = formRef.current?.querySelector<HTMLElement>('input:invalid, select:invalid, textarea:invalid')
+    if (invalidControl) {
+      const section = invalidControl.closest<HTMLElement>('[data-assessment-section]')?.dataset.assessmentSection as AssessmentSectionKey | undefined
+      if (section) revealAssessmentSection(section, false)
+      window.requestAnimationFrame(() => {
+        invalidControl.focus()
+        formRef.current?.reportValidity()
+      })
+      return
+    }
     if (riskState === 'unassessed') {
       setError('Assess structured risks before submitting, even when none are identified.')
+      revealAssessmentSection('risks')
       return
     }
     if (riskState === 'selected' && selectedRisks.length === 0) {
       setError('Select at least one structured risk or choose None identified.')
+      revealAssessmentSection('risks')
       return
     }
 
@@ -512,7 +556,10 @@ export function PrePlantingAssessmentPanel({
         setWarning('Optional evidence upload failed: ' + optionalEvidenceError + ' The assessment was submitted without that evidence.')
       }
     } catch (err) {
-      setError(getErrorMessage(err))
+      const message = getErrorMessage(err)
+      setError(message)
+      const section = sectionFromValidationMessage(message)
+      if (section) revealAssessmentSection(section)
     } finally {
       setAction(null)
     }
@@ -568,14 +615,24 @@ export function PrePlantingAssessmentPanel({
           </section>
           {(noteAssistance?.contradictionWarnings ?? []).map((item) => <Notice key={`contradiction-${item}`} tone="warning">Contradiction to verify: {item}</Notice>)}
           {(noteAssistance?.missingDataWarnings ?? []).map((item) => <Notice key={`missing-${item}`} tone="info">Missing data: {item}</Notice>)}
-          <AssessmentSection title="Soil profile" description="Record present soil properties, not crop symptoms.">
+          <section className="assessment-progress" aria-label="Assessment completion">
+            <div>
+              <strong>{completedSectionCount} of 4 sections complete</strong>
+              <span>Complete each observation group before submitting.</span>
+            </div>
+            <div className="assessment-progress-track" aria-hidden="true">
+              <span style={{ width: `${completedSectionCount * 25}%` }} />
+            </div>
+          </section>
+          <div className="assessment-accordion">
+          <AssessmentSection sectionKey="soil" title="Soil profile" description="Record present soil properties, not crop symptoms." open={openSections.has('soil')} complete={sectionCompletion.soil} onToggle={() => toggleAssessmentSection('soil')}>
             <SelectInput label="Soil type" value={form.soilType ?? ''} options={soilTypeOptions} required disabled={busy} onChange={(value) => updateField('soilType', (value || null) as PrePlantingSoilType | null)} />
             <SelectInput label="Soil condition" value={form.soilCondition ?? ''} options={soilConditionOptions} required disabled={busy} onChange={(value) => updateField('soilCondition', (value || null) as PrePlantingSoilCondition | null)} />
             <SelectInput label="Soil moisture" value={form.soilMoisture ?? ''} options={soilMoistureOptions} required disabled={busy} onChange={(value) => updateField('soilMoisture', (value || null) as PrePlantingSoilMoisture | null)} />
             <SuggestedNoteField field="soilNotes" label="Soil notes" value={form.soilNotes ?? ''} suggestion={noteAssistance?.suggestions?.soilNotes} decision={noteDecisions.soilNotes} required={form.soilType === 'Other' || form.soilCondition === 'Other'} disabled={busy} onChange={(value) => updateText('soilNotes', value)} onAccept={() => applyNoteSuggestion('soilNotes', 'Accepted')} onEdit={() => applyNoteSuggestion('soilNotes', 'Officer Edited')} onReject={() => rejectNoteSuggestion('soilNotes')} />
           </AssessmentSection>
 
-          <AssessmentSection title="Water and irrigation" description="These are Field Officer observations and become read-only context for Member 3.">
+          <AssessmentSection sectionKey="water" title="Water and irrigation" description="These are Field Officer observations and become read-only context for Member 3." open={openSections.has('water')} complete={sectionCompletion.water} onToggle={() => toggleAssessmentSection('water')}>
             <SelectInput label="Water availability" value={form.waterAvailability ?? ''} options={waterAvailabilityOptions} required disabled={busy} onChange={(value) => updateField('waterAvailability', (value || null) as PrePlantingWaterAvailability | null)} />
             <TextInput label="Main water source" value={form.mainWaterSource ?? ''} required={requiresWaterSource(form.waterAvailability)} disabled={busy} onChange={(value) => updateText('mainWaterSource', value)} />
             <SelectInput label="Irrigation availability" value={form.irrigationAvailability ?? ''} options={irrigationOptions} required disabled={busy} onChange={(value) => updateField('irrigationAvailability', (value || null) as PrePlantingIrrigationAvailability | null)} />
@@ -583,7 +640,7 @@ export function PrePlantingAssessmentPanel({
             <SuggestedNoteField field="waterConcerns" label="Water concerns" value={form.waterConcerns ?? ''} suggestion={noteAssistance?.suggestions?.waterConcerns} decision={noteDecisions.waterConcerns} required={requiresWaterConcern(form.waterAvailability)} disabled={busy} onChange={(value) => updateText('waterConcerns', value)} onAccept={() => applyNoteSuggestion('waterConcerns', 'Accepted')} onEdit={() => applyNoteSuggestion('waterConcerns', 'Officer Edited')} onReject={() => rejectNoteSuggestion('waterConcerns')} />
           </AssessmentSection>
 
-          <AssessmentSection title="Drainage and field readiness" description="Keep drainage quality and waterlogging risk as separate observations.">
+          <AssessmentSection sectionKey="readiness" title="Drainage and field readiness" description="Keep drainage quality and waterlogging risk as separate observations." open={openSections.has('readiness')} complete={sectionCompletion.readiness} onToggle={() => toggleAssessmentSection('readiness')}>
             <SelectInput label="Drainage condition" value={form.drainageCondition ?? ''} options={drainageOptions} required disabled={busy} onChange={(value) => updateField('drainageCondition', (value || null) as PrePlantingDrainageCondition | null)} />
             <SelectInput label="Waterlogging risk" value={form.waterloggingRisk ?? ''} options={waterloggingOptions} required disabled={busy} onChange={(value) => updateField('waterloggingRisk', (value || null) as PrePlantingWaterloggingRisk | null)} />
             <SuggestedNoteField field="drainageNotes" label="Drainage notes" value={form.drainageNotes ?? ''} suggestion={noteAssistance?.suggestions?.drainageNotes} decision={noteDecisions.drainageNotes} required={form.drainageCondition === 'Poor' || form.waterloggingRisk === 'Moderate' || form.waterloggingRisk === 'High'} disabled={busy} onChange={(value) => updateText('drainageNotes', value)} onAccept={() => applyNoteSuggestion('drainageNotes', 'Accepted')} onEdit={() => applyNoteSuggestion('drainageNotes', 'Officer Edited')} onReject={() => rejectNoteSuggestion('drainageNotes')} />
@@ -592,7 +649,7 @@ export function PrePlantingAssessmentPanel({
             <SelectInput label="Planting readiness" value={form.plantingReadiness ?? ''} options={readinessOptions} required disabled={busy} onChange={(value) => updateField('plantingReadiness', (value || null) as PrePlantingPlantingReadiness | null)} />
           </AssessmentSection>
 
-          <AssessmentSection title="Structured risks" description="Not assessed is different from an explicit finding of no risk.">
+          <AssessmentSection sectionKey="risks" title="Structured risks" description="Not assessed is different from an explicit finding of no risk." open={openSections.has('risks')} complete={sectionCompletion.risks} onToggle={() => toggleAssessmentSection('risks')}>
             <SelectInput
               label="Risk assessment"
               value={riskState}
@@ -629,6 +686,7 @@ export function PrePlantingAssessmentPanel({
             <SuggestedNoteField field="riskNotes" label="Risk notes" value={form.riskNotes ?? ''} suggestion={noteAssistance?.suggestions?.riskNotes} decision={noteDecisions.riskNotes} required={selectedRisks.includes('Other')} disabled={busy} onChange={(value) => updateText('riskNotes', value)} onAccept={() => applyNoteSuggestion('riskNotes', 'Accepted')} onEdit={() => applyNoteSuggestion('riskNotes', 'Officer Edited')} onReject={() => rejectNoteSuggestion('riskNotes')} />
             <SuggestedNoteField field="officerNotes" label="Officer notes" value={form.officerNotes ?? ''} suggestion={noteAssistance?.suggestions?.officerNotes} decision={noteDecisions.officerNotes} disabled={busy} onChange={(value) => updateText('officerNotes', value)} onAccept={() => applyNoteSuggestion('officerNotes', 'Accepted')} onEdit={() => applyNoteSuggestion('officerNotes', 'Officer Edited')} onReject={() => rejectNoteSuggestion('officerNotes')} />
           </AssessmentSection>
+          </div>
 
           <label className="preplant-evidence">
             <span><Camera size={17} aria-hidden="true" /> Photos / evidence</span>
@@ -654,34 +712,18 @@ export function PrePlantingAssessmentPanel({
         <Notice tone="info">Waiting for the owning Field Officer to save the linked pre-planting assessment.</Notice>
       )}
 
-      {assessment?.images?.length ? (
-        <div className="preplant-images" aria-label="Assessment evidence">
-          {(assessment.images ?? []).map((image, index) => <article key={image.id} className={image.isRepresentativeForAi ? 'preplant-image-card is-representative' : 'preplant-image-card'}>
-            <div className="row-actions">
-              <ImageIcon size={17} aria-hidden="true" />
-              <strong>Evidence {index + 1}</strong>
-              {image.isRepresentativeForAi ? <StatusPill label="Representative" tone="good" /> : null}
-            </div>
-            <span>{image.contentType} · {Math.ceil(image.sizeBytes / 1024)} KB</span>
-            <div className="row-actions">
-              <a href={image.url} target="_blank" rel="noreferrer">View evidence</a>
-              {canEdit && !image.isRepresentativeForAi ? <Button type="button" variant="ghost" disabled={busy} onClick={() => void selectRepresentativeImage(image.id)}>Select for AI</Button> : null}
-            </div>
-          </article>)}
-        </div>
-      ) : null}
-
       {assessment ? <ImageAnalysisPanel
         state={imageAnalysis}
         edit={imageEdit}
         history={imageHistory}
+        images={assessment.images ?? noAssessmentImages}
         canEdit={canEdit}
         busy={busy}
-        hasRepresentative={assessment.images.some((image) => image.isRepresentativeForAi)}
         onAnalyze={() => void analyzeRepresentativeImage()}
         onAccept={() => void reviewImageAnalysis('Accepted')}
         onEdit={() => void reviewImageAnalysis('Edited')}
         onReject={() => void reviewImageAnalysis('Rejected')}
+        onSelectRepresentative={(imageId) => void selectRepresentativeImage(imageId)}
         onLoadHistory={() => void loadImageAnalysisHistory()}
         onEditChange={setImageEdit}
       /> : null}
@@ -767,31 +809,52 @@ function ImageAnalysisPanel({
   state,
   edit,
   history,
+  images,
   canEdit,
   busy,
-  hasRepresentative,
   onAnalyze,
   onAccept,
   onEdit,
   onReject,
+  onSelectRepresentative,
   onLoadHistory,
   onEditChange,
 }: {
   state: InspectionImageAnalysisState | null
   edit: InspectionImageAnalysisResult | null
   history: InspectionImageAnalysisAuditItem[] | null
+  images: PrePlantingAssessmentImage[]
   canEdit: boolean
   busy: boolean
-  hasRepresentative: boolean
   onAnalyze: () => void
   onAccept: () => void
   onEdit: () => void
   onReject: () => void
+  onSelectRepresentative: (imageId: string) => void
   onLoadHistory: () => void
   onEditChange: (value: InspectionImageAnalysisResult) => void
 }) {
+  const [editing, setEditing] = useState(false)
   const result = state?.result
+  const representative = images.find((image) => image.isRepresentativeForAi) ?? null
+  const evidenceSources = useAuthenticatedEvidenceSources(images)
   const failed = state && ['Failed', 'TimedOut', 'Interrupted', 'Stale', 'Unavailable'].includes(state.status)
+
+  function beginEditing() {
+    if (!result) return
+    onEditChange(result)
+    setEditing(true)
+  }
+
+  function cancelEditing() {
+    if (result) onEditChange(result)
+    setEditing(false)
+  }
+
+  function saveEditedReview() {
+    onEdit()
+    setEditing(false)
+  }
   return (
     <section className="image-analysis-panel" aria-labelledby="image-analysis-title">
       <div className="image-analysis-heading">
@@ -802,52 +865,127 @@ function ImageAnalysisPanel({
         </div>
         <StatusPill label={state?.status ?? 'Not analyzed'} tone={state?.status === 'Succeeded' ? 'good' : failed ? 'bad' : 'info'} />
       </div>
-      {!hasRepresentative ? <Notice tone="info">Select one uploaded crop or leaf image as representative before requesting analysis.</Notice> : null}
+      {!representative ? <Notice tone="info">Select one uploaded crop or leaf image as representative before requesting analysis.</Notice> : null}
       {state?.status === 'Running' ? <Notice tone="info">Image analysis is running. You may keep editing or submit the inspection without waiting.</Notice> : null}
       {failed ? <Notice tone="warning">{state.message ?? 'AI image analysis is unavailable. Continue the inspection manually or retry explicitly while the draft is open.'}</Notice> : null}
-      {state?.isFrozen ? <Notice tone="info">This submitted inspection’s reviewed image evidence is frozen and read-only.</Notice> : null}
-      {canEdit && hasRepresentative && state?.status !== 'Running' ? (
-        <Button type="button" variant="secondary" icon={<Sparkles size={16} aria-hidden="true" />} disabled={busy} onClick={onAnalyze}>
-          {busy ? 'Working...' : result ? 'Analyze Image Again' : 'Analyze Image'}
-        </Button>
-      ) : null}
-      {result ? <div className="image-analysis-result">
-        <div className="row-actions"><strong>Original AI result</strong><StatusPill label="Read-only" tone="info" /></div>
-        <ResultList title="Visible findings" items={result.visibleFindings} />
-        <AssessmentItem label="Possible issue category" value={result.possibleIssueCategory} />
-        <ResultList title="Possible concerns" items={result.possibleIssues} />
-        <AssessmentItem label="Severity" value={result.severity} />
-        <AssessmentItem label="Uncertainty" value={result.uncertainty} />
-        <ResultList title="Suggested non-chemical actions" items={result.recommendedNonChemicalActions.map(humanize)} />
-        <AssessmentItem label="Further assessment" value={result.requiresFurtherAssessment ? 'Required' : 'Monitor as reviewed'} />
-        {result.validatedSourceReferences.length ? <div className="source-reference-list">
-          <h4>Trusted supporting sources</h4>
-          {result.validatedSourceReferences.map((source) => {
-            const url = safeExternalUrl(source.url)
-            return <p key={`${source.sourcePolicyId}-${source.url}`}>{source.organization}: {url ? <a href={url} target="_blank" rel="noreferrer">{source.title}</a> : source.title} ({source.sourceStage})</p>
-          })}
-        </div> : <Notice tone="warning">Trusted external grounding was unavailable; conservative precautions only.</Notice>}
-      </div> : null}
-      {result && edit && canEdit && state?.isReviewable ? <section className="officer-review-editor" aria-label="Structured Field Officer image analysis review">
-        <div className="row-actions"><strong>Field Officer review</strong><StatusPill label="Officer Edited when saved" tone="warn" /></div>
-        <TextAreaInput label="Visible findings (one per line)" value={edit.visibleFindings.join('\n')} rows={4} disabled={busy} onChange={(value) => onEditChange({ ...edit, visibleFindings: nonEmptyLines(value) })} />
-        <TextAreaInput label="Possible concerns (one per line)" value={edit.possibleIssues.join('\n')} rows={4} disabled={busy} onChange={(value) => onEditChange({ ...edit, possibleIssues: nonEmptyLines(value) })} />
-        <SelectInput label="Severity" value={edit.severity} options={options(['Low', 'Moderate', 'High', 'Unknown'] as const)} disabled={busy} onChange={(value) => onEditChange({ ...edit, severity: value as InspectionImageAnalysisResult['severity'] })} />
-        <TextAreaInput label="Uncertainty" value={edit.uncertainty} rows={3} disabled={busy} onChange={(value) => onEditChange({ ...edit, uncertainty: value })} />
-        <fieldset className="preplant-risk-list">
-          <legend>Allowed non-chemical actions</legend>
-          {cropHealthActions.map((action) => <label key={action}><input type="checkbox" checked={edit.recommendedNonChemicalActions.includes(action)} disabled={busy} onChange={(event) => onEditChange({ ...edit, recommendedNonChemicalActions: event.target.checked ? [...edit.recommendedNonChemicalActions, action] : edit.recommendedNonChemicalActions.filter((item) => item !== action) })} /><span>{humanize(action)}</span></label>)}
-        </fieldset>
-        <label className="review-checkbox"><input type="checkbox" checked={edit.requiresFurtherAssessment} disabled={busy} onChange={(event) => onEditChange({ ...edit, requiresFurtherAssessment: event.target.checked })} /> Requires further assessment</label>
-        <div className="preplant-actions">
-          <Button type="button" disabled={busy} onClick={onAccept}>Accept</Button>
-          <Button type="button" variant="secondary" disabled={busy} onClick={onEdit}>Save Officer Edited review</Button>
-          <Button type="button" variant="danger" disabled={busy} onClick={onReject}>Reject</Button>
-        </div>
-      </section> : null}
-      {state?.effectiveReview ? <Notice tone={state.effectiveReview.disposition === 'Rejected' ? 'warning' : 'success'}>
-        Latest review: {state.effectiveReview.disposition}{state.effectiveReview.officerEditedFields.length ? ` · Officer Edited (${state.effectiveReview.officerEditedFields.join(', ')})` : ''}.
-      </Notice> : null}
+      {state?.isFrozen ? <Notice tone="info">This submitted inspection's reviewed image evidence is frozen and read-only.</Notice> : null}
+
+      <div className="image-analysis-workspace">
+        <aside className="image-analysis-evidence" aria-label="Representative image selection">
+          <div className="image-workspace-section-heading">
+            <div><span>Selected evidence</span><h4>Image used for analysis</h4></div>
+            {representative ? <StatusPill label="Representative" tone="good" /> : null}
+          </div>
+
+          {representative ? (
+            <figure className="representative-image-preview">
+              <EvidenceImageLink
+                source={evidenceSources[representative.id]}
+                alt="Representative evidence for AI analysis"
+                linkLabel="Open representative evidence in a new tab"
+              />
+              <figcaption><span>{representative.contentType}</span><span>{Math.ceil(representative.sizeBytes / 1024)} KB</span></figcaption>
+            </figure>
+          ) : (
+            <div className="representative-image-empty">
+              <ImageIcon size={28} aria-hidden="true" />
+              <strong>No representative image selected</strong>
+              <span>Choose one uploaded crop or leaf image below.</span>
+            </div>
+          )}
+
+          {images.length > 0 ? (
+            <div className="evidence-selector" aria-label="Uploaded assessment evidence">
+              {images.map((image, index) => (
+                <article key={image.id} className={`evidence-selector-item${image.isRepresentativeForAi ? ' is-representative' : ''}`}>
+                  <EvidenceImageLink
+                    source={evidenceSources[image.id]}
+                    alt={`Evidence ${index + 1}`}
+                    linkLabel={`Open evidence ${index + 1} in a new tab`}
+                  />
+                  <div><strong>Evidence {index + 1}</strong><span>{Math.ceil(image.sizeBytes / 1024)} KB</span></div>
+                  {image.isRepresentativeForAi ? (
+                    <CheckCircle2 size={18} aria-label="Selected representative" />
+                  ) : canEdit ? (
+                    <Button type="button" variant="ghost" disabled={busy} aria-label={`Select evidence ${index + 1} for AI`} onClick={() => onSelectRepresentative(image.id)}>Select</Button>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          ) : <p className="muted-text">Upload evidence from the assessment form to select an analysis image.</p>}
+
+          {canEdit && representative && state?.status !== 'Running' ? (
+            <Button type="button" variant="secondary" icon={<Sparkles size={16} aria-hidden="true" />} disabled={busy} onClick={() => { setEditing(false); onAnalyze() }}>
+              {busy ? 'Working...' : result ? 'Analyze Image Again' : 'Analyze Image'}
+            </Button>
+          ) : null}
+        </aside>
+
+        <section className="image-analysis-findings" aria-labelledby="ai-findings-title">
+          <div className="image-workspace-section-heading">
+            <div><span>Analysis output</span><h3 id="ai-findings-title">AI findings</h3></div>
+            {result ? <StatusPill label="Original AI result" tone="info" /> : null}
+          </div>
+
+          {result ? (
+            <>
+              <div className="image-analysis-result">
+                <ResultList title="Visible findings" items={result.visibleFindings} />
+                <ResultList title="Possible concerns" items={result.possibleIssues} />
+                <dl className="image-analysis-summary">
+                  <AssessmentItem label="Issue category" value={result.possibleIssueCategory} />
+                  <AssessmentItem label="Severity" value={result.severity} />
+                  <AssessmentItem label="Further assessment" value={result.requiresFurtherAssessment ? 'Required' : 'Monitor as reviewed'} />
+                  <AssessmentItem label="Uncertainty" value={result.uncertainty} />
+                </dl>
+                <ResultList title="Suggested non-chemical actions" items={result.recommendedNonChemicalActions.map(humanize)} />
+                {result.validatedSourceReferences.length ? <div className="source-reference-list">
+                  <h4>Trusted supporting sources</h4>
+                  {result.validatedSourceReferences.map((source) => {
+                    const url = safeExternalUrl(source.url)
+                    return <p key={`${source.sourcePolicyId}-${source.url}`}>{source.organization}: {url ? <a href={url} target="_blank" rel="noreferrer">{source.title}</a> : source.title} ({source.sourceStage})</p>
+                  })}
+                </div> : <Notice tone="warning">Trusted external grounding was unavailable; conservative precautions only.</Notice>}
+              </div>
+
+              {canEdit && state?.isReviewable && !editing ? (
+                <div className="image-review-actions" aria-label="Image analysis review actions">
+                  <Button type="button" disabled={busy} onClick={onAccept}>Accept result</Button>
+                  <Button type="button" variant="secondary" disabled={busy} onClick={beginEditing}>Edit findings</Button>
+                  <Button type="button" variant="danger" disabled={busy} onClick={onReject}>Reject result</Button>
+                </div>
+              ) : null}
+
+              {edit && canEdit && state?.isReviewable && editing ? <section className="officer-review-editor" aria-label="Structured Field Officer image analysis review">
+                <div className="row-actions"><strong>Field Officer review</strong><StatusPill label="Officer Edited when saved" tone="warn" /></div>
+                <TextAreaInput label="Visible findings (one per line)" value={edit.visibleFindings.join('\n')} rows={4} disabled={busy} onChange={(value) => onEditChange({ ...edit, visibleFindings: editableLines(value) })} />
+                <TextAreaInput label="Possible concerns (one per line)" value={edit.possibleIssues.join('\n')} rows={4} disabled={busy} onChange={(value) => onEditChange({ ...edit, possibleIssues: editableLines(value) })} />
+                <SelectInput label="Severity" value={edit.severity} options={options(['Low', 'Moderate', 'High', 'Unknown'] as const)} disabled={busy} onChange={(value) => onEditChange({ ...edit, severity: value as InspectionImageAnalysisResult['severity'] })} />
+                <TextAreaInput label="Uncertainty" value={edit.uncertainty} rows={3} disabled={busy} onChange={(value) => onEditChange({ ...edit, uncertainty: value })} />
+                <fieldset className="preplant-risk-list">
+                  <legend>Allowed non-chemical actions</legend>
+                  {cropHealthActions.map((action) => <label key={action}><input type="checkbox" checked={edit.recommendedNonChemicalActions.includes(action)} disabled={busy} onChange={(event) => onEditChange({ ...edit, recommendedNonChemicalActions: event.target.checked ? [...edit.recommendedNonChemicalActions, action] : edit.recommendedNonChemicalActions.filter((item) => item !== action) })} /><span>{humanize(action)}</span></label>)}
+                </fieldset>
+                <label className="review-checkbox"><input type="checkbox" checked={edit.requiresFurtherAssessment} disabled={busy} onChange={(event) => onEditChange({ ...edit, requiresFurtherAssessment: event.target.checked })} /> Requires further assessment</label>
+                <div className="image-review-actions">
+                  <Button type="button" disabled={busy} onClick={saveEditedReview}>Save Officer Edited review</Button>
+                  <Button type="button" variant="ghost" disabled={busy} onClick={cancelEditing}>Cancel edit</Button>
+                </div>
+              </section> : null}
+            </>
+          ) : (
+            <div className="image-findings-empty">
+              <BrainCircuit size={28} aria-hidden="true" />
+              <strong>No AI findings to review</strong>
+              <span>Manual inspection remains available whether or not image assistance is used.</span>
+            </div>
+          )}
+
+          {state?.effectiveReview ? <Notice tone={state.effectiveReview.disposition === 'Rejected' ? 'warning' : 'success'}>
+            Latest review: {state.effectiveReview.disposition}{state.effectiveReview.officerEditedFields.length ? ` / Officer Edited (${state.effectiveReview.officerEditedFields.join(', ')})` : ''}.
+          </Notice> : null}
+        </section>
+      </div>
       <details className="image-analysis-history">
         <summary onClick={() => { if (history === null && !busy) onLoadHistory() }}>Staff audit history</summary>
         {history === null ? <p className="muted-text">Open to load immutable analysis and review history.</p> : history.length === 0
@@ -867,8 +1005,82 @@ function ImageAnalysisPanel({
   )
 }
 
-function nonEmptyLines(value: string): string[] {
-  return value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean)
+function useAuthenticatedEvidenceSources(images: PrePlantingAssessmentImage[]): Record<string, string | null> {
+  const [sources, setSources] = useState<Record<string, string | null>>({})
+
+  useEffect(() => {
+    const controller = new AbortController()
+    const createdUrls: string[] = []
+    let active = true
+    const revokeCreatedUrls = () => {
+      createdUrls.splice(0).forEach((url) => URL.revokeObjectURL(url))
+    }
+
+    void Promise.all(images.map(async (image) => {
+      try {
+        const response = await api.get<Blob>(inspectionImageRequestUrl(image.url), {
+          responseType: 'blob',
+          signal: controller.signal,
+        })
+        const objectUrl = URL.createObjectURL(response.data)
+        createdUrls.push(objectUrl)
+        return [image.id, objectUrl] as const
+      } catch (error) {
+        if (axios.isCancel(error)) return null
+        return [image.id, null] as const
+      }
+    })).then((loaded) => {
+      if (!active) {
+        revokeCreatedUrls()
+        return
+      }
+
+      const next: Record<string, string | null> = {}
+      loaded.forEach((item) => {
+        if (item) next[item[0]] = item[1]
+      })
+      setSources(next)
+    })
+
+    return () => {
+      active = false
+      controller.abort()
+      revokeCreatedUrls()
+    }
+  }, [images])
+
+  return sources
+}
+
+function EvidenceImageLink({ source, alt, linkLabel }: { source: string | null | undefined; alt: string; linkLabel: string }) {
+  return (
+    <a
+      href={source ?? undefined}
+      target="_blank"
+      rel="noreferrer"
+      aria-label={linkLabel}
+      aria-disabled={!source}
+      onClick={(event) => { if (!source) event.preventDefault() }}
+    >
+      {source
+        ? <img src={source} alt={alt} />
+        : <span className={`evidence-image-state${source === null ? ' is-error' : ''}`} aria-live="polite">
+            {source === null ? 'Preview unavailable' : 'Loading image...'}
+          </span>}
+    </a>
+  )
+}
+
+function inspectionImageRequestUrl(value: string): string {
+  return value.startsWith('/api/') ? value.slice(4) : value
+}
+
+function editableLines(value: string): string[] {
+  return value.split(/\r?\n/).filter((item) => item.length > 0)
+}
+
+function normalizedLines(items: string[]): string[] {
+  return items.map((item) => item.trim()).filter(Boolean)
 }
 
 function safeExternalUrl(value: string): string | null {
@@ -880,13 +1092,129 @@ function safeExternalUrl(value: string): string | null {
   }
 }
 
-function AssessmentSection({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
+const sectionOrder: AssessmentSectionKey[] = ['soil', 'water', 'readiness', 'risks']
+
+function assessmentSectionCompletion(
+  form: PrePlantingAssessmentInput,
+  riskState: RiskAssessmentState,
+  selectedRisks: PrePlantingRisk[],
+): Record<AssessmentSectionKey, boolean> {
+  const soilNotesRequired = form.soilType === 'Other' || form.soilCondition === 'Other'
+  const drainageNotesRequired = form.drainageCondition === 'Poor'
+    || form.waterloggingRisk === 'Moderate'
+    || form.waterloggingRisk === 'High'
+  const generalNotesRequired = form.generalFieldCondition === 'Other'
+
+  return {
+    soil: Boolean(
+      form.soilType
+      && form.soilCondition
+      && form.soilMoisture
+      && (!soilNotesRequired || hasText(form.soilNotes)),
+    ),
+    water: Boolean(
+      form.waterAvailability
+      && form.irrigationAvailability
+      && form.waterReliability
+      && (!requiresWaterSource(form.waterAvailability) || hasText(form.mainWaterSource))
+      && (!requiresWaterConcern(form.waterAvailability) || hasText(form.waterConcerns)),
+    ),
+    readiness: Boolean(
+      form.drainageCondition
+      && form.waterloggingRisk
+      && form.generalFieldCondition
+      && form.plantingReadiness
+      && (!drainageNotesRequired || hasText(form.drainageNotes))
+      && (!generalNotesRequired || hasText(form.generalFieldNotes)),
+    ),
+    risks: riskState === 'none' || (
+      riskState === 'selected'
+      && selectedRisks.length > 0
+      && (!selectedRisks.includes('Other') || hasText(form.riskNotes))
+    ),
+  }
+}
+
+function hasText(value?: string | null): boolean {
+  return Boolean(value?.trim())
+}
+
+function riskStateFromAssessment(assessment: PrePlantingAssessment): RiskAssessmentState {
+  if (assessment.identifiedRisks === null) return 'unassessed'
+  return assessment.identifiedRisks.length === 0 ? 'none' : 'selected'
+}
+
+function initialOpenSections(
+  form: PrePlantingAssessmentInput,
+  riskState: RiskAssessmentState,
+  selectedRisks: PrePlantingRisk[],
+): Set<AssessmentSectionKey> {
+  const completion = assessmentSectionCompletion(form, riskState, selectedRisks)
+  const firstIncomplete = sectionOrder.find((section) => !completion[section])
+  return new Set(firstIncomplete ? [firstIncomplete] : [])
+}
+
+function sectionFromValidationMessage(message: string): AssessmentSectionKey | null {
+  const normalized = message.toLowerCase()
+  if (/soil|moisture/.test(normalized)) return 'soil'
+  if (/water availability|water source|water concern|irrigation|reliability/.test(normalized)) return 'water'
+  if (/drainage|waterlogging|field condition|field note|planting readiness/.test(normalized)) return 'readiness'
+  if (/risk|officer note/.test(normalized)) return 'risks'
+  return null
+}
+
+function sectionsWithNoteSuggestions(suggestions: InspectionNoteSuggestions | null): AssessmentSectionKey[] {
+  if (!suggestions) return []
+  const sections = new Set<AssessmentSectionKey>()
+  if (suggestions.soilNotes) sections.add('soil')
+  if (suggestions.waterConcerns) sections.add('water')
+  if (suggestions.drainageNotes || suggestions.generalFieldNotes) sections.add('readiness')
+  if (suggestions.riskNotes || suggestions.officerNotes) sections.add('risks')
+  return [...sections]
+}
+
+function AssessmentSection({
+  sectionKey,
+  title,
+  description,
+  open,
+  complete,
+  onToggle,
+  children,
+}: {
+  sectionKey: AssessmentSectionKey
+  title: string
+  description: string
+  open: boolean
+  complete: boolean
+  onToggle: () => void
+  children: React.ReactNode
+}) {
   return (
-    <fieldset className="preplant-form-section">
-      <legend>{title}</legend>
-      <p>{description}</p>
-      <div className="preplant-form-grid">{children}</div>
-    </fieldset>
+    <section className={`preplant-form-section${complete ? ' is-complete' : ''}`} data-assessment-section={sectionKey}>
+      <button
+        id={`assessment-trigger-${sectionKey}`}
+        className="assessment-section-trigger"
+        type="button"
+        aria-expanded={open}
+        aria-controls={`assessment-section-${sectionKey}`}
+        onClick={onToggle}
+      >
+        <span className="assessment-section-title">
+          <span className="assessment-section-status" aria-hidden="true">
+            {complete ? <CheckCircle2 size={18} /> : <span>{sectionOrder.indexOf(sectionKey) + 1}</span>}
+          </span>
+          <span><strong>{title}</strong><small>{description}</small></span>
+        </span>
+        <span className={`assessment-section-state${complete ? ' is-complete' : ''}`}>
+          {complete ? 'Complete' : 'Needs attention'}
+        </span>
+        <ChevronDown className="assessment-section-chevron" size={19} aria-hidden="true" />
+      </button>
+      <div id={`assessment-section-${sectionKey}`} className="assessment-section-content" hidden={!open}>
+        <div className="preplant-form-grid">{children}</div>
+      </div>
+    </section>
   )
 }
 
