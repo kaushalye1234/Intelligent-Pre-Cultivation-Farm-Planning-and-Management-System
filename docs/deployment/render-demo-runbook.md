@@ -1,20 +1,20 @@
 # Group 04 Render demo runbook
 
-This file describes a reproducible **demo** deployment for the repository's current API, React app, AI service, and PostgreSQL schema. It does not mean a Render account or service has been created.
+This file describes a **demo** deployment using the existing Supabase PostgreSQL database, with the API, React app, and AI service hosted on Render.
 
 ## Before creating services
 
 1. Merge the deployment files into `dev`, then select **New > Blueprint** in Render and connect this repository on `dev`.
-2. Review `render.yaml` and the complete resource list before approving creation. It selects free web services and a free PostgreSQL database. Render says free web services sleep after 15 minutes without traffic and free databases expire after 30 days; after expiry the database is inaccessible and can be deleted if not upgraded during its grace period. Use demo data only and export anything the group needs before expiry. See [Render's Free plan limits](https://render.com/docs/free).
+2. Review `render.yaml` and the complete resource list before approving creation. The API connection is entered separately in Render and must point to the intended Supabase database. The old `agriassist-demo-db` resource remains declared to avoid deleting it during a Blueprint sync; the API no longer uses it. Render free web services sleep after 15 minutes without traffic. See [Render's Free plan limits](https://render.com/docs/free).
 3. The AI service is a public web service on the free tier because free services cannot receive private-network requests. The AI workflow routes require generated bearer tokens; keep them in Render's environment settings and never put them in the React app or report. Render's private services are not free. See [Render private networking](https://render.com/docs/private-network) and [service plans](https://render.com/docs/compute-plans).
-4. Enter a valid OpenAI model name and the group's OpenAI API key when prompted. Cloudinary and weather are optional; configure them later in the API's environment if the group wants image uploads or live weather.
+4. Enter the Supabase connection as `ConnectionStrings__DefaultConnection` in the API's Render environment. Use the SSL-enabled pooler connection verified for the intended database. Enter a valid `AI_MODEL` and `OPENAI_API_KEY` on the AI service. Configure `Weather__ApiKey` and the three `Cloudinary__...` settings on the API for live weather and image storage. `sync: false` keeps these values out of Git and does not overwrite existing values during later Blueprint updates; on existing services, enter missing settings in the dashboard or API rather than expecting a new prompt.
 5. The example credentials previously found in tracked environment templates must be rotated before they are reused. Enter only newly rotated credentials in Render.
 
 The blueprint generates JWT, API-to-AI, and AI-to-API secrets. It obtains service URLs from Render's `RENDER_EXTERNAL_URL`, and the React client appends `/api` to the API origin. The ASP.NET API converts Render's `postgresql://` database URL into Npgsql's keyword connection string and requires PostgreSQL outside Development/Testing.
 
 ## Deployment behavior and limitations
 
-- `Database__ApplyMigrationsOnStart=true` runs EF migrations before the API begins listening. This is selected because Render pre-deploy commands require a paid plan. Keep the API at one instance for this demo; migrations are not coordinated across multiple replicas.
+- `Database__ApplyMigrationsOnStart=false` preserves the existing Supabase schema during redeployment. Before deploying code that requires a schema change, review the migration, back up the intended database, and apply it through a separate authorized operation. Deploying application files does not copy local accounts or farm records into another database.
 - Render terminates HTTPS before forwarding to the API. The API reads forwarded IP/scheme headers so HTTPS redirection observes Render's original request scheme. The blueprint trusts forwarded headers from all sources because Render proxy IPs vary; keep the API behind Render's proxy and do not copy this setting to an unproxied host.
 - `ApiDocs__Enabled=true` makes `/swagger` public for evaluator access. Do not enable this on a production deployment without a security review.
 - Free web services sleep while idle. Cold starts can make AI-backed requests exceed the API's current request timeouts. Verify the complete AI workflow after warm-up; upgrade the AI/API plans if the demo's required latency is not met.
@@ -23,7 +23,7 @@ The blueprint generates JWT, API-to-AI, and AI-to-API secrets. It obtains servic
 
 ## Create the first staff login
 
-The application does not seed an Admin account, and public farmer registration creates only the Farmer role. On a Render Free API service, use the guarded startup bootstrap instead of trying to open a Shell:
+Use the existing Supabase accounts when connecting this deployment. The Blueprint disables Admin bootstrap. The following procedure is only for a separately authorized empty database: the application does not seed an Admin account, and public farmer registration creates only the Farmer role. On a Render Free API service, use the guarded startup bootstrap instead of trying to open a Shell:
 
 1. In the Render dashboard, open the `agriassist-api` service's **Environment** settings.
 2. Temporarily add these variables. Use your group's chosen Admin name/email (the email must not already belong to another account) and a unique password of at least 12 characters, no more than 72 UTF-8 bytes, and different from the name/email. The normal password policy also rejects known compromised passwords.
@@ -42,6 +42,11 @@ The application does not seed an Admin account, and public farmer registration c
 If an Admin already exists, startup logs that bootstrap was skipped and does not change its password. Do not use this flow to reset an existing account. If enabled settings are incomplete or invalid, startup fails closed; correct them in Render and redeploy. Never put the password in Git, a screenshot, or chat. The Render service logs must not contain the password.
 
 ## After deployment
+
+Build mobile deployments with `./scripts/build-render-mobile.ps1 -Target apk`
+from the repository root. This sets the deployed HTTPS API URL explicitly;
+the emulator URL in the source remains a local-development default. Rebuild
+and reinstall older APKs to change their API URL.
 
 Record the actual values in the report only after live verification:
 
