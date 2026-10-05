@@ -30,6 +30,60 @@ afterEach(() => {
 })
 
 describe('CropPlanningPage AI workflow surface', () => {
+  it('lets an Admin cancel active requests only after entering a reason', async () => {
+    vi.spyOn(api, 'get').mockImplementation((url: string) => {
+      if (url.includes('/workflow-status') || url.includes('/planning-result')) return Promise.reject(new Error('No workflow snapshot'))
+      if (url.includes('/farms') || url.includes('/fields') || url.includes('/crop-types')) return Promise.resolve(paged([]))
+      return Promise.resolve(paged([
+        { id: 'active-plan', farmId: 'farm-1', cropTypeId: 'crop-1', preferredStartDate: '2026-10-01', preferredEndDate: '2027-01-01', budget: 12000, objective: 'Active', status: 3, statusCode: 'field_analysis_running', statusLabel: 'Field Analysis in Progress', overallStatusCode: 'in_progress', overallStatusLabel: 'In Progress', createdAt: '2026-09-13T00:00:00Z' },
+        { id: 'approved-plan', farmId: 'farm-1', cropTypeId: 'crop-1', preferredStartDate: '2026-10-01', preferredEndDate: '2027-01-01', budget: 12000, objective: 'Approved', status: 4, statusCode: 'approved', statusLabel: 'Approved', overallStatusCode: 'approved', overallStatusLabel: 'Approved', createdAt: '2026-09-13T00:00:00Z' },
+      ]))
+    })
+    const post = vi.spyOn(api, 'post').mockResolvedValue({ data: {} } as never)
+
+    renderForRole(5)
+    await waitFor(() => expect(screen.getByText('AI Workflows')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('tab', { name: /Plan Requests/i }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel plan' }))
+
+    const confirm = screen.getByRole('button', { name: 'Confirm cancellation' })
+    expect(confirm).toBeDisabled()
+    fireEvent.change(screen.getByRole('textbox', { name: /Cancellation reason/i }), { target: { value: 'Farmer selected another crop.' } })
+    expect(confirm).toBeEnabled()
+    fireEvent.click(confirm)
+
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/crop-planning/requests/active-plan/cancel', {
+      reason: 'Farmer selected another crop.',
+    }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByText(/farmer can now create a replacement plan/i)).toBeInTheDocument()
+  })
+
+  it('offers soft removal only for Cancelled and Rejected requests', async () => {
+    vi.spyOn(api, 'get').mockImplementation((url: string) => {
+      if (url.includes('/workflow-status') || url.includes('/planning-result')) return Promise.reject(new Error('No workflow snapshot'))
+      if (url.includes('/farms') || url.includes('/fields') || url.includes('/crop-types')) return Promise.resolve(paged([]))
+      return Promise.resolve(paged([
+        { id: 'cancelled-plan', farmId: 'farm-1', cropTypeId: 'crop-1', preferredStartDate: '2026-10-01', preferredEndDate: '2027-01-01', budget: 12000, objective: 'Cancelled', status: 6, statusCode: 'cancelled', statusLabel: 'Cancelled', overallStatusCode: 'cancelled', overallStatusLabel: 'Cancelled', createdAt: '2026-09-13T00:00:00Z' },
+        { id: 'rejected-plan', farmId: 'farm-1', cropTypeId: 'crop-1', preferredStartDate: '2026-10-01', preferredEndDate: '2027-01-01', budget: 12000, objective: 'Rejected', status: 5, statusCode: 'rejected', statusLabel: 'Rejected', overallStatusCode: 'rejected', overallStatusLabel: 'Rejected', createdAt: '2026-09-13T00:00:00Z' },
+        { id: 'approved-plan', farmId: 'farm-1', cropTypeId: 'crop-1', preferredStartDate: '2026-10-01', preferredEndDate: '2027-01-01', budget: 12000, objective: 'Approved', status: 4, statusCode: 'approved', statusLabel: 'Approved', overallStatusCode: 'approved', overallStatusLabel: 'Approved', createdAt: '2026-09-13T00:00:00Z' },
+      ]))
+    })
+    const remove = vi.spyOn(api, 'delete').mockResolvedValue({ data: undefined } as never)
+
+    renderForRole(5)
+    await waitFor(() => expect(screen.getByText('AI Workflows')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('tab', { name: /Plan Requests/i }))
+
+    expect(await screen.findAllByRole('button', { name: 'Delete request' })).toHaveLength(2)
+    expect(screen.queryByRole('button', { name: 'Cancel plan' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Delete request' })[0])
+    expect(screen.getByText(/workflow history, evidence, decisions, and audit data will be retained/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Remove from list' }))
+
+    await waitFor(() => expect(remove).toHaveBeenCalledWith('/crop-planning/requests/cancelled-plan'))
+  })
+
   it('renders coordinator status, warnings, and downstream step summary', async () => {
     vi.spyOn(api, 'get').mockImplementation((url: string) => {
       if (url.includes('/workflow-status')) {

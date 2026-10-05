@@ -1,12 +1,12 @@
 import { useContext, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import { AlertTriangle, PlayCircle, Plus, RefreshCw, Search, Sprout } from 'lucide-react'
+import { AlertTriangle, PlayCircle, Plus, RefreshCw, Search, Sprout, Trash2, XCircle } from 'lucide-react'
 import { api, getErrorCode, getErrorMessage } from '../api/client'
 import { SelectInput, TextAreaInput, TextInput } from '../components/FormControls'
 import { DataTable } from '../components/DataTable'
 import { ErrorState, LoadingState } from '../components/States'
 import { StatusPill } from '../components/StatusPill'
-import { Button, MetricCard, Modal, Notice, PageHeader, Tabs, Toolbar } from '../components/Ui'
+import { Button, ConfirmDialog, MetricCard, Modal, Notice, PageHeader, Tabs, Toolbar } from '../components/Ui'
 import { formatArea, formatDate, formatMoney } from '../format'
 import { cropPlanStatus } from '../labels'
 import { sriLankanDistrictOptions } from '../location'
@@ -16,6 +16,7 @@ import type { CropPlan, CropPlanningResult, CropPlanningWorkflowStatus, CropType
 
 type CropTab = 'overview' | 'farms' | 'fields' | 'cropTypes' | 'requests'
 type CropModal = 'farm' | 'field' | 'plan' | null
+type RequestAction = { kind: 'cancel' | 'archive'; plan: CropPlan } | null
 
 function getCropPlanTone(status: number) {
   if (status === 4) return 'good'
@@ -49,6 +50,8 @@ export function CropPlanningPage() {
   const [planningResults, setPlanningResults] = useState<Record<string, CropPlanningResult>>({})
   const [activeTab, setActiveTab] = useState<CropTab>('overview')
   const [activeModal, setActiveModal] = useState<CropModal>(null)
+  const [requestAction, setRequestAction] = useState<RequestAction>(null)
+  const [cancellationReason, setCancellationReason] = useState('')
   const [search, setSearch] = useState('')
   const [error, setError] = useState('')
   const [actionError, setActionError] = useState('')
@@ -122,6 +125,56 @@ export function CropPlanningPage() {
   function closeModal() {
     setActiveModal(null)
     setActionError('')
+  }
+
+  function closeRequestAction() {
+    if (isSubmitting) return
+    setRequestAction(null)
+    setCancellationReason('')
+    setActionError('')
+  }
+
+  function openRequestAction(kind: 'cancel' | 'archive', plan: CropPlan) {
+    setRequestAction({ kind, plan })
+    setCancellationReason('')
+    setActionError('')
+    setSuccess('')
+  }
+
+  async function cancelRequest(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (requestAction?.kind !== 'cancel' || !cancellationReason.trim()) return
+    setIsSubmitting(true)
+    setActionError('')
+    try {
+      await api.post(`/crop-planning/requests/${requestAction.plan.id}/cancel`, { reason: cancellationReason.trim() })
+      setSuccess('Crop plan request cancelled. The farmer can now create a replacement plan.')
+      setRequestAction(null)
+      setCancellationReason('')
+      await loadData()
+      setActiveTab('requests')
+    } catch (err) {
+      setActionError(getErrorMessage(err))
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  async function archiveRequest() {
+    if (requestAction?.kind !== 'archive') return
+    setIsSubmitting(true)
+    setActionError('')
+    try {
+      await api.delete(`/crop-planning/requests/${requestAction.plan.id}`)
+      setSuccess('Crop plan request removed from normal lists. Its audit history was retained.')
+      setRequestAction(null)
+      await loadData()
+      setActiveTab('requests')
+    } catch (err) {
+      setActionError(getErrorMessage(err))
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   async function refreshWorkflow(planId: string) {
@@ -309,6 +362,8 @@ export function CropPlanningPage() {
                       const busy = workflowBusyId === row.id
                       const canStart = isAdmin && row.statusCode === 'pending'
                       const canRetry = isAdmin && row.statusCode === 'ai_planning_failed'
+                      const canCancel = isAdmin && ![4, 5, 6].includes(row.status)
+                      const canArchive = isAdmin && [5, 6].includes(row.status)
                       return (
                         <div className="workflow-cell">
                           <div className="workflow-cell-top">
@@ -325,6 +380,8 @@ export function CropPlanningPage() {
                               </Button>
                             ) : null}
                             {row.statusCode === 'ai_planning' ? <span className="muted-text">AI planning is running.</span> : null}
+                            {canCancel ? <Button variant="danger" icon={<XCircle size={16} aria-hidden="true" />} disabled={busy || isSubmitting} onClick={() => openRequestAction('cancel', row)}>Cancel plan</Button> : null}
+                            {canArchive ? <Button variant="danger" icon={<Trash2 size={16} aria-hidden="true" />} disabled={isSubmitting} onClick={() => openRequestAction('archive', row)}>Delete request</Button> : null}
                             <Button variant="secondary" icon={<RefreshCw size={16} aria-hidden="true" />} disabled={busy || !status} onClick={() => void refreshWorkflow(row.id)}>Refresh</Button>
                           </div>
                         </div>
@@ -370,6 +427,38 @@ export function CropPlanningPage() {
           {actionError ? <div className="form-error field-control-wide" role="alert">{actionError}</div> : null}
         </form>
       </Modal>
+
+      <Modal
+        open={requestAction?.kind === 'cancel'}
+        title="Cancel crop plan?"
+        description="This stops the active workflow and preserves all completed work and evidence."
+        onClose={closeRequestAction}
+        footer={<><Button variant="secondary" onClick={closeRequestAction} disabled={isSubmitting}>Keep plan</Button><Button variant="danger" type="submit" form="cancel-plan-form" disabled={isSubmitting || !cancellationReason.trim()}>{isSubmitting ? 'Cancelling...' : 'Confirm cancellation'}</Button></>}
+      >
+        <form id="cancel-plan-form" className="form-grid" onSubmit={(event) => void cancelRequest(event)}>
+          <TextAreaInput
+            label="Cancellation reason"
+            value={cancellationReason}
+            placeholder="Record why this plan is being cancelled"
+            rows={4}
+            required
+            disabled={isSubmitting}
+            onChange={setCancellationReason}
+          />
+          {actionError ? <div className="form-error field-control-wide" role="alert">{actionError}</div> : null}
+        </form>
+      </Modal>
+
+      <ConfirmDialog
+        open={requestAction?.kind === 'archive'}
+        title="Remove crop plan request?"
+        message="This request will disappear from normal Admin lists. Its workflow history, evidence, decisions, and audit data will be retained."
+        confirmLabel="Remove from list"
+        variant="danger"
+        isSubmitting={isSubmitting}
+        onCancel={closeRequestAction}
+        onConfirm={archiveRequest}
+      />
     </section>
   )
 }
