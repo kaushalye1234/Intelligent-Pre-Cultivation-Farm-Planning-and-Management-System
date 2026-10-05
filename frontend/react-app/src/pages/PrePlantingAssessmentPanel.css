@@ -1,5 +1,7 @@
 .preplant-panel {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   gap: 18px;
   padding: clamp(20px, 3vw, 30px);
   background:
@@ -23,6 +25,11 @@
 .preplant-header {
   justify-content: space-between;
   align-items: flex-start;
+  min-width: 0;
+}
+
+.preplant-header > div {
+  min-width: 0;
 }
 
 .preplant-header h2,
@@ -46,6 +53,8 @@
 .preplant-form,
 .preplant-result {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   gap: 18px;
 }
 
@@ -121,6 +130,7 @@
 .ai-assistance-panel > div,
 .image-analysis-heading > div {
   display: grid;
+  min-width: 0;
   gap: 6px;
 }
 
@@ -379,6 +389,8 @@
 
 .image-analysis-panel {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   gap: 16px;
   padding: 20px;
   background: var(--color-surface-raised);
