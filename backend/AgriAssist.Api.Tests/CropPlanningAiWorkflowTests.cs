@@ -253,6 +253,53 @@ public sealed class CropPlanningAiWorkflowTests
         Assert.NotEmpty(handoff.RecommendedPrePlantingActions);
     }
 
+    [Theory]
+    [InlineData("reordered", true)]
+    [InlineData("missing", false)]
+    [InlineData("additional", false)]
+    [InlineData("duplicate", false)]
+    [InlineData("invalid", false)]
+    public async Task Field_analysis_validates_identified_risks_as_an_unordered_collection(
+        string scenario,
+        bool shouldSucceed)
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.Submitted);
+        await NewService(db, data.Farmer.Id, new PlannedAiClient())
+            .StartAiWorkflowAsync(data.Request.Id, CancellationToken.None);
+
+        IReadOnlyList<PrePlantingRisk> submittedRisks = scenario is "reordered" or "missing"
+            ? [PrePlantingRisk.LandPreparationRequired, PrePlantingRisk.PoorDrainage]
+            : [PrePlantingRisk.LandPreparationRequired];
+        IReadOnlyList<PrePlantingRisk> outputRisks = scenario switch
+        {
+            "reordered" => [PrePlantingRisk.PoorDrainage, PrePlantingRisk.LandPreparationRequired],
+            "missing" => [PrePlantingRisk.LandPreparationRequired],
+            "additional" => [PrePlantingRisk.LandPreparationRequired, PrePlantingRisk.PoorDrainage],
+            "duplicate" => [PrePlantingRisk.LandPreparationRequired, PrePlantingRisk.LandPreparationRequired],
+            "invalid" => [(PrePlantingRisk)int.MaxValue],
+            _ => throw new ArgumentOutOfRangeException(nameof(scenario))
+        };
+        var setup = NewService(db, data.Farmer.Id, new PlannedAiClient(), ApplicationRole.FieldOfficer);
+        var assessment = await setup.SavePrePlantingAssessmentAsync(
+            data.Request.Id,
+            ValidAssessment() with { IdentifiedRisks = submittedRisks },
+            CancellationToken.None);
+        await setup.SubmitPrePlantingAssessmentAsync(data.Request.Id, CancellationToken.None);
+        var service = NewService(
+            db,
+            data.Farmer.Id,
+            new RiskCollectionFieldAnalysisAiClient(assessment.InspectionId, outputRisks),
+            ApplicationRole.FieldOfficer);
+
+        var result = await service.RunFieldAnalysisAsync(data.Request.Id, CancellationToken.None);
+        var workflow = await db.AgentWorkflows.SingleAsync();
+
+        Assert.Equal(shouldSucceed ? "Analyzed" : "SafeFailure", result.Status);
+        Assert.Equal(shouldSucceed ? "WeatherResourceAgent" : "CropFieldAnalysisAgent", workflow.CurrentStep);
+        if (!shouldSucceed) Assert.NotEmpty(result.Warnings);
+    }
+
     [Fact]
     public async Task Safe_failure_remains_retryable_and_successful_retry_advances_exactly_once()
     {
@@ -1108,6 +1155,16 @@ public sealed class CropPlanningAiWorkflowTests
             FieldAnalysisCalls++;
             return Task.FromResult(Success(input.WorkflowId, InspectionId) with { Priority = "Low" });
         }
+    }
+
+    private sealed class RiskCollectionFieldAnalysisAiClient(
+        Guid inspectionId,
+        IReadOnlyList<PrePlantingRisk> risks) : CountingFieldAnalysisAiClient(inspectionId)
+    {
+        public override Task<FieldAnalysisOutput> RunFieldAnalysisAsync(
+            FieldAnalysisInput input,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(Success(input.WorkflowId, InspectionId) with { IdentifiedRisks = risks });
     }
 
     private sealed class MissingReferenceAiClient : IAgenticAIClient

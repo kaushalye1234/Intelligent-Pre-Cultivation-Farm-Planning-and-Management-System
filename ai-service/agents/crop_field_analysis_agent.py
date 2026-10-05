@@ -435,7 +435,8 @@ class CropFieldAnalysisAgent:
         if output.planting_readiness != expected_readiness:
             errors.append("LLM output plantingReadiness does not match the submitted assessment.")
         expected_risks = observations.get("IdentifiedRisk", [])
-        if output.identified_risks != expected_risks:
+        output_risks = output.identified_risks
+        if len(output_risks) != len(set(output_risks)) or set(output_risks) != set(expected_risks):
             errors.append("LLM output identifiedRisks do not match the submitted assessment.")
 
         return errors

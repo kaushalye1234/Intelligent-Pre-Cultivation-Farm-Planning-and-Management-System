@@ -1,13 +1,7 @@
 String? normalizeSriLankanPhoneNumber(String? value) {
-  final compact = value?.replaceAll(RegExp(r'[\s-]'), '') ?? '';
-  final nationalNumber = compact.startsWith('+94')
-      ? compact.substring(3)
-      : compact.startsWith('0')
-      ? compact.substring(1)
-      : '';
-
-  if (!RegExp(r'^[1-9][0-9]{8}$').hasMatch(nationalNumber)) return null;
-  return '+94$nationalNumber';
+  final localNumber = value ?? '';
+  if (!RegExp(r'^0[1-9][0-9]{8}$').hasMatch(localNumber)) return null;
+  return '+94${localNumber.substring(1)}';
 }
 
 String? validateSriLankanPhoneNumber(String? value) {

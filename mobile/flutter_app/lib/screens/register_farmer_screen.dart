@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../state/app_state.dart';
 import '../ui/journey_widgets.dart';
+import '../utils/farmer_registration_validation.dart';
 import '../utils/password_validation.dart';
 import '../utils/sri_lankan_phone_validation.dart';
 
@@ -70,19 +72,18 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
                 ),
                 const SizedBox(height: 18),
                 TextFormField(
+                  key: const Key('farmerFullNameField'),
                   controller: _fullNameController,
                   decoration: const InputDecoration(
                     labelText: 'Full name',
                     prefixIcon: Icon(Icons.person_outline_rounded),
                   ),
                   autofillHints: const [AutofillHints.name],
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r"[A-Za-z '\-]")),
+                  ],
                   textInputAction: TextInputAction.next,
-                  validator: (value) {
-                    final name = value?.trim() ?? '';
-                    if (name.isEmpty) return 'Full name is required';
-                    if (name.length > 120) return 'Use 120 characters or fewer';
-                    return null;
-                  },
+                  validator: validateFarmerFullName,
                 ),
                 const SizedBox(height: 14),
                 TextFormField(
@@ -108,6 +109,7 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
                 ),
                 const SizedBox(height: 14),
                 TextFormField(
+                  key: const Key('farmerPhoneField'),
                   controller: _phoneController,
                   decoration: const InputDecoration(
                     labelText: 'Phone number',
@@ -116,6 +118,7 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
                   ),
                   keyboardType: TextInputType.phone,
                   autofillHints: const [AutofillHints.telephoneNumber],
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                   textInputAction: TextInputAction.next,
                   validator: validateSriLankanPhoneNumber,
                 ),
