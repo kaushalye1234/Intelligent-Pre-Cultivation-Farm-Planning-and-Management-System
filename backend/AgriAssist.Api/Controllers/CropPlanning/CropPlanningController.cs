@@ -146,6 +146,19 @@ public sealed class CropPlanningController(ICropPlanningService cropPlanningServ
     public async Task<ActionResult<CropPlanRequestResponse>> UpdateRequest(Guid id, CropPlanRequestUpdate request, CancellationToken cancellationToken) =>
         Ok(await cropPlanningService.UpdateCropPlanRequestAsync(id, request, cancellationToken));
 
+    [HttpPost("requests/{id:guid}/cancel")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.Farmer)},{nameof(ApplicationRole.Admin)}")]
+    public async Task<ActionResult<CropPlanRequestResponse>> CancelRequest(Guid id, CropPlanCancellationRequest request, CancellationToken cancellationToken) =>
+        Ok(await cropPlanningService.CancelCropPlanRequestAsync(id, request, cancellationToken));
+
+    [HttpDelete("requests/{id:guid}")]
+    [Authorize(Roles = nameof(ApplicationRole.Admin))]
+    public async Task<IActionResult> ArchiveRequest(Guid id, CancellationToken cancellationToken)
+    {
+        await cropPlanningService.ArchiveCropPlanRequestAsync(id, cancellationToken);
+        return NoContent();
+    }
+
     [HttpPost("requests/preliminary")]
     [Authorize(Roles = $"{nameof(ApplicationRole.Farmer)},{nameof(ApplicationRole.Admin)}")]
     public async Task<ActionResult<CropPlanRequestResponse>> GeneratePreliminary(CropPlanRequestCreate request, CancellationToken cancellationToken) =>

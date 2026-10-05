@@ -56,6 +56,42 @@ public sealed class CropPlanningStartConcurrencyPostgreSqlIntegrationTests
             .ToListAsync());
     }
 
+    [PostgreSqlFact]
+    public async Task Admin_cancellation_wins_when_coordinator_result_arrives_late()
+    {
+        var connectionString = RequiredConnectionString();
+        var data = await SeedAsync(connectionString);
+        var providerEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseProvider = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var client = new BlockingAiClient(providerEntered, releaseProvider);
+
+        await using var startDb = NewDbContext(connectionString);
+        var startTask = NewService(startDb, data.AdminId, client)
+            .StartAiWorkflowAsync(data.RequestId, CancellationToken.None);
+        await providerEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        await using (var cancelDb = NewDbContext(connectionString))
+        {
+            var cancelled = await NewService(cancelDb, data.AdminId, client)
+                .CancelCropPlanRequestAsync(
+                    data.RequestId,
+                    new CropPlanCancellationRequest("Farmer selected a different crop."),
+                    CancellationToken.None);
+            Assert.Equal(CropPlanRequestStatus.Cancelled, cancelled.Status);
+        }
+
+        releaseProvider.SetResult();
+        var conflict = await Assert.ThrowsAsync<ApiException>(() => startTask);
+        Assert.Equal("CROP_PLAN_CANCELLED_DURING_AI", conflict.Code);
+
+        await using var verification = NewDbContext(connectionString);
+        var request = await verification.CropPlanRequests.SingleAsync(item => item.Id == data.RequestId);
+        var workflow = await verification.AgentWorkflows.SingleAsync(item => item.CropPlanRequestId == data.RequestId);
+        Assert.Equal(CropPlanRequestStatus.Cancelled, request.Status);
+        Assert.Equal(AgentWorkflowStatus.Cancelled, workflow.Status);
+        Assert.Equal("Cancelled", workflow.CurrentStep);
+    }
+
     private static CropPlanningService NewService(AppDbContext db, Guid adminId, IAgenticAIClient client) =>
         new(
             db,
