@@ -2152,7 +2152,7 @@ public sealed class CropPlanningService(
         if (!string.Equals(output.PlantingReadiness, persistedAssessment.PlantingReadiness?.ToString(), StringComparison.Ordinal))
             errors.Add("FieldAnalysis plantingReadiness does not match the submitted assessment.");
         if (output.IdentifiedRisks is not null && persistedAssessment.IdentifiedRisks is not null
-            && !output.IdentifiedRisks.SequenceEqual(persistedAssessment.IdentifiedRisks))
+            && !output.IdentifiedRisks.ToHashSet().SetEquals(persistedAssessment.IdentifiedRisks))
             errors.Add("FieldAnalysis identifiedRisks do not match the submitted assessment.");
         var expectedPriority = await CalculateFieldAnalysisPriorityAsync(persistedAssessment, assessmentId, cancellationToken);
         if (!string.Equals(output.Priority, expectedPriority, StringComparison.Ordinal))

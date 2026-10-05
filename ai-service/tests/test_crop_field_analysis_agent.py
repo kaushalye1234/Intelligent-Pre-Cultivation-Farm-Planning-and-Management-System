@@ -144,6 +144,19 @@ def observations_with(**overrides):
     return [{"observationType": key, "notes": value} for key, value in values.items()]
 
 
+def observations_with_risks(*risks: str):
+    observations = [
+        observation
+        for observation in valid_observations()
+        if observation["observationType"] != "IdentifiedRisk"
+    ]
+    observations.extend(
+        {"observationType": "IdentifiedRisk", "notes": risk}
+        for risk in risks
+    )
+    return observations
+
+
 def provider_output(*, issue_id=ISSUE_ID, priority="High"):
     return (
         f'{{"workflowId":"{WORKFLOW_ID}","status":"Analyzed","requiresHumanReview":true,"warnings":[],'
@@ -217,6 +230,7 @@ async def test_provider_receives_exact_aliased_field_analysis_schema_and_contrac
         ({"soilAssessment": {"soilType": "Loamy"}}, "soilAssessment"),
         ({"waterAssessment": {"waterAvailability": "Adequate"}}, "waterAssessment"),
         ({"drainageAssessment": {"drainageCondition": "Good"}}, "drainageAssessment"),
+        ({"identifiedRisks": ["NotAValidRisk"]}, "identifiedRisks"),
     ],
 )
 async def test_invalid_provider_contract_values_return_safe_failure_and_log_field_path(caplog, updates, error_path):
@@ -277,6 +291,60 @@ async def test_valid_empty_arrays_remain_valid():
     assert result.identified_risks == []
     assert result.field_preparation_requirements == []
     assert result.recommended_pre_planting_actions == []
+
+
+@pytest.mark.asyncio
+async def test_reordered_identical_identified_risks_are_accepted():
+    observations = observations_with_risks("LandPreparationRequired", "PoorDrainage")
+    payload = provider_payload(identifiedRisks=["PoorDrainage", "LandPreparationRequired"])
+
+    result = await CropFieldAnalysisAgent(
+        FakeTools(observations=observations),
+        FakeProvider(json.dumps(payload)),
+    ).run(field_input())
+
+    assert result.status == "Analyzed"
+    assert set(result.identified_risks) == {"LandPreparationRequired", "PoorDrainage"}
+
+
+@pytest.mark.asyncio
+async def test_missing_identified_risk_fails_safely():
+    observations = observations_with_risks("LandPreparationRequired", "PoorDrainage")
+    payload = provider_payload(identifiedRisks=["LandPreparationRequired"])
+
+    result = await CropFieldAnalysisAgent(
+        FakeTools(observations=observations),
+        FakeProvider(json.dumps(payload)),
+    ).run(field_input())
+
+    assert result.status == "SafeFailure"
+    assert "LLM output identifiedRisks do not match the submitted assessment." in result.warnings
+
+
+@pytest.mark.asyncio
+async def test_additional_identified_risk_fails_safely():
+    payload = provider_payload(identifiedRisks=["LandPreparationRequired", "PoorDrainage"])
+
+    result = await CropFieldAnalysisAgent(
+        FakeTools(),
+        FakeProvider(json.dumps(payload)),
+    ).run(field_input())
+
+    assert result.status == "SafeFailure"
+    assert "LLM output identifiedRisks do not match the submitted assessment." in result.warnings
+
+
+@pytest.mark.asyncio
+async def test_duplicate_identified_risk_fails_safely():
+    payload = provider_payload(identifiedRisks=["LandPreparationRequired", "LandPreparationRequired"])
+
+    result = await CropFieldAnalysisAgent(
+        FakeTools(),
+        FakeProvider(json.dumps(payload)),
+    ).run(field_input())
+
+    assert result.status == "SafeFailure"
+    assert "LLM output identifiedRisks do not match the submitted assessment." in result.warnings
 
 
 @pytest.mark.asyncio
