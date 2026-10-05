@@ -305,6 +305,31 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<bool> cancelCropPlanRequest(String requestId) async {
+    isBusy = true;
+    error = null;
+    notifyListeners();
+    try {
+      final cancelled = await _apiClient.cancelCropPlanRequest(requestId);
+      final planIndex = cropPlans.indexWhere((item) => item.id == requestId);
+      if (planIndex == -1) {
+        cropPlans = [...cropPlans, cancelled];
+      } else {
+        cropPlans = [...cropPlans]..[planIndex] = cancelled;
+      }
+      lastCropPlanRequestId = requestId;
+      notifyListeners();
+      await refreshCropPlanProgress(requestId);
+      return true;
+    } catch (exception) {
+      error = exception.toString();
+      return false;
+    } finally {
+      isBusy = false;
+      notifyListeners();
+    }
+  }
+
   Future<void> _rejectStaffSession() async {
     await _apiClient.clearToken();
     user = null;

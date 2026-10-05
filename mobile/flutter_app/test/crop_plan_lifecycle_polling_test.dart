@@ -26,7 +26,13 @@ Map<String, dynamic> planJson({
   'farmId': 'farm-1',
   'cropTypeId': 'crop-1',
   'objective': 'Grow rice',
-  'status': statusCode == 'preliminary_plan_ready' ? 3 : 2,
+  'status': switch (statusCode) {
+    'preliminary_plan_ready' => 3,
+    'approved' => 4,
+    'rejected' => 5,
+    'cancelled' => 6,
+    _ => 2,
+  },
   'statusCode': statusCode,
   'statusLabel': statusLabel,
   'overallStatusCode': overallStatusCode,
@@ -71,6 +77,68 @@ Widget harness(AppState state) => ChangeNotifierProvider.value(
 );
 
 void main() {
+  testWidgets(
+    'farmer confirms cancellation and the terminal action disappears',
+    (tester) async {
+      var cancelled = false;
+      final api = ApiClient(
+        httpClient: MockClient((request) async {
+          if (request.method == 'POST' &&
+              request.url.path == '/api/crop-planning/requests/plan-1/cancel') {
+            cancelled = true;
+            expect(jsonDecode(request.body), <String, dynamic>{});
+            return jsonResponse(
+              planJson(
+                statusCode: 'cancelled',
+                statusLabel: 'Cancelled',
+                overallStatusCode: 'cancelled',
+                overallStatusLabel: 'Cancelled',
+              ),
+              200,
+            );
+          }
+          if (request.url.path == '/api/crop-planning/requests/plan-1') {
+            return jsonResponse(
+              cancelled
+                  ? planJson(
+                      statusCode: 'cancelled',
+                      statusLabel: 'Cancelled',
+                      overallStatusCode: 'cancelled',
+                      overallStatusLabel: 'Cancelled',
+                    )
+                  : planJson(statusCode: 'pending', statusLabel: 'Pending'),
+              200,
+            );
+          }
+          if (request.url.path == '/api/crop-plans/plan-1/workflow-status') {
+            return jsonResponse({
+              'error': {'message': 'Not found'},
+            }, 404);
+          }
+          throw StateError(
+            'Unexpected request ${request.method} ${request.url}',
+          );
+        }),
+        baseUrl: 'http://localhost/api',
+      );
+
+      await tester.pumpWidget(harness(AppState(apiClient: api)));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('cancel-crop-plan')), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('cancel-crop-plan')));
+      await tester.pumpAndSettle();
+      expect(find.text('Cancel this crop plan?'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('confirm-cancel-crop-plan')));
+      await tester.pumpAndSettle();
+
+      expect(cancelled, isTrue);
+      expect(find.text('Cancelled'), findsWidgets);
+      expect(find.byKey(const ValueKey('cancel-crop-plan')), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
   testWidgets('pending polls and automatically observes Admin starting AI', (
     tester,
   ) async {

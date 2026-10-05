@@ -24,6 +24,7 @@ class _PlanningProgressScreenState extends State<PlanningProgressScreen>
 
   Timer? _pollTimer;
   bool _refreshInFlight = false;
+  bool _isCancelling = false;
   bool _isForeground = true;
   String? _refreshWarning;
 
@@ -78,6 +79,48 @@ class _PlanningProgressScreenState extends State<PlanningProgressScreen>
     _pollTimer = null;
     if (!_isForeground || plan?.isLifecycleActive != true) return;
     _pollTimer = Timer.periodic(_pollInterval, (_) => _refreshStatus());
+  }
+
+  Future<void> _cancelPlan(CropPlanRecord plan) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Cancel this crop plan?'),
+        content: const Text(
+          'Your planning history, evidence, and decisions will be kept. '
+          'You can create a new crop plan afterward.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Keep plan'),
+          ),
+          FilledButton(
+            key: const ValueKey('confirm-cancel-crop-plan'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: AgriColors.danger),
+            child: const Text('Cancel plan'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isCancelling = true);
+    final state = context.read<AppState>();
+    final succeeded = await state.cancelCropPlanRequest(plan.id);
+    if (!mounted) return;
+    setState(() => _isCancelling = false);
+    _syncPolling(_planFrom(state));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          succeeded
+              ? 'Crop plan cancelled. You can now create a new plan.'
+              : state.error ?? 'The crop plan could not be cancelled.',
+        ),
+      ),
+    );
   }
 
   @override
@@ -182,6 +225,26 @@ class _PlanningProgressScreenState extends State<PlanningProgressScreen>
                   label: Text(
                     _refreshInFlight ? 'Refreshing...' : 'Refresh status',
                   ),
+                ),
+              ),
+            ],
+            if (plan?.canCancel == true) ...[
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  key: const ValueKey('cancel-crop-plan'),
+                  onPressed: _isCancelling ? null : () => _cancelPlan(plan!),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AgriColors.danger,
+                  ),
+                  icon: _isCancelling
+                      ? const SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.cancel_outlined),
+                  label: Text(_isCancelling ? 'Cancelling...' : 'Cancel plan'),
                 ),
               ),
             ],
