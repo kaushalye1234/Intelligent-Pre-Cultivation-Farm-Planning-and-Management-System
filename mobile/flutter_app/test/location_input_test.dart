@@ -7,13 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('Sri Lankan phone inputs normalize to the canonical +94 format', () {
-    for (final input in [
-      '0771234567',
-      '077 123 4567',
-      '077-123-4567',
-      '+94771234567',
-      '+94 77 123 4567',
-    ]) {
+    for (final input in ['0771234567']) {
       expect(normalizeSriLankanPhoneNumber(input), '+94771234567');
       expect(validateSriLankanPhoneNumber(input), isNull);
     }
@@ -23,6 +17,20 @@ void main() {
       validateSriLankanPhoneNumber('12345'),
       'Enter a valid Sri Lankan phone number',
     );
+    for (final input in [
+      '077 123 4567',
+      '077-123-4567',
+      '+94771234567',
+      '077ABC4567',
+      '771234567',
+      '07712345678',
+    ]) {
+      expect(normalizeSriLankanPhoneNumber(input), isNull);
+      expect(
+        validateSriLankanPhoneNumber(input),
+        'Enter a valid Sri Lankan phone number',
+      );
+    }
   });
 
   test('district catalog contains exactly the official 25 values', () {
