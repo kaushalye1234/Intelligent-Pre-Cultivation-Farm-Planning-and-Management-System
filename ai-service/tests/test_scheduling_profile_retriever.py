@@ -34,7 +34,10 @@ class FakeEvidenceTools:
 
 def missing_profile_request():
     value = sourced_request()
-    value.evidence = value.evidence.model_copy(update={"profile_id": None, "stages": []})
+    value.evidence = value.evidence.model_copy(update={
+        "profile_id": None, "source_name": None, "source_url": None,
+        "source_version": None, "verified_at": None, "stages": [],
+    })
     value.weather_resource_output["requirementSource"] = {}
     return value
 
@@ -82,6 +85,57 @@ async def test_matching_profile_fills_only_missing_profile_evidence():
     assert result.workflow_id == original.workflow_id
     assert result.candidate_revision == original.candidate_revision
     assert result.coordinator_output == original.coordinator_output
+
+
+@pytest.mark.asyncio
+async def test_existing_profile_id_must_match_retrieved_profile():
+    original = missing_profile_request()
+    original.evidence.profile_id = uuid4()
+    provider, tools = FakeProvider(), FakeEvidenceTools(retrieved_evidence(original))
+
+    result = await SchedulingProfileRetriever(provider, tools).retrieve_profile(original)
+
+    assert result is original
+    assert provider.calls == tools.calls == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("field,value", [
+    ("source_name", "Different source"),
+    ("source_version", "old-version"),
+    ("source_url", "https://different.example/source"),
+])
+async def test_existing_source_metadata_must_match_and_is_not_overwritten(field, value):
+    original = missing_profile_request()
+    evidence = retrieved_evidence(original)
+    setattr(original.evidence, field, value)
+    provider, tools = FakeProvider(), FakeEvidenceTools(evidence)
+
+    result = await SchedulingProfileRetriever(provider, tools).retrieve_profile(original)
+
+    assert result is original
+
+
+@pytest.mark.asyncio
+async def test_matching_partial_evidence_is_preserved_when_profile_id_is_filled():
+    original = missing_profile_request()
+    evidence = retrieved_evidence(original)
+    original.evidence.source_name = evidence.source_name
+    original.evidence.source_url = "https://guide.example/source"
+    evidence.source_url = original.evidence.source_url
+    original.evidence.source_version = evidence.source_version
+    original.evidence.verified_at = evidence.verified_at
+    original.evidence.stages = evidence.stages
+    provider, tools = FakeProvider(), FakeEvidenceTools(evidence)
+
+    result = await SchedulingProfileRetriever(provider, tools).retrieve_profile(original)
+
+    assert result is not original
+    assert result.evidence.source_name == "Verified source"
+    assert result.evidence.source_url == "https://guide.example/source"
+    assert result.evidence.source_version == "v1"
+    assert result.evidence.verified_at == original.evidence.verified_at
+    assert result.evidence.stages == original.evidence.stages
 
 
 @pytest.mark.asyncio

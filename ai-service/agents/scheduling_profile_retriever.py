@@ -43,25 +43,52 @@ class SchedulingProfileRetriever:
             return request
         if not evidence.profile_id or not evidence.stages or not evidence.source_name or not evidence.source_version:
             return request
-        if evidence.verified_at is None or evidence.verified_at.astimezone(timezone.utc) > datetime.now(timezone.utc):
+        if (evidence.verified_at is None or evidence.verified_at.tzinfo is None or
+                evidence.verified_at.astimezone(timezone.utc) > datetime.now(timezone.utc)):
             return request
         original = request.evidence
         if original is None:
             return request
-        updated = original.model_copy(update={
-            "profile_id": evidence.profile_id,
-            "source_name": evidence.source_name,
-            "source_url": evidence.source_url,
-            "source_version": evidence.source_version,
-            "verified_at": evidence.verified_at,
-            "stages": evidence.stages,
-        })
+        updated = self._merge_evidence(original, evidence)
+        if updated is None:
+            return request
         return request.model_copy(update={"evidence": updated})
+
+    @staticmethod
+    def _merge_evidence(original, retrieved):
+        """Fill missing profile fields, rejecting any conflict with persisted evidence."""
+        if original.profile_id and original.profile_id != retrieved.profile_id:
+            return None
+        if original.source_name and original.source_name.casefold() != retrieved.source_name.casefold():
+            return None
+        if original.source_version and original.source_version != retrieved.source_version:
+            return None
+        if original.source_url and original.source_url != retrieved.source_url:
+            return None
+        if original.verified_at:
+            if (original.verified_at.tzinfo is None or retrieved.verified_at is None or
+                    original.verified_at.astimezone(timezone.utc) != retrieved.verified_at.astimezone(timezone.utc)):
+                return None
+        if original.stages and original.stages != retrieved.stages:
+            return None
+
+        return original.model_copy(update={
+            "profile_id": original.profile_id or retrieved.profile_id,
+            "source_name": original.source_name or retrieved.source_name,
+            "source_url": original.source_url or retrieved.source_url,
+            "source_version": original.source_version or retrieved.source_version,
+            "verified_at": original.verified_at or retrieved.verified_at,
+            "stages": original.stages or retrieved.stages,
+            "irrigation_rules": original.irrigation_rules or retrieved.irrigation_rules,
+            "invalid_irrigation_rule_ids": (original.invalid_irrigation_rule_ids or
+                                             retrieved.invalid_irrigation_rule_ids),
+        })
 
     @staticmethod
     def _eligible(request: SchedulingValidationInput) -> bool:
         evidence = request.evidence
-        if evidence is None or (evidence.profile_id and evidence.stages):
+        if evidence is None or (
+                evidence.profile_id and evidence.verified_at and evidence.source_name and evidence.source_version and evidence.stages):
             return False
         if not all((evidence.coordinator_step_id, evidence.field_analysis_step_id, evidence.weather_resource_step_id)):
             return False
