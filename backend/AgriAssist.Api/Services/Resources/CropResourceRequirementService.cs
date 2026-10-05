@@ -46,9 +46,9 @@ public sealed class CropResourceRequirementService(AppDbContext dbContext, IConf
         var profile = profiles
             .Where(item => item.Rules.Any(IsRequirementRule))
             .Where(item => item.VarietyName is null || string.Equals(item.VarietyName, varietyName, StringComparison.OrdinalIgnoreCase))
-            .Where(item => item.Region is null || RegionMatches(item.Region, plan.Farm?.Location))
+            .Where(item => RegionRank(item.Region, plan.Farm) >= 0)
             .OrderByDescending(item => item.VarietyName is not null)
-            .ThenByDescending(item => item.Region is not null)
+            .ThenByDescending(item => RegionRank(item.Region, plan.Farm))
             .ThenByDescending(item => item.VerifiedAt)
             .ThenBy(item => item.Id)
             .FirstOrDefault();
@@ -144,10 +144,29 @@ public sealed class CropResourceRequirementService(AppDbContext dbContext, IConf
     private static bool IsRequirementRule(CropRuleReference rule) =>
         !rule.IsDeleted && string.Equals(rule.RuleType.Trim(), CropResourceRequirementRule.RuleType, StringComparison.OrdinalIgnoreCase);
 
-    private static bool RegionMatches(string region, string? location) =>
-        !string.IsNullOrWhiteSpace(location)
-        && location.Split(',').Select(part => part.Trim()).Append(location.Trim())
-            .Any(part => string.Equals(part, region.Trim(), StringComparison.OrdinalIgnoreCase));
+    /// <summary>
+    /// 1 when the profile region names the farm's District or a part of its location, 0 when the profile has no
+    /// region or covers the whole country (e.g. "Sri Lanka (no subregion stated)"), and -1 for another region.
+    /// </summary>
+    private static int RegionRank(string? region, Farm? farm)
+    {
+        if (string.IsNullOrWhiteSpace(region) || IsNationwide(region)) return 0;
+        var trimmed = region.Trim();
+        var district = SriLankanDistricts.Canonicalize(farm?.District);
+        if (district is not null && district == SriLankanDistricts.Canonicalize(trimmed)) return 1;
+        var location = farm?.Location;
+        var matchesLocation = !string.IsNullOrWhiteSpace(location)
+            && location.Split(',').Select(part => part.Trim()).Append(location.Trim())
+                .Any(part => string.Equals(part, trimmed, StringComparison.OrdinalIgnoreCase));
+        return matchesLocation ? 1 : -1;
+    }
+
+    private static bool IsNationwide(string region)
+    {
+        var bracket = region.IndexOf('(');
+        var name = bracket >= 0 ? region[..bracket] : region;
+        return string.Equals(name.Trim(), "Sri Lanka", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static string Format(decimal value) => value.ToString("0.####", CultureInfo.InvariantCulture);
 }

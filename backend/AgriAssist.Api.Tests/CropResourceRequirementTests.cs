@@ -99,6 +99,47 @@ public sealed class CropResourceRequirementTests
     }
 
     [Fact]
+    public async Task Region_matches_the_farm_district_even_when_the_location_does_not_name_it()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedAsync(db, ruleJson: null, farmLocation: "no 32 new road , Galnewa", farmDistrict: "Anuradhapura");
+        var district = Profile(data.CropTypeId, null, "anuradhapura", DateTime.UtcNow.AddDays(-1), SampleUreaRule);
+        db.AddRange(district, Profile(data.CropTypeId, null, "Jaffna", DateTime.UtcNow.AddDays(-1), SampleUreaRule));
+        await db.SaveChangesAsync();
+
+        Assert.Equal(district.Id, (await Service(db).GetRequirementsAsync(data.RequestId, CancellationToken.None)).Source!.CropReferenceProfileId);
+    }
+
+    [Theory]
+    [InlineData("Sri Lanka")]
+    [InlineData("Sri Lanka (no subregion stated)")]
+    public async Task Nationwide_region_applies_to_every_farm(string region)
+    {
+        await using var db = NewDbContext();
+        var data = await SeedAsync(db, ruleJson: null, farmLocation: "no 32 new road", farmDistrict: "Anuradhapura");
+        var nationwide = Profile(data.CropTypeId, null, region, DateTime.UtcNow.AddDays(-1), SampleUreaRule);
+        db.Add(nationwide);
+        await db.SaveChangesAsync();
+
+        var result = await Service(db).GetRequirementsAsync(data.RequestId, CancellationToken.None);
+
+        Assert.Equal("Available", result.Status);
+        Assert.Equal(nationwide.Id, result.Source!.CropReferenceProfileId);
+    }
+
+    [Fact]
+    public async Task District_profile_is_preferred_over_a_newer_nationwide_profile()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedAsync(db, ruleJson: null, farmLocation: "no 32 new road", farmDistrict: "Anuradhapura");
+        var district = Profile(data.CropTypeId, null, "Anuradhapura", DateTime.UtcNow.AddDays(-5), SampleUreaRule);
+        db.AddRange(district, Profile(data.CropTypeId, null, "Sri Lanka", DateTime.UtcNow.AddDays(-1), SampleUreaRule));
+        await db.SaveChangesAsync();
+
+        Assert.Equal(district.Id, (await Service(db).GetRequirementsAsync(data.RequestId, CancellationToken.None)).Source!.CropReferenceProfileId);
+    }
+
+    [Fact]
     public async Task Variety_specific_profile_is_preferred_over_the_generic_crop_profile()
     {
         await using var db = NewDbContext();
