@@ -12,6 +12,7 @@ import { cropPlanStatus } from '../labels'
 import { sriLankanDistrictOptions } from '../location'
 import { AuthContext } from '../auth/AuthContext'
 import { AdminCropManagement } from './AdminCropManagement'
+import { Roles } from '../routing'
 import type { CropPlan, CropPlanningResult, CropPlanningWorkflowStatus, CropType, Farm, Field, PagedResult } from '../types'
 
 type CropTab = 'overview' | 'farms' | 'fields' | 'cropTypes' | 'requests'
@@ -41,7 +42,9 @@ function startErrorMessage(error: unknown) {
 }
 
 export function CropPlanningPage() {
-  const isAdmin = useContext(AuthContext)?.user?.role === 5
+  const role = useContext(AuthContext)?.user?.role
+  const isAdmin = role === Roles.Admin
+  const isAgriculturalOfficer = role === Roles.AgriculturalOfficer
   const [farms, setFarms] = useState<Farm[]>([])
   const [fields, setFields] = useState<Field[]>([])
   const [cropTypes, setCropTypes] = useState<CropType[]>([])
@@ -325,9 +328,11 @@ export function CropPlanningPage() {
             </section>
           ) : null}
 
-          {activeTab === 'cropTypes' && isAdmin ? <AdminCropManagement /> : null}
+          {activeTab === 'cropTypes' && (isAdmin || isAgriculturalOfficer)
+            ? <AdminCropManagement referenceOnly={isAgriculturalOfficer} />
+            : null}
 
-          {activeTab === 'cropTypes' && !isAdmin ? (
+          {activeTab === 'cropTypes' && !isAdmin && !isAgriculturalOfficer ? (
             <section className="work-section">
               <div className="section-title"><h2>Crop Types</h2></div>
               <DataTable rows={cropTypes} emptyTitle="No crop types found" emptyMessage="Crop type records are managed through the existing API seed/admin flow." getRowKey={(row) => row.id} columns={[

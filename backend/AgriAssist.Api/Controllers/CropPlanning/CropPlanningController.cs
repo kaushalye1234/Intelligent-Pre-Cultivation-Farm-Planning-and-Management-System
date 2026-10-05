@@ -100,22 +100,22 @@ public sealed class CropPlanningController(ICropPlanningService cropPlanningServ
     }
 
     [HttpGet("crop-reference-profiles")]
-    [Authorize(Roles = nameof(ApplicationRole.Admin))]
+    [Authorize(Roles = $"{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
     public async Task<ActionResult<PagedResult<CropReferenceProfileResponse>>> SearchReferenceProfiles([FromQuery] PagedQuery query, [FromQuery] Guid? cropTypeId, CancellationToken cancellationToken) =>
         Ok(await cropPlanningService.SearchReferenceProfilesAsync(query, cropTypeId, cancellationToken));
 
     [HttpGet("crop-reference-profiles/{id:guid}")]
-    [Authorize(Roles = nameof(ApplicationRole.Admin))]
+    [Authorize(Roles = $"{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
     public async Task<ActionResult<CropReferenceProfileDetailsResponse>> GetReferenceProfile(Guid id, CancellationToken cancellationToken) =>
         Ok(await cropPlanningService.GetReferenceProfileAsync(id, cancellationToken));
 
     [HttpPost("crop-reference-profiles")]
-    [Authorize(Roles = nameof(ApplicationRole.Admin))]
+    [Authorize(Roles = $"{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
     public async Task<ActionResult<CropReferenceProfileResponse>> CreateReferenceProfile(CropReferenceProfileRequest request, CancellationToken cancellationToken) =>
         Ok(await cropPlanningService.CreateReferenceProfileAsync(request, cancellationToken));
 
     [HttpPut("crop-reference-profiles/{id:guid}/active")]
-    [Authorize(Roles = nameof(ApplicationRole.Admin))]
+    [Authorize(Roles = $"{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
     public async Task<ActionResult<CropReferenceProfileResponse>> SetReferenceProfileActive(Guid id, [FromBody] bool isActive, CancellationToken cancellationToken) =>
         Ok(await cropPlanningService.SetReferenceProfileActiveAsync(id, isActive, cancellationToken));
 
