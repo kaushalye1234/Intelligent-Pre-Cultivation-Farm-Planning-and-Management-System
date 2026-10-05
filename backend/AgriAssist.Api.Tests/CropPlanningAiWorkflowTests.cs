@@ -178,7 +178,7 @@ public sealed class CropPlanningAiWorkflowTests
 
         var detailsForbidden = await Assert.ThrowsAsync<ApiException>(() =>
             farmer.GetReferenceProfileAsync(profile.Id, CancellationToken.None));
-        Assert.Equal("ADMIN_REQUIRED", detailsForbidden.Code);
+        Assert.Equal("REFERENCE_MANAGER_REQUIRED", detailsForbidden.Code);
     }
 
     [Fact]

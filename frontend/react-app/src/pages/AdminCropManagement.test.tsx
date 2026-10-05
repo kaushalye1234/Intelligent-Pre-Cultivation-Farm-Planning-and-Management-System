@@ -8,6 +8,64 @@ const paged = <T,>(items: T[]) => ({ data: { items, page: 1, pageSize: 100, tota
 afterEach(() => vi.restoreAllMocks())
 
 describe('Admin crop management', () => {
+  it('gives reference managers only the verified reference workflow and active catalog choices', async () => {
+    const profile = {
+      id: 'reference-1',
+      cropTypeId: 'crop-1',
+      varietyName: null,
+      region: 'Kurunegala',
+      sourceName: 'Department of Agriculture field guide',
+      sourceUrl: 'https://example.test/rice-guide',
+      sourceVersion: '2026 edition',
+      verifiedAt: '2026-10-05T08:30:00Z',
+      isActive: false,
+      stageCount: 1,
+      ruleCount: 0,
+    }
+    const get = vi.spyOn(api, 'get').mockImplementation((url: string) => {
+      if (url.includes('/crop-types')) return Promise.resolve(paged([{ id: 'crop-1', name: 'Rice', description: '', isActive: true }]))
+      if (url.includes('/crop-varieties')) return Promise.resolve(paged([{ id: 'variety-1', cropTypeId: 'crop-1', name: 'Bg 352', isActive: true }]))
+      if (url.includes('/crop-reference-profiles')) return Promise.resolve(paged([profile]))
+      return Promise.resolve(paged([]))
+    })
+    const post = vi.spyOn(api, 'post').mockResolvedValue({ data: {} })
+    const put = vi.spyOn(api, 'put').mockResolvedValue({ data: {} })
+
+    render(<AdminCropManagement referenceOnly />)
+
+    expect(await screen.findByRole('heading', { name: 'Verified references' })).toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: /Crops/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: /Varieties/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Add crop' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Add variety' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Find References with AI' })).not.toBeInTheDocument()
+    expect(get.mock.calls.some(([url]) => String(url).includes('includeInactive=true'))).toBe(false)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Activate' }))
+    await waitFor(() => expect(put).toHaveBeenCalledWith(
+      '/crop-planning/crop-reference-profiles/reference-1/active',
+      true,
+      { headers: { 'Content-Type': 'application/json' } },
+    ))
+
+    fireEvent.change(screen.getByRole('combobox', { name: /^Crop/ }), { target: { value: 'crop-1' } })
+    fireEvent.change(screen.getByRole('textbox', { name: /^Source name/ }), { target: { value: 'Verified rice guide' } })
+    fireEvent.change(screen.getByRole('textbox', { name: /^Source version/ }), { target: { value: 'v1' } })
+    fireEvent.change(screen.getByLabelText(/^Verified at/), { target: { value: '2026-10-05T10:30' } })
+    fireEvent.change(screen.getByRole('textbox', { name: /^Stage name/ }), { target: { value: 'Land preparation' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create verified version' }))
+
+    await waitFor(() => expect(post).toHaveBeenCalledWith(
+      '/crop-planning/crop-reference-profiles',
+      expect.objectContaining({
+        cropTypeId: 'crop-1',
+        sourceName: 'Verified rice guide',
+        sourceVersion: 'v1',
+        stages: [expect.objectContaining({ stageName: 'Land preparation', sequence: 1 })],
+      }),
+    ))
+  })
+
   it('uses tabs, filters crops, and creates catalog items in dialogs', async () => {
     const get = vi.spyOn(api, 'get').mockImplementation((url: string) => {
       if (url.includes('/crop-types')) return Promise.resolve(paged([

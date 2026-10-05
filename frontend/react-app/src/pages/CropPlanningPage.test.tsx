@@ -5,6 +5,12 @@ import { api } from '../api/client'
 import { AuthContext } from '../auth/AuthContext'
 import { CropPlanningPage } from './CropPlanningPage'
 
+vi.mock('./AdminCropManagement', () => ({
+  AdminCropManagement: ({ referenceOnly = false }: { referenceOnly?: boolean }) => (
+    <div>{referenceOnly ? 'Reference manager interface' : 'Full catalog manager interface'}</div>
+  ),
+}))
+
 const paged = <T,>(items: T[]) => ({ data: { items, page: 1, pageSize: 20, totalCount: items.length, totalPages: 1 } })
 
 function renderForRole(role: 4 | 5) {
@@ -193,6 +199,16 @@ describe('CropPlanningPage AI workflow surface', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Start AI Plan' }))
 
     await waitFor(() => expect(post).toHaveBeenCalledWith('/crop-plans/plan-1/start-ai-workflow'))
+  })
+
+  it('opens the reference-only manager for an Agricultural Officer', async () => {
+    vi.spyOn(api, 'get').mockResolvedValue(paged([]))
+
+    renderForRole(4)
+
+    fireEvent.click(await screen.findByRole('tab', { name: /Crop Types/i }))
+    expect(await screen.findByText('Reference manager interface')).toBeInTheDocument()
+    expect(screen.queryByText('Full catalog manager interface')).not.toBeInTheDocument()
   })
 })
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { BookOpenCheck, ExternalLink, Eye, Loader2, Pencil, Plus, Power, Search, Sparkles, Sprout, Trash2 } from 'lucide-react'
 import { api, getErrorMessage } from '../api/client'
@@ -67,8 +67,8 @@ function numericValue(...values: unknown[]): string {
   return value === undefined ? '' : String(value)
 }
 
-export function AdminCropManagement() {
-  const [activeTab, setActiveTab] = useState<AdminTab>('crops')
+export function AdminCropManagement({ referenceOnly = false }: { referenceOnly?: boolean }) {
+  const [activeTab, setActiveTab] = useState<AdminTab>(referenceOnly ? 'references' : 'crops')
   const [crops, setCrops] = useState<CropType[]>([])
   const [varieties, setVarieties] = useState<CropVariety[]>([])
   const [profiles, setProfiles] = useState<CropReferenceProfile[]>([])
@@ -103,16 +103,16 @@ export function AdminCropManagement() {
   const [pendingPartial, setPendingPartial] = useState<PendingPartial>(null)
   const [referenceDetails, setReferenceDetails] = useState<ReferenceDetailsState | null>(null)
 
-  async function load() {
+  const load = useCallback(async () => {
     const [nextCrops, nextVarieties, nextProfiles] = await Promise.all([
-      allItems<CropType>('/crop-planning/crop-types?includeInactive=true'),
-      allItems<CropVariety>('/crop-planning/crop-varieties?includeInactive=true'),
+      allItems<CropType>(referenceOnly ? '/crop-planning/crop-types' : '/crop-planning/crop-types?includeInactive=true'),
+      allItems<CropVariety>(referenceOnly ? '/crop-planning/crop-varieties' : '/crop-planning/crop-varieties?includeInactive=true'),
       allItems<CropReferenceProfile>('/crop-planning/crop-reference-profiles'),
     ])
     setCrops(nextCrops)
     setVarieties(nextVarieties)
     setProfiles(nextProfiles)
-  }
+  }, [referenceOnly])
 
   useEffect(() => {
     async function initialize() {
@@ -126,7 +126,7 @@ export function AdminCropManagement() {
     }
 
     void initialize()
-  }, [])
+  }, [load])
 
   async function openReferenceDetails(profile: CropReferenceProfile) {
     setReferenceDetails({ profile, details: null, loading: true, error: '' })
@@ -485,19 +485,20 @@ export function AdminCropManagement() {
       && (!query || variety.name.toLowerCase().includes(query) || (cropNames.get(variety.cropTypeId) ?? '').toLowerCase().includes(query)))
   }, [cropNames, varieties, varietySearch, varietyStatus])
 
-  const tabs = [
+  const adminTabs = [
     { id: 'crops', label: 'Crops', count: crops.length, icon: <Sprout size={17} /> },
     { id: 'varieties', label: 'Varieties', count: varieties.length, icon: <Sprout size={17} /> },
     { id: 'references', label: 'Verified References', count: profiles.length, icon: <BookOpenCheck size={17} /> },
   ]
+  const tabs = referenceOnly ? adminTabs.filter((tab) => tab.id === 'references') : adminTabs
 
   return (
     <div className="page-stack crop-admin-page">
       <div className="crop-admin-heading">
         <div>
-          <span className="crop-admin-eyebrow">Crop catalog</span>
-          <h2>Crop master and verified references</h2>
-          <p>Manage the catalog farmers can select and keep sourced planning evidence current.</p>
+          <span className="crop-admin-eyebrow">{referenceOnly ? 'Reference management' : 'Crop catalog'}</span>
+          <h2>{referenceOnly ? 'Verified crop references' : 'Crop master and verified references'}</h2>
+          <p>{referenceOnly ? 'Create and maintain sourced planning evidence used by the scheduling workflow.' : 'Manage the catalog farmers can select and keep sourced planning evidence current.'}</p>
         </div>
       </div>
 
@@ -505,7 +506,7 @@ export function AdminCropManagement() {
       {success ? <Notice tone="success">{success}</Notice> : null}
       <Tabs tabs={tabs} activeTab={activeTab} onChange={(tab) => setActiveTab(tab as AdminTab)} ariaLabel="Crop master sections" />
 
-      {activeTab === 'crops' ? (
+      {!referenceOnly && activeTab === 'crops' ? (
         <section className="work-section crop-admin-panel" aria-label="Crops management">
           <div className="crop-admin-panel-header">
             <div><h3>Crops</h3><p>Active crops are available in the farmer catalog.</p></div>
@@ -533,7 +534,7 @@ export function AdminCropManagement() {
         </section>
       ) : null}
 
-      {activeTab === 'varieties' ? (
+      {!referenceOnly && activeTab === 'varieties' ? (
         <section className="work-section crop-admin-panel" aria-label="Varieties management">
           <div className="crop-admin-panel-header">
             <div><h3>Varieties</h3><p>Organize selectable varieties beneath an active crop.</p></div>
@@ -575,14 +576,14 @@ export function AdminCropManagement() {
           ]} />
           <form className="crop-reference-form" onSubmit={(event) => void saveReference(event)}>
             <div className="crop-reference-form-heading"><h3>Create verified version</h3><p>Add a traceable source and at least one growth stage or structured rule.</p></div>
-            <section className="crop-finding-panel" aria-label="AI reference discovery">
+            {!referenceOnly ? <section className="crop-finding-panel" aria-label="AI reference discovery">
               <div className="crop-finding-panel-heading">
                 <div><span className="crop-finding-label">AI Generated Draft · Needs Admin Review</span><h3>Find references with AI</h3><p>Choose the crop below first. Review one primary source at a time; accepted items only prefill this existing form.</p></div>
                 <Button variant="secondary" icon={findingAction === 'references' ? <Loader2 className="spin" size={16} /> : <Sparkles size={16} />} disabled={!referenceForm.cropTypeId || findingAction !== null} onClick={() => void findReferences()}>{findingAction === 'references' ? 'Finding references…' : 'Find References with AI'}</Button>
               </div>
               {findingErrors.references ? <Notice tone="error">{findingErrors.references} Current form values and completed review decisions were preserved.</Notice> : null}
               {referenceDiscovery ? <ReferenceDiscoveryReview response={referenceDiscovery} primarySourceId={primarySourceId} decisions={referenceReview} onSelectPrimary={selectPrimarySource} onAccept={(sourceId, item) => requestReferenceUse(sourceId, item, false)} onEdit={(sourceId, item) => requestReferenceUse(sourceId, item, true)} onReject={(item) => setReferenceReview((current) => ({ ...current, [item.id]: 'rejected' }))} /> : null}
-            </section>
+            </section> : null}
             <fieldset className="crop-reference-section">
               <legend>Source details</legend>
               <div className="form-grid">

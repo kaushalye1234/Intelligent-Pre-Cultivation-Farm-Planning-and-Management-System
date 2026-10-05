@@ -426,7 +426,7 @@ public sealed class CropPlanningService(
 
     public async Task<PagedResult<CropReferenceProfileResponse>> SearchReferenceProfilesAsync(PagedQuery query, Guid? cropTypeId, CancellationToken cancellationToken)
     {
-        RequireAdmin();
+        RequireReferenceManager();
         query.Normalize();
         var profiles = dbContext.CropReferenceProfiles.AsNoTracking().Where(item => !item.IsDeleted);
         if (cropTypeId.HasValue) profiles = profiles.Where(item => item.CropTypeId == cropTypeId.Value);
@@ -441,7 +441,7 @@ public sealed class CropPlanningService(
 
     public async Task<CropReferenceProfileDetailsResponse> GetReferenceProfileAsync(Guid id, CancellationToken cancellationToken)
     {
-        RequireAdmin();
+        RequireReferenceManager();
         var profile = await dbContext.CropReferenceProfiles.AsNoTracking()
             .Include(item => item.CropType)
             .Include(item => item.Stages)
@@ -473,7 +473,7 @@ public sealed class CropPlanningService(
 
     public async Task<CropReferenceProfileResponse> CreateReferenceProfileAsync(CropReferenceProfileRequest request, CancellationToken cancellationToken)
     {
-        RequireAdmin();
+        RequireReferenceManager();
         Validate(new CropReferenceProfileRequestValidator().Validate(request));
         await EnsureCropTypeAsync(request.CropTypeId, cancellationToken);
         string? varietyName = null;
@@ -511,7 +511,7 @@ public sealed class CropPlanningService(
 
     public async Task<CropReferenceProfileResponse> SetReferenceProfileActiveAsync(Guid id, bool isActive, CancellationToken cancellationToken)
     {
-        RequireAdmin();
+        RequireReferenceManager();
         var profile = await dbContext.CropReferenceProfiles.Include(item => item.Stages).Include(item => item.Rules)
             .SingleOrDefaultAsync(item => item.Id == id && !item.IsDeleted, cancellationToken) ?? throw NotFound("Crop reference profile");
         profile.IsActive = isActive;
@@ -2383,6 +2383,12 @@ public sealed class CropPlanningService(
     {
         if (currentUser.Role != ApplicationRole.Admin)
             throw new ApiException(HttpStatusCode.Forbidden, "ADMIN_REQUIRED", "An administrator is required.");
+    }
+
+    private void RequireReferenceManager()
+    {
+        if (currentUser.Role is not (ApplicationRole.AgriculturalOfficer or ApplicationRole.Admin))
+            throw new ApiException(HttpStatusCode.Forbidden, "REFERENCE_MANAGER_REQUIRED", "An Agricultural Officer or administrator is required.");
     }
 
     private void RequirePrePlantingViewer()
