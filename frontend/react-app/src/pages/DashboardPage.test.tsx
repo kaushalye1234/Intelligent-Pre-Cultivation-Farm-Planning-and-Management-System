@@ -8,6 +8,7 @@ import { DashboardPage } from './DashboardPage'
 
 const summaryUrl = '/dashboard/summary'
 const queueUrl = '/crop-plans/weather-resource-work-queue'
+const historyUrl = '/crop-plans/weather-resource-history'
 
 const summary: DashboardSummary = {
   usersByRole: [],
@@ -49,6 +50,7 @@ function mockApi() {
   return vi.spyOn(api, 'get').mockImplementation(async (url: string) => {
     if (url === summaryUrl) return { data: summary } as never
     if (url === queueUrl) return { data: { items: [item], page: 1, pageSize: 10, totalCount: 7, totalPages: 1 } } as never
+    if (url === historyUrl) return { data: { items: [], page: 1, pageSize: 10, totalCount: 0, totalPages: 0 } } as never
     throw new Error('Unexpected GET ' + url)
   })
 }
@@ -71,6 +73,8 @@ describe('DashboardPage Weather/Resource queue', () => {
 
     expect(await screen.findByRole('heading', { name: 'Resource Dashboard' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Weather/Resource Analysis Queue' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Weather/Resource Analysis History' })).toBeInTheDocument()
+    expect(await screen.findByText('No saved analyses yet')).toBeInTheDocument()
     expect(await screen.findByText('7 crop plans waiting for Weather/Resource Analysis')).toBeInTheDocument()
 
     const pendingTasks = screen.getAllByText('Pending tasks')[0].closest('article')
@@ -106,6 +110,7 @@ describe('DashboardPage Weather/Resource queue', () => {
 
     expect(await screen.findByRole('heading', { name: title })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Weather/Resource Analysis Queue' })).not.toBeInTheDocument()
-    expect(get.mock.calls.some(([url]) => url === queueUrl)).toBe(false)
+    expect(screen.queryByRole('heading', { name: 'Weather/Resource Analysis History' })).not.toBeInTheDocument()
+    expect(get.mock.calls.some(([url]) => url === queueUrl || url === historyUrl)).toBe(false)
   })
 })

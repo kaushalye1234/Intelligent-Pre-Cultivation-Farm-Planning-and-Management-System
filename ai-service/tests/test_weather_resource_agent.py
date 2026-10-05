@@ -1,8 +1,10 @@
+import json
 from uuid import UUID
 
 import pytest
 
 from agents.weather_resource_agent import WeatherResourceAgent
+from providers.base_llm_provider import LLMProviderError, LLMResponse
 from schemas.weather_resource import (
     CropResourceRequirements,
     ReservationSnapshot,
@@ -387,16 +389,11 @@ def test_weather_resource_endpoint_runs_without_an_llm_provider(monkeypatch):
     import main
     from config import Settings, get_settings
 
-    # Member 3 is deterministic: the endpoint must not build an OpenAI client and must work with no OPENAI_API_KEY.
+    # Without OPENAI_API_KEY no provider exists: every figure is still calculated and the explanation is rule-based.
     settings = Settings(_env_file=None, AI_SERVICE_TOKEN="test-service-token", AI_PROVIDER="openai", OPENAI_API_KEY="")
     main.app.dependency_overrides[get_settings] = lambda: settings
     tools = FakeTools()
     monkeypatch.setattr(main, "WeatherResourceTools", lambda client: tools)
-
-    def fail_create_provider(_settings):
-        raise AssertionError("The weather-resource step must not create an LLM provider.")
-
-    monkeypatch.setattr(main, "create_provider", fail_create_provider)
     try:
         response = TestClient(main.app).post(
             "/workflows/crop-planning/weather-resource",
@@ -411,3 +408,159 @@ def test_weather_resource_endpoint_runs_without_an_llm_provider(monkeypatch):
     assert body["status"] == "Analyzed"
     assert body["requirementStatus"] == "Insufficient"  # sample fixture: 50 kg required, 30 kg available
     assert "GetResourceAvailability" in body["toolsUsed"]
+    assert body["weatherRiskAssessment"]["generatedBy"] == "RuleBased"
+    assert body["weatherRiskAssessment"]["riskLevel"] == body["weatherRisk"]
+
+
+# Weather risk explanation: calculated factors, OpenAI narrative only when it stays grounded in them.
+class FakeProvider:
+    provider_name = "fake"
+
+    def __init__(self, payload: dict | None = None, error: Exception | None = None) -> None:
+        self.payload = payload
+        self.error = error
+        self.requests = []
+
+    async def generate_structured_json(self, request):
+        self.requests.append(request)
+        if self.error is not None:
+            raise self.error
+        return LLMResponse(text=json.dumps(self.payload))
+
+
+# SAMPLE forecast (one day, 2026-09-15): 12 mm rain, 31 C, 5 m/s, so only daily rain reaches Medium.
+GROUNDED_NARRATIVE = {
+    "headline": "Medium weather risk: 12 mm of rain is expected on 2026-09-15.",
+    "explanation": "The heaviest daily rain of 12 mm on 2026-09-15 reaches the 10 mm Medium threshold. "
+                   "The temperature of 31 C and wind of 5 m/s stay below their thresholds.",
+    "potentialImpacts": ["Rain can delay land preparation for the Tomato plan and wash fertilizer away."],
+    "recommendedActions": [
+        {"action": "Clear drainage channels before the rain.", "timing": "Before 2026-09-15", "priority": "Medium"},
+    ],
+    "monitoringAdvice": "Check the forecast again the day before field work.",
+}
+
+
+async def run_with_provider(provider, tools=None):
+    agent = WeatherResourceAgent(tools=tools or FakeTools(weather=forecast(rain=12)), llm_provider=provider)
+    return await agent.run(request_input())
+
+
+@pytest.mark.asyncio
+async def test_rule_based_assessment_explains_why_the_risk_is_medium():
+    result = await run(FakeTools(weather=forecast(rain=12)))
+
+    assessment = result.weather_risk_assessment
+    assert result.weather_risk == "Medium" and assessment.risk_level == "Medium"
+    assert assessment.generated_by == "RuleBased"
+    factors = {factor.metric: factor for factor in assessment.contributing_factors}
+    assert set(factors) == {"DailyRainfall", "TotalRainfall", "MaxTemperature", "MaxWind"}
+    assert (factors["DailyRainfall"].value, factors["DailyRainfall"].level) == (12, "Medium")
+    assert factors["DailyRainfall"].observed_on.isoformat() == "2026-09-15"
+    assert (factors["MaxTemperature"].value, factors["MaxTemperature"].level) == (31, "Low")
+    assert "Medium" in assessment.headline
+    assert "12 mm on 2026-09-15" in assessment.explanation and "Medium threshold of 10 mm" in assessment.explanation
+    assert any("waterlog" in impact for impact in assessment.potential_impacts)
+    assert any(action.timing == "Before 2026-09-15" for action in assessment.recommended_actions)
+    # The shortage from the sample fixture (50 kg needed, 30 kg available) is connected to the weather impact.
+    assert any("Urea" in impact for impact in assessment.potential_impacts)
+
+
+@pytest.mark.asyncio
+async def test_low_risk_assessment_says_every_measure_is_below_its_threshold():
+    result = await run(FakeTools())
+
+    assessment = result.weather_risk_assessment
+    assert assessment.risk_level == "Low"
+    assert all(factor.level == "Low" for factor in assessment.contributing_factors)
+    assert "below its Medium threshold" in assessment.explanation
+    assert [action.priority for action in assessment.recommended_actions] == ["Low", "Low"]
+
+
+@pytest.mark.asyncio
+async def test_drainage_concern_from_field_analysis_is_reflected_in_rain_impacts():
+    request = WeatherResourceInput.model_validate({
+        **request_input().model_dump(by_alias=True, mode="json"),
+        "member2FieldAnalysisContext": {
+            "fieldSuitability": "SuitableWithConditions", "soilAssessment": "Soil Loamy.", "waterAssessment": "Water Adequate.",
+            "drainageAssessment": "Drainage Poor.", "fieldPreparationRequirements": [], "plantingReadiness": "RequiresPreparation",
+            "identifiedRisks": ["PoorDrainage"], "recommendedPrePlantingActions": [], "priority": "Low", "warnings": [],
+            "requiresHumanReview": True,
+        },
+    })
+
+    result = await WeatherResourceAgent(tools=FakeTools(weather=forecast(rain=35))).run(request)
+
+    assert result.weather_risk_assessment.risk_level == "High"
+    assert any("drainage or flooding concern" in impact for impact in result.weather_risk_assessment.potential_impacts)
+    assert any("agricultural officer" in action.action for action in result.weather_risk_assessment.recommended_actions)
+
+
+@pytest.mark.asyncio
+async def test_grounded_openai_narrative_is_used_with_calculated_factors():
+    provider = FakeProvider(GROUNDED_NARRATIVE)
+
+    result = await run_with_provider(provider)
+
+    assessment = result.weather_risk_assessment
+    assert assessment.generated_by == "OpenAI"
+    assert assessment.headline == GROUNDED_NARRATIVE["headline"]
+    assert assessment.recommended_actions[0].action == "Clear drainage channels before the rain."
+    assert {factor.metric: factor.level for factor in assessment.contributing_factors}["DailyRainfall"] == "Medium"
+    # Only the narrative is generated: risk, recommendations and resource figures are unchanged.
+    assert result.weather_risk == "Medium"
+    assert result.resource_requirements[0].shortage_quantity == 20
+    request = provider.requests[0]
+    assert request.schema_name == "weather_risk_explanation_v1"
+    facts = json.loads(request.user_input.removeprefix("FACTS:\n"))
+    assert facts["riskLevel"] == "Medium"
+    assert facts["forecast"]["days"][0]["rainMm"] == 12
+    assert facts["cropPlan"]["cropName"] == "Tomato"
+    assert facts["resourceStatus"]["items"][0]["shortageQuantity"] == 20
+    assert str(WORKFLOW_ID) not in request.user_input and str(UREA_ID) not in request.user_input
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", [
+    {"explanation": "Expect 55 mm of rain, so apply 75 kg of Urea per acre after it."},
+    {"headline": "High weather risk because of rain on 2026-09-15."},
+    {"potentialImpacts": ["Humid weather may need a fungicide spray."]},
+])
+async def test_unsupported_openai_narrative_falls_back_to_rules(change):
+    result = await run_with_provider(FakeProvider({**GROUNDED_NARRATIVE, **change}))
+
+    assert result.weather_risk_assessment.generated_by == "RuleBased"
+    assert result.weather_risk_assessment.risk_level == "Medium"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", [
+    FakeProvider(error=LLMProviderError("OpenAI structured generation timed out.", category="timeout")),
+    FakeProvider({"headline": "Missing fields"}),
+])
+async def test_provider_failure_keeps_the_analysis_with_a_rule_based_explanation(provider):
+    result = await run_with_provider(provider)
+
+    assert result.status == "Analyzed"
+    assert result.weather_risk == "Medium"
+    assert result.weather_risk_assessment.generated_by == "RuleBased"
+
+
+@pytest.mark.asyncio
+async def test_unknown_weather_is_explained_without_calling_the_provider():
+    provider = FakeProvider(GROUNDED_NARRATIVE)
+
+    result = await run_with_provider(provider, FakeTools(weather=forecast(available=False)))
+
+    assessment = result.weather_risk_assessment
+    assert provider.requests == []
+    assert (assessment.risk_level, assessment.generated_by, assessment.contributing_factors) == ("Unknown", "RuleBased", [])
+    assert "no forecast was available" in assessment.explanation
+
+
+@pytest.mark.asyncio
+async def test_safe_failure_has_no_weather_risk_assessment():
+    result = await run(FakeTools(fail={"GetResourceAvailability"}))
+
+    assert result.status == "SafeFailure"
+    assert result.weather_risk_assessment is None

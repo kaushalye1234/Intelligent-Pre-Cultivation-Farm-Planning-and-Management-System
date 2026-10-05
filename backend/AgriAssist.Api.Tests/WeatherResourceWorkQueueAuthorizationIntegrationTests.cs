@@ -23,6 +23,7 @@ public sealed class WeatherResourceWorkQueueAuthorizationIntegrationTests
 {
     private const string Password = "WorkQueue@2026";
     private const string QueueUrl = "/api/crop-plans/weather-resource-work-queue";
+    private const string HistoryUrl = "/api/crop-plans/weather-resource-history";
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     [Fact]
@@ -104,6 +105,38 @@ public sealed class WeatherResourceWorkQueueAuthorizationIntegrationTests
         Assert.Empty(after!.Items);
         Assert.Equal(0, after.TotalCount);
         Assert.Equal(before, await CountSideEffectsAsync(factory));
+    }
+
+    [Fact]
+    public async Task Analysed_plan_leaves_the_queue_but_stays_in_the_resource_officer_history()
+    {
+        await using var factory = CreateFactory();
+        var data = await SeedAsync(factory);
+        using var resourceOfficer = await ClientForAsync(factory, data.ResourceOfficerEmail);
+        Assert.Empty((await resourceOfficer.GetFromJsonAsync<PagedResult<WeatherResourceHistoryItemResponse>>(HistoryUrl, Json))!.Items);
+
+        using var run = await resourceOfficer.PostAsync($"/api/crop-plans/{data.CropPlanRequestId}/run-weather-resource-analysis", null);
+        Assert.Equal(HttpStatusCode.OK, run.StatusCode);
+
+        var json = await resourceOfficer.GetStringAsync($"{HistoryUrl}?page=1&pageSize=10&search=queue");
+        var entry = Assert.Single(JsonSerializer.Deserialize<PagedResult<WeatherResourceHistoryItemResponse>>(json, Json)!.Items);
+        Assert.Equal(data.CropPlanRequestId, entry.CropPlanRequestId);
+        Assert.Equal("Test ResourceOfficer", entry.RunByName);
+        Assert.Equal(("Analyzed", "Unknown"), (entry.Status, entry.WeatherRisk));
+        foreach (var forbidden in new[] { "inputJson", "outputJson", "officerNotes", "Private staff note", "email" })
+            Assert.DoesNotContain(forbidden, json, StringComparison.OrdinalIgnoreCase);
+
+        var detail = await resourceOfficer.GetFromJsonAsync<WeatherResourceHistoryDetailResponse>($"{HistoryUrl}/{entry.WorkflowId}", Json);
+        Assert.Equal(entry.WorkflowId, detail!.Result.WorkflowId);
+        Assert.Equal(["Confirm resources before planting."], detail.Result.Recommendations);
+        Assert.Empty((await resourceOfficer.GetFromJsonAsync<PagedResult<WeatherResourceWorkItemResponse>>(QueueUrl, Json))!.Items);
+
+        foreach (var email in new[] { data.FarmerEmail, data.FieldOfficerEmail, data.AgriculturalOfficerEmail, data.AdminEmail })
+        {
+            using var client = await ClientForAsync(factory, email);
+            Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync(HistoryUrl)).StatusCode);
+            Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync($"{HistoryUrl}/{entry.WorkflowId}")).StatusCode);
+        }
     }
 
     [Fact]

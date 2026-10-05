@@ -177,6 +177,37 @@ public sealed record ResourceRequirementAssessment(
     string? Basis,
     string? Reason);
 
+/// <summary>
+/// One forecast measure (DailyRainfall, TotalRainfall, MaxTemperature or MaxWind) compared with the fixed weather-risk
+/// thresholds. Value comes from GetWeatherForecast; ObservedOn is the peak day (null for TotalRainfall).
+/// </summary>
+public sealed record WeatherRiskFactor(
+    string Metric,
+    string Label,
+    decimal Value,
+    string Unit,
+    DateOnly? ObservedOn,
+    decimal MediumThreshold,
+    decimal HighThreshold,
+    string Level,
+    string Detail);
+
+public sealed record WeatherRiskAction(string Action, string Timing, string Priority);
+
+/// <summary>
+/// Explains the rule-based WeatherRisk: why it has that level, the calculated factors behind it, the likely impact
+/// and what the farmer should do. GeneratedBy is OpenAI (narrative written by the LLM from the factors) or RuleBased.
+/// </summary>
+public sealed record WeatherRiskAssessment(
+    string RiskLevel,
+    string Headline,
+    string Explanation,
+    IReadOnlyList<WeatherRiskFactor> ContributingFactors,
+    IReadOnlyList<string> PotentialImpacts,
+    IReadOnlyList<WeatherRiskAction> RecommendedActions,
+    string MonitoringAdvice,
+    string GeneratedBy);
+
 /// <summary>Member 3 output, stored in the WeatherResourceAnalysis AgentStep and read by Member 4.</summary>
 public sealed record WeatherResourceOutput(
     Guid WorkflowId,
@@ -192,7 +223,8 @@ public sealed record WeatherResourceOutput(
     RequirementSourceSummary? RequirementSource = null,
     string? Reason = null,
     IReadOnlyList<string>? ToolsUsed = null,
-    IReadOnlyList<CropHealthWeatherResourceConsideration>? CropHealthConsiderations = null);
+    IReadOnlyList<CropHealthWeatherResourceConsideration>? CropHealthConsiderations = null,
+    WeatherRiskAssessment? WeatherRiskAssessment = null);
 
 public sealed record WeatherResourceRunResponse(
     Guid WorkflowId,
@@ -229,6 +261,34 @@ public sealed record WeatherResourceWorkItemResponse(
     DateTime? StartedAt,
     string? ErrorCode,
     string? ErrorMessageSafe);
+
+/// <summary>
+/// One saved Weather/Resource analysis in the Resource Officer history: the crop plan it was run for and a summary of
+/// the stored AI result. RunByName is the user who ran it. The full stored result comes from the history detail.
+/// </summary>
+public sealed record WeatherResourceHistoryItemResponse(
+    Guid WorkflowId,
+    Guid CropPlanRequestId,
+    Guid WeatherResourceStepId,
+    string Objective,
+    string FarmName,
+    string FarmLocation,
+    string? FieldName,
+    string CropName,
+    string? CropVarietyName,
+    DateOnly PreferredStartDate,
+    DateOnly PreferredEndDate,
+    AgentStepStatus StepStatus,
+    DateTime AnalyzedAt,
+    string? RunByName,
+    string Status,
+    string WeatherRisk,
+    string RequirementStatus,
+    bool RequiresHumanReview,
+    string? Headline);
+
+/// <summary>A history entry with the exact AI result stored for that crop plan's workflow.</summary>
+public sealed record WeatherResourceHistoryDetailResponse(WeatherResourceHistoryItemResponse Plan, WeatherResourceOutput Result);
 
 /// <summary>What the backend itself returned to the agent's tool calls for one step; used to validate the output.</summary>
 public sealed record WeatherResourceToolEvidence(

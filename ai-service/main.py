@@ -13,6 +13,7 @@ from agents.crop_finding_agent import CropFindingAgent
 from agents.crop_planning_coordinator_agent import CropPlanningCoordinatorAgent
 from agents.inspection_note_assistant_agent import InspectionNoteAssistantAgent
 from agents.inspection_image_analysis_agent import InspectionImageAnalysisAgent
+from agents.resource_requirement_research_agent import ResourceRequirementResearchAgent
 from agents.weather_resource_agent import WeatherResourceAgent
 from agents.scheduling_validation_agent import SchedulingValidationAgent
 from agents.scheduling_profile_retriever import SchedulingProfileRetriever
@@ -41,6 +42,7 @@ from schemas.inspection_image_analysis import (
     InspectionImageAnalysisInput,
     InspectionImageAnalysisOperationResponse,
 )
+from schemas.resource_requirement_research import ResourceRequirementResearchInput, ResourceRequirementResearchResponse
 from schemas.weather_resource import WeatherResourceInput, WeatherResourceOutput
 from schemas.scheduling_validation import SchedulingValidationInput, SchedulingValidationOutput
 from tools.backend_tool_client import BackendToolClient
@@ -71,6 +73,7 @@ async def _run_crop_finding(
     variety: str | None,
     settings: Settings,
     operation: Callable[[CropFindingAgent], Awaitable[T]],
+    agent_type: type[CropFindingAgent] = CropFindingAgent,
 ) -> T:
     started = time.monotonic()
     request_id = str(uuid4())
@@ -84,7 +87,7 @@ async def _run_crop_finding(
         variety,
     )
     try:
-        agent = CropFindingAgent(
+        agent = agent_type(
             CropFindingTools(settings),
             create_crop_finding_provider(settings),
             request_id=request_id,
@@ -273,6 +276,28 @@ async def discover_references(
 
 
 @app.post(
+    "/crop-finding/resource-requirement-research",
+    response_model=ResourceRequirementResearchResponse,
+    dependencies=[Depends(require_service_token)],
+)
+async def research_resource_requirement(
+    request: ResourceRequirementResearchInput,
+    settings: Settings = Depends(get_settings),
+) -> ResourceRequirementResearchResponse:
+    # Member 3 Admin research. Reuses the CropFinding web search, source policy, timeouts and error mapping.
+    # It only returns a draft; an Admin must verify it before the backend stores a ResourceRequirement rule.
+    return await _run_crop_finding(
+        action="ResourceRequirementResearch",
+        admin_user_id=str(request.admin_user_id),
+        crop=request.crop_name,
+        variety=request.variety_name,
+        settings=settings,
+        operation=lambda agent: agent.research_resource_requirement(request),
+        agent_type=ResourceRequirementResearchAgent,
+    )
+
+
+@app.post(
     "/workflows/crop-planning/coordinator",
     response_model=CropPlanningCoordinatorOutput,
     dependencies=[Depends(require_service_token)],
@@ -391,9 +416,14 @@ async def run_weather_resource_analysis(
     request: WeatherResourceInput,
     settings: Settings = Depends(get_settings),
 ) -> WeatherResourceOutput:
-    # The agent gathers verified requirements, field, inventory, reservations and weather through read-only backend tools.
-    # It is deterministic and needs no LLM provider, so no OpenAI client is created for this step.
-    agent = WeatherResourceAgent(tools=WeatherResourceTools(BackendToolClient(settings)))
+    # The agent gathers verified requirements, field, inventory, reservations and weather through read-only backend tools
+    # and calculates every figure with fixed rules. OpenAI, when configured, only writes the weather-risk explanation;
+    # without OPENAI_API_KEY the provider is None and a rule-based explanation is returned instead.
+    agent = WeatherResourceAgent(
+        tools=WeatherResourceTools(BackendToolClient(settings)),
+        llm_provider=create_provider(settings),
+        explanation_timeout_seconds=settings.provider_timeout_seconds,
+    )
     graph = build_weather_resource_graph(agent)
     state = await graph.ainvoke({"request": request, "output": None})
     return state["output"]

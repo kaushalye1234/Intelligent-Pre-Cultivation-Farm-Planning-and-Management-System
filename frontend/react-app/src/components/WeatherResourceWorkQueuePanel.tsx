@@ -4,13 +4,15 @@ import axios from 'axios'
 import { AlertTriangle, CloudSun, PlayCircle, RefreshCw, Search } from 'lucide-react'
 import { api } from '../api/client'
 import { formatDate, formatDateTime } from '../format'
-import type { Member3Handoff, PagedResult, WeatherResourceRunResult, WeatherResourceWorkItem } from '../types'
+import type { Member3Handoff, PagedResult, WeatherResourceHistoryDetail, WeatherResourceResult, WeatherResourceRunResult, WeatherResourceWorkItem } from '../types'
 import { DataTable } from './DataTable'
 import type { Column } from './DataTable'
 import { Pagination } from './Pagination'
 import { LoadingState } from './States'
 import { StatusPill } from './StatusPill'
 import { Button, Notice, Toolbar } from './Ui'
+import { Detail, TextList, WeatherResourceAnalysisView } from './WeatherResourceAnalysisView'
+import { humanize, weatherResourceHistoryUrl } from '../weatherResourceAnalysis'
 
 const queueUrl = '/crop-plans/weather-resource-work-queue'
 const pageSize = 10
@@ -22,8 +24,9 @@ type RunError = 'conflict' | 'failed'
 /**
  * Resource Officer work queue for crop plans waiting at WeatherResourceAgent. Review reads only the existing safe
  * Member 3 handoff; Run calls the existing Member 3 endpoint, which re-validates the workflow on the server.
+ * After a run the stored AI result is loaded from the history, and onAnalysisSaved lets the dashboard refresh it.
  */
-export function WeatherResourceWorkQueuePanel() {
+export function WeatherResourceWorkQueuePanel({ onAnalysisSaved }: { onAnalysisSaved?: () => void } = {}) {
   const [page, setPage] = useState(1)
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
@@ -41,6 +44,7 @@ export function WeatherResourceWorkQueuePanel() {
   const [running, setRunning] = useState(false)
   const runningRef = useRef(false)
   const [runResult, setRunResult] = useState<WeatherResourceRunResult | null>(null)
+  const [runDetail, setRunDetail] = useState<WeatherResourceResult | null>(null)
   const [runError, setRunError] = useState<RunError | null>(null)
   const mounted = useRef(true)
 
@@ -111,6 +115,7 @@ export function WeatherResourceWorkQueuePanel() {
     setHandoffError(false)
     setHandoffLoading(true)
     setRunResult(null)
+    setRunDetail(null)
     setRunError(null)
     api
       .get<Member3Handoff>(`/crop-plans/${item.cropPlanRequestId}/member-3-handoff`, { signal: controller.signal })
@@ -136,6 +141,8 @@ export function WeatherResourceWorkQueuePanel() {
       if (!mounted.current) return
       setRunResult(response.data)
       reloadQueue()
+      onAnalysisSaved?.()
+      if (response.data?.workflowId) void loadRunDetail(response.data.workflowId)
     } catch (error) {
       if (!mounted.current) return
       if (axios.isAxiosError(error) && error.response?.status === 409) {
@@ -147,6 +154,17 @@ export function WeatherResourceWorkQueuePanel() {
     } finally {
       runningRef.current = false
       if (mounted.current) setRunning(false)
+    }
+  }
+
+  // The full stored result (weather explanation, factors, actions) comes from the saved history entry. If it cannot be
+  // read, the compact run summary stays on screen.
+  async function loadRunDetail(workflowId: string) {
+    try {
+      const response = await api.get<WeatherResourceHistoryDetail>(`${weatherResourceHistoryUrl}/${workflowId}`)
+      if (mounted.current && response.data?.result) setRunDetail(response.data.result)
+    } catch {
+      // Keep the compact summary.
     }
   }
 
@@ -299,7 +317,7 @@ export function WeatherResourceWorkQueuePanel() {
           {runError === 'failed' ? (
             <Notice tone="error">Weather/Resource Analysis could not be started. Please try again.</Notice>
           ) : null}
-          {runResult ? <RunResultSummary result={runResult} /> : null}
+          {runResult ? <RunResultSummary result={runResult} detail={runDetail?.workflowId === runResult.workflowId ? runDetail : null} /> : null}
         </section>
       ) : null}
     </section>
@@ -330,49 +348,27 @@ function HandoffSummary({ handoff }: { handoff: Member3Handoff }) {
   )
 }
 
-function RunResultSummary({ result }: { result: WeatherResourceRunResult }) {
+function RunResultSummary({ result, detail }: { result: WeatherResourceRunResult; detail: WeatherResourceResult | null }) {
   const analysed = result.status === 'Analyzed'
   return (
     <div className="work-queue-result">
       {analysed ? (
-        <Notice tone="success">Weather/Resource Analysis completed. Scheduling Validation is next; the plan has not been approved.</Notice>
+        <Notice tone="success">Weather/Resource Analysis completed. Scheduling Validation is next; the plan has not been approved. It is saved in the analysis history.</Notice>
       ) : (
         <Notice tone="warning">Weather/Resource Analysis could not complete safely. The crop plan needs human review before it can continue.</Notice>
       )}
-      <dl className="work-queue-details">
-        <Detail label="Weather risk" value={humanize(result.weatherRisk)} />
-        <Detail label="Resource requirements" value={humanize(result.requirementStatus)} />
-        <Detail label="Human review" value={result.requiresHumanReview ? 'Required' : 'Not required'} />
-      </dl>
-      <TextList title="Analysis warnings" items={result.warnings} />
+      {detail && analysed ? (
+        <WeatherResourceAnalysisView result={detail} />
+      ) : (
+        <>
+          <dl className="work-queue-details">
+            <Detail label="Weather risk" value={humanize(result.weatherRisk)} />
+            <Detail label="Resource requirements" value={humanize(result.requirementStatus)} />
+            <Detail label="Human review" value={result.requiresHumanReview ? 'Required' : 'Not required'} />
+          </dl>
+          <TextList title="Analysis warnings" items={result.warnings} />
+        </>
+      )}
     </div>
   )
-}
-
-function Detail({ label, value }: { label: string; value?: string | null }) {
-  return (
-    <div>
-      <dt>{label}</dt>
-      <dd>{value || 'Not recorded'}</dd>
-    </div>
-  )
-}
-
-function TextList({ title, items }: { title: string; items?: string[] | null }) {
-  const values = Array.isArray(items) ? items.filter((item) => typeof item === 'string' && item.trim() !== '') : []
-  if (values.length === 0) return null
-  return (
-    <div className="work-queue-list">
-      <h4>{title}</h4>
-      <ul>
-        {values.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}
-      </ul>
-    </div>
-  )
-}
-
-function humanize(value?: string | null) {
-  if (!value) return ''
-  const words = value.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase()
-  return words.charAt(0).toUpperCase() + words.slice(1)
 }

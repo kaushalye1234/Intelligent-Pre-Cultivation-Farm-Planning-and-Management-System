@@ -3,6 +3,7 @@ using AgriAssist.Api.Data;
 using AgriAssist.Api.Dtos.CropPlanning;
 using AgriAssist.Api.Dtos.Resources;
 using AgriAssist.Api.Dtos.Inspections;
+using AgriAssist.Api.Dtos.Shared;
 using AgriAssist.Api.ExternalServices.AgenticAI;
 using AgriAssist.Api.ExternalServices.Weather;
 using AgriAssist.Api.Models.Shared;
@@ -11,6 +12,7 @@ using AgriAssist.Api.Services.Resources;
 using AgriAssist.Api.Services.Shared;
 using AgriAssist.Api.Validators.CropPlanning;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using static AgriAssist.Api.Tests.WeatherResourceTestData;
 
 namespace AgriAssist.Api.Tests;
@@ -250,9 +252,129 @@ public sealed class WeatherResourceWorkflowTests
         Assert.Equal(0m, days[1].RainMm);
     }
 
-    private static WeatherResourceWorkflowService NewService(AppDbContext db, IWeatherResourceAIClient aiClient)
+    // SAMPLE explanation for the stub forecast (2026-09-15: 12 mm rain, 31 C, 5 m/s), so daily rain makes it Medium.
+    private static WeatherRiskAssessment SampleAssessment() =>
+        new("Medium", "Medium weather risk: 12 mm of rain is expected on 2026-09-15.",
+            "The heaviest daily rain of 12 mm reaches the 10 mm Medium threshold; temperature and wind stay below theirs.",
+            [
+                new WeatherRiskFactor("DailyRainfall", "Heaviest daily rain", 12, "mm", new DateOnly(2026, 9, 15), 10, 30, "Medium", "12 mm on 2026-09-15."),
+                new WeatherRiskFactor("TotalRainfall", "Total forecast rain", 12, "mm", null, 30, 80, "Low", "12 mm over 1 day."),
+                new WeatherRiskFactor("MaxTemperature", "Highest temperature", 31, "C", new DateOnly(2026, 9, 15), 34, 38, "Low", "31 C."),
+                new WeatherRiskFactor("MaxWind", "Strongest wind", 5, "m/s", new DateOnly(2026, 9, 15), 10, 15, "Low", "5 m/s.")
+            ],
+            ["Rain can delay land preparation and wash fertilizer away."],
+            [new WeatherRiskAction("Clear drainage channels before the rain.", "Before 2026-09-15", "Medium")],
+            "Check the forecast again before field work.",
+            "OpenAI");
+
+    [Fact]
+    public async Task Run_stores_the_weather_risk_explanation_for_member4_and_the_officer()
     {
-        var officer = new StubCurrentUser(ApplicationRole.ResourceOfficer);
+        await using var db = NewDbContext();
+        var data = await SeedAsync(db);
+        var agent = new ToolCallingAgent(db, output => output with { WeatherRiskAssessment = SampleAssessment() });
+
+        var result = await NewService(db, agent).RunAsync(data.RequestId, CancellationToken.None);
+
+        Assert.Equal("Analyzed", result.Status);
+        var stored = await NewService(db, agent).GetResultAsync(data.RequestId, CancellationToken.None);
+        Assert.Equal("OpenAI", stored.WeatherRiskAssessment!.GeneratedBy);
+        Assert.Equal(12m, stored.WeatherRiskAssessment.ContributingFactors.Single(factor => factor.Metric == "DailyRainfall").Value);
+        Assert.Equal("Clear drainage channels before the rain.", stored.WeatherRiskAssessment.RecommendedActions.Single().Action);
+    }
+
+    [Fact]
+    public async Task Run_rejects_a_weather_explanation_that_changes_the_risk_or_the_forecast_figures()
+    {
+        static WeatherRiskAssessment Factor(string metric, Func<WeatherRiskFactor, WeatherRiskFactor> change) =>
+            SampleAssessment() with
+            {
+                ContributingFactors = SampleAssessment().ContributingFactors.Select(factor => factor.Metric == metric ? change(factor) : factor).ToList()
+            };
+
+        foreach (var (assessment, expectedError) in new (WeatherRiskAssessment, string)[]
+                 {
+                     (SampleAssessment() with { RiskLevel = "High" }, "riskLevel must equal weatherRisk"),
+                     (Factor("DailyRainfall", factor => factor with { Value = 40, Level = "High" }), "DailyRainfall does not match"),
+                     (Factor("MaxTemperature", factor => factor with { ObservedOn = new DateOnly(2026, 9, 16) }), "MaxTemperature does not match"),
+                     (Factor("DailyRainfall", factor => factor with { Level = "Low" }), "DailyRainfall does not match"),
+                     (SampleAssessment() with { ContributingFactors = SampleAssessment().ContributingFactors.Skip(1).ToList() }, "exactly once"),
+                     (SampleAssessment() with { GeneratedBy = "Guess" }, "generatedBy"),
+                     (SampleAssessment() with { Headline = new string('x', 241) }, "too long")
+                 })
+        {
+            await using var db = NewDbContext();
+            var data = await SeedAsync(db);
+            var agent = new ToolCallingAgent(db, output => output with { WeatherRiskAssessment = assessment });
+
+            var result = await NewService(db, agent).RunAsync(data.RequestId, CancellationToken.None);
+
+            Assert.Equal("SafeFailure", result.Status);
+            Assert.Contains(expectedError, await db.AgentValidationResults.Select(item => item.ErrorsJson).SingleAsync());
+        }
+    }
+
+    [Fact]
+    public void Validate_rejects_weather_risk_factors_without_forecast()
+    {
+        var workflowId = Guid.NewGuid();
+        var evidence = new WeatherResourceToolEvidence(null, [], [], true, WeatherForecastResponse.Unavailable("Nowhere", "down"));
+        var output = new WeatherResourceOutput(workflowId, "Analyzed", true, [], "Unknown", "No forecast.", [], [], [],
+            ResourceRequirementStatus.Unknown, WeatherRiskAssessment: SampleAssessment() with { RiskLevel = "Unknown" });
+
+        var errors = WeatherResourceWorkflowService.Validate(output, evidence, workflowId);
+
+        Assert.Contains(errors, error => error.Contains("weather risk factors without forecast data", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task History_keeps_each_analysed_plan_with_the_ai_result_stored_for_it()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedAsync(db);
+        var officer = new AppUser { FullName = "Rani Resource", Email = "rani@example.test", PasswordHash = "hash", Role = ApplicationRole.ResourceOfficer, IsActive = true };
+        db.Add(officer);
+        await db.SaveChangesAsync();
+        var agent = new ToolCallingAgent(db, output => output with { WeatherRiskAssessment = SampleAssessment() });
+        Assert.Empty((await NewService(db, agent).GetHistoryAsync(new PagedQuery(), CancellationToken.None)).Items);
+
+        await NewService(db, agent, officer.Id).RunAsync(data.RequestId, CancellationToken.None);
+        var history = await NewService(db, agent).GetHistoryAsync(new PagedQuery(), CancellationToken.None);
+
+        var entry = Assert.Single(history.Items);
+        Assert.Equal((data.WorkflowId, data.RequestId), (entry.WorkflowId, entry.CropPlanRequestId));
+        Assert.Equal(("Plan the next tomato season safely.", "North Farm", "Field A", "Tomato"), (entry.Objective, entry.FarmName, entry.FieldName, entry.CropName));
+        Assert.Equal(("Analyzed", "Medium", ResourceRequirementStatus.Insufficient), (entry.Status, entry.WeatherRisk, entry.RequirementStatus));
+        Assert.Equal("Rani Resource", entry.RunByName);
+        Assert.Equal(SampleAssessment().Headline, entry.Headline);
+        Assert.Equal(AgentStepStatus.Completed, entry.StepStatus);
+
+        var detail = await NewService(db, agent).GetHistoryEntryAsync(entry.WorkflowId, CancellationToken.None);
+        Assert.Equal(entry, detail.Plan);
+        Assert.Equal(SampleAssessment().Explanation, detail.Result.WeatherRiskAssessment!.Explanation);
+        Assert.Equal(20m, detail.Result.ResourceRequirements!.Single().ShortageQuantity);
+        Assert.Equal(["Review stock before planting."], detail.Result.Recommendations);
+    }
+
+    [Fact]
+    public async Task History_includes_safe_failures_and_supports_search()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedAsync(db);
+        await NewService(db, new ThrowingAiClient()).RunAsync(data.RequestId, CancellationToken.None);
+        var service = NewService(db, new ThrowingAiClient());
+
+        var entry = Assert.Single((await service.GetHistoryAsync(new PagedQuery { Search = "tomato" }, CancellationToken.None)).Items);
+        Assert.Equal(("SafeFailure", "Unknown", AgentStepStatus.Failed), (entry.Status, entry.WeatherRisk, entry.StepStatus));
+        Assert.Null(entry.Headline);
+        Assert.Empty((await service.GetHistoryAsync(new PagedQuery { Search = "no such farm" }, CancellationToken.None)).Items);
+        var missing = await Assert.ThrowsAsync<ApiException>(() => service.GetHistoryEntryAsync(Guid.NewGuid(), CancellationToken.None));
+        Assert.Equal("NOT_FOUND", missing.Code);
+    }
+
+    private static WeatherResourceWorkflowService NewService(AppDbContext db, IWeatherResourceAIClient aiClient, Guid? userId = null)
+    {
+        var officer = new StubCurrentUser(ApplicationRole.ResourceOfficer, userId);
         var cropPlanning = new CropPlanningService(
             db,
             officer,
@@ -262,12 +384,12 @@ public sealed class WeatherResourceWorkflowTests
             new CropCycleRequestValidator(),
             new CropPlanRequestCreateValidator(),
             new CropPlanRequestUpdateValidator());
-        return new WeatherResourceWorkflowService(db, officer, cropPlanning, aiClient);
+        return new WeatherResourceWorkflowService(db, officer, cropPlanning, aiClient, NullLogger<WeatherResourceWorkflowService>.Instance);
     }
 
-    private sealed class StubCurrentUser(ApplicationRole role) : ICurrentUserService
+    private sealed class StubCurrentUser(ApplicationRole role, Guid? userId = null) : ICurrentUserService
     {
-        public Guid? UserId { get; } = Guid.NewGuid();
+        public Guid? UserId { get; } = userId ?? Guid.NewGuid();
         public ApplicationRole? Role { get; } = role;
         public bool IsInRole(ApplicationRole roleToCheck) => Role == roleToCheck;
     }

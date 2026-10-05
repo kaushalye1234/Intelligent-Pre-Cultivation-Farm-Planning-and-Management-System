@@ -3,6 +3,7 @@ import type { FormEvent, ReactNode } from 'react'
 import { BookOpenCheck, ExternalLink, Eye, Loader2, Pencil, Plus, Power, Search, Sparkles, Sprout, Trash2 } from 'lucide-react'
 import { api, getErrorMessage } from '../api/client'
 import { FindingSummary, ReferenceDiscoveryReview, SuggestionReview } from '../components/CropFindingReview'
+import { ResourceRequirementResearchPanel } from '../components/ResourceRequirementResearchPanel'
 import { SelectInput, TextAreaInput, TextInput } from '../components/FormControls'
 import { DataTable } from '../components/DataTable'
 import { ErrorState, LoadingState } from '../components/States'
@@ -625,6 +626,7 @@ export function AdminCropManagement() {
             </fieldset>
             <div className="crop-reference-submit"><Button type="submit" disabled={busy}>Create verified version</Button></div>
           </form>
+          <ResourceRequirementResearchPanel crops={crops} varieties={varieties} onSaved={() => void load().catch((cause) => setError(getErrorMessage(cause)))} />
         </section>
       ) : null}
 

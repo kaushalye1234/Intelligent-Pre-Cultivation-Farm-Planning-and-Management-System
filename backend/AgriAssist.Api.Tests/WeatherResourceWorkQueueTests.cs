@@ -10,6 +10,7 @@ using AgriAssist.Api.Services.Resources;
 using AgriAssist.Api.Services.Shared;
 using AgriAssist.Api.Validators.CropPlanning;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using static AgriAssist.Api.Tests.WeatherResourceTestData;
 
 namespace AgriAssist.Api.Tests;
@@ -326,7 +327,7 @@ public sealed class WeatherResourceWorkQueueTests
             new CropCycleRequestValidator(),
             new CropPlanRequestCreateValidator(),
             new CropPlanRequestUpdateValidator());
-        return new WeatherResourceWorkflowService(db, officer, cropPlanning, new UnusedAiClient());
+        return new WeatherResourceWorkflowService(db, officer, cropPlanning, new UnusedAiClient(), NullLogger<WeatherResourceWorkflowService>.Instance);
     }
 
     private sealed class StubCurrentUser(ApplicationRole role) : ICurrentUserService

@@ -291,6 +291,46 @@ describe('WeatherResourceWorkQueuePanel', () => {
     expect(screen.queryByRole('button', { name: /run weather\/resource analysis/i })).not.toBeInTheDocument()
   })
 
+  it('shows the saved AI weather explanation after a run and tells the dashboard to refresh the history', async () => {
+    const onAnalysisSaved = vi.fn()
+    let analysed = false
+    mockGet((url) => {
+      if (url === queueUrl) return analysed ? paged([]) : paged([item])
+      if (url === handoffUrl) return handoff
+      if (url === '/crop-plans/weather-resource-history/workflow-1') {
+        return {
+          plan: {},
+          result: {
+            workflowId: 'workflow-1', status: 'Analyzed', requiresHumanReview: true, warnings: [], weatherRisk: 'Medium',
+            weatherSummary: 'Forecast summary.', recommendations: [], resourceRequirements: [], requirementStatus: 'Insufficient', reason: null,
+            weatherRiskAssessment: {
+              riskLevel: 'Medium', headline: 'Medium weather risk: heavy rain on 2026-10-02.',
+              explanation: 'Daily rain reaches the Medium threshold.', contributingFactors: [], potentialImpacts: ['Waterlogging is likely.'],
+              recommendedActions: [{ action: 'Open the field outlets before the rain.', timing: 'Before 2026-10-02', priority: 'High' }],
+              monitoringAdvice: '', generatedBy: 'OpenAI',
+            },
+          },
+        }
+      }
+      throw new Error('Unexpected GET ' + url)
+    })
+    vi.spyOn(api, 'post').mockImplementation(async () => {
+      analysed = true
+      return { data: analyzed } as never
+    })
+    const user = userEvent.setup()
+    render(<WeatherResourceWorkQueuePanel onAnalysisSaved={onAnalysisSaved} />)
+    await openReview(user)
+
+    await user.click(screen.getByRole('button', { name: /run weather\/resource analysis/i }))
+
+    expect(await screen.findByText('Medium weather risk: heavy rain on 2026-10-02.')).toBeInTheDocument()
+    expect(screen.getByText('Daily rain reaches the Medium threshold.')).toBeInTheDocument()
+    expect(screen.getByText('Open the field outlets before the rain.')).toBeInTheDocument()
+    expect(screen.getByText(/saved in the analysis history/i)).toBeInTheDocument()
+    expect(onAnalysisSaved).toHaveBeenCalledTimes(1)
+  })
+
   it('treats SafeFailure as a contained failure, not success', async () => {
     defaultGet()
     vi.spyOn(api, 'post').mockResolvedValue({

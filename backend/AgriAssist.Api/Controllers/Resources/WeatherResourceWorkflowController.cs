@@ -19,6 +19,18 @@ public sealed class WeatherResourceWorkflowController(IWeatherResourceWorkflowSe
     public async Task<ActionResult<PagedResult<WeatherResourceWorkItemResponse>>> WorkQueue([FromQuery] PagedQuery query, CancellationToken cancellationToken) =>
         Ok(await workflowService.GetWorkQueueAsync(query, cancellationToken));
 
+    /// <summary>Weather/Resource analyses that were already run, newest first, each with a summary of its stored AI result.</summary>
+    [HttpGet("weather-resource-history")]
+    [Authorize(Roles = nameof(ApplicationRole.ResourceOfficer))]
+    public async Task<ActionResult<PagedResult<WeatherResourceHistoryItemResponse>>> History([FromQuery] PagedQuery query, CancellationToken cancellationToken) =>
+        Ok(await workflowService.GetHistoryAsync(query, cancellationToken));
+
+    /// <summary>One history entry with the exact AI result stored for that workflow.</summary>
+    [HttpGet("weather-resource-history/{workflowId:guid}")]
+    [Authorize(Roles = nameof(ApplicationRole.ResourceOfficer))]
+    public async Task<ActionResult<WeatherResourceHistoryDetailResponse>> HistoryEntry(Guid workflowId, CancellationToken cancellationToken) =>
+        Ok(await workflowService.GetHistoryEntryAsync(workflowId, cancellationToken));
+
     [HttpPost("{id:guid}/run-weather-resource-analysis")]
     [Authorize(Roles = $"{nameof(ApplicationRole.Admin)},{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.ResourceOfficer)}")]
     public async Task<ActionResult<WeatherResourceRunResponse>> Run(Guid id, CancellationToken cancellationToken) =>
