@@ -1,8 +1,8 @@
 from datetime import date, datetime
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import Field, field_validator
+from pydantic import Field, StringConstraints, field_validator
 
 from schemas.common import AgentEnvelope, CamelModel
 
@@ -180,6 +180,46 @@ class ResourceRequirementAssessment(CamelModel):
     reason: str | None = None
 
 
+WEATHER_FACTOR_LEVELS = Literal["Low", "Medium", "High"]
+ADVICE_TEXT = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=400)]
+
+
+class WeatherRiskFactor(CamelModel):
+    """One forecast measure compared with the fixed weather-risk thresholds. Every figure comes from the forecast tool."""
+
+    metric: Literal["DailyRainfall", "TotalRainfall", "MaxTemperature", "MaxWind"]
+    label: str
+    value: float
+    unit: str
+    # The day the peak occurs; None for the total-rainfall measure.
+    observed_on: date | None = Field(default=None, alias="observedOn")
+    medium_threshold: float = Field(alias="mediumThreshold")
+    high_threshold: float = Field(alias="highThreshold")
+    level: WEATHER_FACTOR_LEVELS
+    detail: str
+
+
+class WeatherRiskAction(CamelModel):
+    action: ADVICE_TEXT
+    timing: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=160)]
+    priority: WEATHER_FACTOR_LEVELS
+
+
+class WeatherRiskAssessment(CamelModel):
+    """Explains the rule-based weatherRisk: why it has that level, what drove it, the likely impact and what the
+    farmer should do. riskLevel always equals weatherRisk and the factors are calculated, never generated.
+    generatedBy is OpenAI when the narrative was written by the LLM, RuleBased when it came from fixed templates."""
+
+    risk_level: str = Field(alias="riskLevel")
+    headline: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=240)]
+    explanation: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1600)]
+    contributing_factors: list[WeatherRiskFactor] = Field(default_factory=list, alias="contributingFactors", max_length=4)
+    potential_impacts: list[ADVICE_TEXT] = Field(default_factory=list, alias="potentialImpacts", max_length=6)
+    recommended_actions: list[WeatherRiskAction] = Field(default_factory=list, alias="recommendedActions", max_length=6)
+    monitoring_advice: str = Field(default="", alias="monitoringAdvice", max_length=800)
+    generated_by: Literal["OpenAI", "RuleBased"] = Field(alias="generatedBy")
+
+
 class CropHealthWeatherResourceConsideration(CamelModel):
     contract_version: Literal[1] = Field(
         default=MEMBER3_CROP_HEALTH_CONSIDERATION_CONTRACT_VERSION,
@@ -203,3 +243,4 @@ class WeatherResourceOutput(AgentEnvelope):
     crop_health_considerations: list[CropHealthWeatherResourceConsideration] = Field(
         default_factory=list, alias="cropHealthConsiderations", max_length=20
     )
+    weather_risk_assessment: WeatherRiskAssessment | None = Field(default=None, alias="weatherRiskAssessment")

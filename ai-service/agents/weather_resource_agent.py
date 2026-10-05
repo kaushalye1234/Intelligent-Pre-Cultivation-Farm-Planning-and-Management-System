@@ -17,7 +17,10 @@ from schemas.weather_resource import (
     WeatherForecast,
     WeatherResourceInput,
     WeatherResourceOutput,
+    WeatherRiskFactor,
 )
+from agents.weather_risk_explainer import WeatherRiskExplainer, overall_risk, risk_factors
+from providers.base_llm_provider import BaseLLMProvider
 from tools.backend_tool_client import ToolClientError
 from tools.weather_resource_tools import (
     GET_CROP_RESOURCE_REQUIREMENTS,
@@ -37,11 +40,19 @@ class WeatherResourceAgent:
     read-only backend tools, then reasons over that tool output with fixed rules. Nothing is estimated, and
     nothing is reserved: every figure in the output comes from a tool result or simple arithmetic on one.
 
-    The agent does not use the shared LLM provider (OpenAI), so it works the same with or without OPENAI_API_KEY.
-    Keeping facts and recommendations deterministic prevents invented weather, stock or fertilizer data."""
+    The weather risk level, its contributing factors, the resource figures and the recommendations stay
+    deterministic. When an LLM provider (OpenAI) is configured it only writes weatherRiskAssessment's narrative
+    (why the risk has its level, likely impact, actions for the farmer) from those facts; without a provider, or
+    when the narrative is unsupported, a rule-based explanation is used, so the step works without OPENAI_API_KEY."""
 
-    def __init__(self, tools: WeatherResourceTools | None = None) -> None:
+    def __init__(
+        self,
+        tools: WeatherResourceTools | None = None,
+        llm_provider: BaseLLMProvider | None = None,
+        explanation_timeout_seconds: float = 30,
+    ) -> None:
         self._tools = tools
+        self._explainer = WeatherRiskExplainer(llm_provider, explanation_timeout_seconds)
 
     async def run(self, request: WeatherResourceInput) -> WeatherResourceOutput:
         if self._tools is None:
@@ -83,7 +94,7 @@ class WeatherResourceAgent:
             weather = WeatherForecast(location=request.location, isAvailable=False, message="The weather forecast tool call failed.")
 
         # 8. Reason over the tool results.
-        risk, weather_summary, weather_warnings = self._analyze_weather(weather, request.location)
+        risk, weather_summary, weather_warnings, factors = self._analyze_weather(weather, request.location)
         warnings[:0] = weather_warnings
         stocks_by_resource = {stock.resource_id: stock for stock in stocks}
         checked_ids = set(required_ids)
@@ -137,6 +148,15 @@ class WeatherResourceAgent:
             or requirement_status != SUFFICIENT
             or request.field_priority.casefold() in {"high", "unknown"}
         )
+        weather_risk_assessment = await self._explainer.explain(
+            risk=risk,
+            factors=factors,
+            weather=weather,
+            request=request,
+            requirements=requirements,
+            assessments=assessments,
+            requirement_status=requirement_status,
+        )
 
         return WeatherResourceOutput(
             workflowId=str(request.workflow_id),
@@ -152,6 +172,7 @@ class WeatherResourceAgent:
             requirementSource=requirements.source if requirements else None,
             reason=self._reason(requirement_status, assessments, requirements, risk),
             toolsUsed=tools_used,
+            weatherRiskAssessment=weather_risk_assessment,
         )
 
     @staticmethod
@@ -313,26 +334,23 @@ class WeatherResourceAgent:
         return text
 
     @staticmethod
-    def _analyze_weather(weather: WeatherForecast, location: str) -> tuple[str, str, list[str]]:
+    def _analyze_weather(weather: WeatherForecast, location: str) -> tuple[str, str, list[str], list[WeatherRiskFactor]]:
         if not weather.is_available or not weather.days:
             message = weather.message.strip() or "No forecast was returned by the weather provider."
             return (
                 "Unknown",
                 f"Forecast for {location or weather.location} is unavailable.",
                 [f"Weather risk could not be calculated: {message}"],
+                [],
             )
 
-        max_daily_rain = max(day.rain_mm for day in weather.days)
-        total_rain = sum(day.rain_mm for day in weather.days)
-        max_temperature = max(day.max_temperature_c for day in weather.days)
-        max_wind = max(day.max_wind_speed_ms for day in weather.days)
-
-        if max_daily_rain >= 30 or total_rain >= 80 or max_temperature >= 38 or max_wind >= 15:
-            risk = "High"
-        elif max_daily_rain >= 10 or total_rain >= 30 or max_temperature >= 34 or max_wind >= 10:
-            risk = "Medium"
-        else:
-            risk = "Low"
+        # Fixed thresholds (see weather_risk_explainer.RISK_THRESHOLDS): any High measure makes the risk High,
+        # any Medium measure makes it Medium, otherwise Low.
+        factors = risk_factors(weather)
+        risk = overall_risk(factors)
+        values = {factor.metric: factor.value for factor in factors}
+        max_daily_rain, total_rain = values["DailyRainfall"], values["TotalRainfall"]
+        max_temperature, max_wind = values["MaxTemperature"], values["MaxWind"]
 
         first_day = min(day.date for day in weather.days)
         last_day = max(day.date for day in weather.days)
@@ -343,7 +361,7 @@ class WeatherResourceAgent:
             f"maximum temperature {WeatherResourceAgent._format_quantity(max_temperature)} C, "
             f"maximum wind {WeatherResourceAgent._format_quantity(max_wind)} m/s)."
         )
-        return risk, summary, []
+        return risk, summary, [], factors
 
     @staticmethod
     def _weather_recommendations(risk: str) -> list[str]:

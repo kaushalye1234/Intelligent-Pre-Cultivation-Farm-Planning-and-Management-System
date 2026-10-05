@@ -391,9 +391,14 @@ async def run_weather_resource_analysis(
     request: WeatherResourceInput,
     settings: Settings = Depends(get_settings),
 ) -> WeatherResourceOutput:
-    # The agent gathers verified requirements, field, inventory, reservations and weather through read-only backend tools.
-    # It is deterministic and needs no LLM provider, so no OpenAI client is created for this step.
-    agent = WeatherResourceAgent(tools=WeatherResourceTools(BackendToolClient(settings)))
+    # The agent gathers verified requirements, field, inventory, reservations and weather through read-only backend tools
+    # and calculates every figure with fixed rules. OpenAI, when configured, only writes the weather-risk explanation;
+    # without OPENAI_API_KEY the provider is None and a rule-based explanation is returned instead.
+    agent = WeatherResourceAgent(
+        tools=WeatherResourceTools(BackendToolClient(settings)),
+        llm_provider=create_provider(settings),
+        explanation_timeout_seconds=settings.provider_timeout_seconds,
+    )
     graph = build_weather_resource_graph(agent)
     state = await graph.ainvoke({"request": request, "output": None})
     return state["output"]
