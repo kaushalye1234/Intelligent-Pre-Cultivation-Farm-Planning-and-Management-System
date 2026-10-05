@@ -177,6 +177,37 @@ public sealed record ResourceRequirementAssessment(
     string? Basis,
     string? Reason);
 
+/// <summary>
+/// One forecast measure (DailyRainfall, TotalRainfall, MaxTemperature or MaxWind) compared with the fixed weather-risk
+/// thresholds. Value comes from GetWeatherForecast; ObservedOn is the peak day (null for TotalRainfall).
+/// </summary>
+public sealed record WeatherRiskFactor(
+    string Metric,
+    string Label,
+    decimal Value,
+    string Unit,
+    DateOnly? ObservedOn,
+    decimal MediumThreshold,
+    decimal HighThreshold,
+    string Level,
+    string Detail);
+
+public sealed record WeatherRiskAction(string Action, string Timing, string Priority);
+
+/// <summary>
+/// Explains the rule-based WeatherRisk: why it has that level, the calculated factors behind it, the likely impact
+/// and what the farmer should do. GeneratedBy is OpenAI (narrative written by the LLM from the factors) or RuleBased.
+/// </summary>
+public sealed record WeatherRiskAssessment(
+    string RiskLevel,
+    string Headline,
+    string Explanation,
+    IReadOnlyList<WeatherRiskFactor> ContributingFactors,
+    IReadOnlyList<string> PotentialImpacts,
+    IReadOnlyList<WeatherRiskAction> RecommendedActions,
+    string MonitoringAdvice,
+    string GeneratedBy);
+
 /// <summary>Member 3 output, stored in the WeatherResourceAnalysis AgentStep and read by Member 4.</summary>
 public sealed record WeatherResourceOutput(
     Guid WorkflowId,
@@ -192,7 +223,8 @@ public sealed record WeatherResourceOutput(
     RequirementSourceSummary? RequirementSource = null,
     string? Reason = null,
     IReadOnlyList<string>? ToolsUsed = null,
-    IReadOnlyList<CropHealthWeatherResourceConsideration>? CropHealthConsiderations = null);
+    IReadOnlyList<CropHealthWeatherResourceConsideration>? CropHealthConsiderations = null,
+    WeatherRiskAssessment? WeatherRiskAssessment = null);
 
 public sealed record WeatherResourceRunResponse(
     Guid WorkflowId,

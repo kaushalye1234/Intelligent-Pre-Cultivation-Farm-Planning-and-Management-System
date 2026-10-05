@@ -30,17 +30,31 @@ public sealed class WeatherResourceWorkflowService(
     AppDbContext dbContext,
     ICurrentUserService currentUser,
     ICropPlanningService cropPlanningService,
-    IWeatherResourceAIClient aiClient) : IWeatherResourceWorkflowService
+    IWeatherResourceAIClient aiClient,
+    ILogger<WeatherResourceWorkflowService> logger) : IWeatherResourceWorkflowService
 {
     public const string AgentName = "WeatherResourceAgent";
     public const string StepName = "WeatherResourceAnalysis";
     public const string NextAgentName = "SchedulingValidationAgent";
     private const string FieldAnalysisAgentName = "CropFieldAnalysisAgent";
     private const string FieldAnalysisStepName = "FieldAnalysis";
+    private const string OutputValidatorName = "WeatherResourceOutputValidator";
+    private const string AvailabilityValidatorName = "WeatherResourceAvailability";
     private const decimal QuantityTolerance = 0.0005m;
+    private const decimal WeatherTolerance = 0.01m;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly string[] AllowedStatuses = ["Analyzed", "SafeFailure"];
     private static readonly string[] AllowedRisks = ["Low", "Medium", "High", "Unknown"];
+    private static readonly string[] FactorLevels = ["Low", "Medium", "High"];
+
+    /// <summary>Fixed weather-risk thresholds per measure; mirrors RISK_THRESHOLDS in the AI service.</summary>
+    private static readonly Dictionary<string, (decimal Medium, decimal High)> WeatherThresholds = new(StringComparer.Ordinal)
+    {
+        ["DailyRainfall"] = (10m, 30m),
+        ["TotalRainfall"] = (30m, 80m),
+        ["MaxTemperature"] = (34m, 38m),
+        ["MaxWind"] = (10m, 15m)
+    };
 
     public async Task<WeatherResourceRunResponse> RunAsync(Guid cropPlanRequestId, CancellationToken cancellationToken)
     {
@@ -108,13 +122,15 @@ public sealed class WeatherResourceWorkflowService(
             output = await aiClient.RunWeatherResourceAnalysisAsync(input, cancellationToken);
             var evidence = await LoadToolEvidenceAsync(step, workflow.Id, cancellationToken);
             validationErrors = Validate(output, evidence, workflow.Id, input);
-            validatorName = "WeatherResourceOutputValidator";
+            validatorName = OutputValidatorName;
             if (validationErrors.Count > 0) output = SafeFailure(workflow.Id, validationErrors);
         }
         catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
+            // The user only sees the safe message below; the cause goes to the server log for diagnosis.
+            logger.LogWarning(exception, "Weather and resource analysis failed for workflow {WorkflowId}.", workflow.Id);
             validationErrors = ["AI service is unavailable or timed out during weather and resource analysis. No assessment was generated."];
-            validatorName = "WeatherResourceAvailability";
+            validatorName = AvailabilityValidatorName;
             output = SafeFailure(workflow.Id, validationErrors);
         }
 
@@ -122,7 +138,7 @@ public sealed class WeatherResourceWorkflowService(
         step.OutputJson = JsonSerializer.Serialize(output, JsonOptions);
         step.Status = succeeded ? AgentStepStatus.Completed : AgentStepStatus.Failed;
         step.CompletedAt = DateTime.UtcNow;
-        step.ErrorCode = succeeded ? null : validatorName == "WeatherResourceAvailability" ? "AI_SERVICE_UNAVAILABLE" : validationErrors.Count > 0 ? "AI_RESPONSE_INVALID" : "AI_SAFE_FAILURE";
+        step.ErrorCode = succeeded ? null : validatorName == AvailabilityValidatorName ? "AI_SERVICE_UNAVAILABLE" : validationErrors.Count > 0 ? "AI_RESPONSE_INVALID" : "AI_SAFE_FAILURE";
         step.ErrorMessageSafe = succeeded ? null : output.Warnings.FirstOrDefault();
 
         dbContext.AgentValidationResults.Add(new AgentValidationResult
@@ -298,6 +314,7 @@ public sealed class WeatherResourceWorkflowService(
         var weatherAvailable = evidence.Weather is { IsAvailable: true, Days.Count: > 0 };
         if (!weatherAvailable && output.WeatherRisk != "Unknown") errors.Add("WeatherResource reported a weather risk without forecast data.");
         if (output.WeatherRisk is "High" or "Unknown" && !output.RequiresHumanReview) errors.Add("WeatherResource High or Unknown weather risk must require human review.");
+        errors.AddRange(ValidateRiskAssessment(output, evidence.Weather));
 
         if (!evidence.AvailabilityRetrieved) errors.Add("WeatherResource did not retrieve inventory through GetResourceAvailability.");
         var stocks = evidence.Stocks.GroupBy(stock => stock.InventoryStockId).ToDictionary(group => group.Key, group => group.Last());
@@ -426,6 +443,76 @@ public sealed class WeatherResourceWorkflowService(
             ? ResourceRequirementStatus.Sufficient
             : ResourceRequirementStatus.Incomplete;
     }
+
+    /// <summary>
+    /// The weather explanation may only restate the calculated risk: the same level, each forecast measure exactly once
+    /// with the forecast's own value, peak day and the fixed thresholds, and no factors without a forecast. Its
+    /// narrative is bounded here; the AI service already checks it against these facts.
+    /// </summary>
+    private static IEnumerable<string> ValidateRiskAssessment(WeatherResourceOutput output, WeatherForecastResponse? weather)
+    {
+        var assessment = output.WeatherRiskAssessment;
+        if (assessment is null) yield break; // Older agents and stored outputs have no explanation.
+
+        if (assessment.RiskLevel != output.WeatherRisk)
+            yield return "WeatherResource weatherRiskAssessment riskLevel must equal weatherRisk.";
+        if (assessment.GeneratedBy is not ("OpenAI" or "RuleBased"))
+            yield return "WeatherResource weatherRiskAssessment generatedBy must be OpenAI or RuleBased.";
+        var impacts = assessment.PotentialImpacts ?? [];
+        var actions = assessment.RecommendedActions ?? [];
+        if (!Bounded(assessment.Headline, 240) || !Bounded(assessment.Explanation, 1600) || (assessment.MonitoringAdvice?.Length ?? 0) > 800
+            || impacts.Count > 6 || impacts.Any(impact => !Bounded(impact, 400))
+            || actions.Count > 6 || actions.Any(action => action is null || !Bounded(action.Action, 400) || !Bounded(action.Timing, 160) || !FactorLevels.Contains(action.Priority)))
+            yield return "WeatherResource weatherRiskAssessment text is missing, too long or has an invalid priority.";
+
+        var factors = assessment.ContributingFactors ?? [];
+        var days = weather is { IsAvailable: true, Days: not null } ? weather.Days : [];
+        if (days.Count == 0)
+        {
+            if (factors.Count > 0) yield return "WeatherResource reported weather risk factors without forecast data.";
+            yield break;
+        }
+
+        var expected = new Dictionary<string, (decimal Value, IReadOnlyList<DateOnly> PeakDays)>(StringComparer.Ordinal)
+        {
+            ["DailyRainfall"] = Peak(days, day => day.RainMm),
+            ["TotalRainfall"] = (days.Sum(day => day.RainMm), []),
+            ["MaxTemperature"] = Peak(days, day => day.MaxTemperatureC),
+            ["MaxWind"] = Peak(days, day => day.MaxWindSpeedMs)
+        };
+        if (factors.Any(factor => factor is null || !expected.ContainsKey(factor.Metric))
+            || factors.Count != expected.Count
+            || factors.Select(factor => factor.Metric).Distinct().Count() != expected.Count)
+        {
+            yield return "WeatherResource must report each weather risk factor exactly once.";
+            yield break;
+        }
+
+        foreach (var factor in factors)
+        {
+            var (value, peakDays) = expected[factor.Metric];
+            var (medium, high) = WeatherThresholds[factor.Metric];
+            var level = value >= high ? "High" : value >= medium ? "Medium" : "Low";
+            var dayMatches = factor.Metric == "TotalRainfall"
+                ? factor.ObservedOn is null
+                : factor.ObservedOn is { } day && peakDays.Contains(day);
+            if (Math.Abs(factor.Value - value) > WeatherTolerance || factor.Level != level
+                || factor.MediumThreshold != medium || factor.HighThreshold != high || !dayMatches)
+                yield return $"WeatherResource weather risk factor {factor.Metric} does not match the forecast and the fixed thresholds.";
+        }
+
+        var highest = FactorLevels[factors.Max(factor => Math.Max(0, Array.IndexOf(FactorLevels, factor.Level)))];
+        if (output.WeatherRisk != highest)
+            yield return "WeatherResource weatherRisk does not follow from the forecast thresholds.";
+    }
+
+    private static (decimal Value, IReadOnlyList<DateOnly> PeakDays) Peak(IReadOnlyList<WeatherDayResponse> days, Func<WeatherDayResponse, decimal> measure)
+    {
+        var peak = days.Max(measure);
+        return (peak, days.Where(day => measure(day) == peak).Select(day => day.Date).ToList());
+    }
+
+    private static bool Bounded(string? text, int maxLength) => !string.IsNullOrWhiteSpace(text) && text.Length <= maxLength;
 
     private async Task<WeatherResourceToolEvidence> LoadToolEvidenceAsync(AgentStep step, Guid workflowId, CancellationToken cancellationToken)
     {
