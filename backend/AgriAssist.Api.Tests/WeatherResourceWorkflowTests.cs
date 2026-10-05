@@ -3,6 +3,7 @@ using AgriAssist.Api.Data;
 using AgriAssist.Api.Dtos.CropPlanning;
 using AgriAssist.Api.Dtos.Resources;
 using AgriAssist.Api.Dtos.Inspections;
+using AgriAssist.Api.Dtos.Shared;
 using AgriAssist.Api.ExternalServices.AgenticAI;
 using AgriAssist.Api.ExternalServices.Weather;
 using AgriAssist.Api.Models.Shared;
@@ -326,9 +327,54 @@ public sealed class WeatherResourceWorkflowTests
         Assert.Contains(errors, error => error.Contains("weather risk factors without forecast data", StringComparison.Ordinal));
     }
 
-    private static WeatherResourceWorkflowService NewService(AppDbContext db, IWeatherResourceAIClient aiClient)
+    [Fact]
+    public async Task History_keeps_each_analysed_plan_with_the_ai_result_stored_for_it()
     {
-        var officer = new StubCurrentUser(ApplicationRole.ResourceOfficer);
+        await using var db = NewDbContext();
+        var data = await SeedAsync(db);
+        var officer = new AppUser { FullName = "Rani Resource", Email = "rani@example.test", PasswordHash = "hash", Role = ApplicationRole.ResourceOfficer, IsActive = true };
+        db.Add(officer);
+        await db.SaveChangesAsync();
+        var agent = new ToolCallingAgent(db, output => output with { WeatherRiskAssessment = SampleAssessment() });
+        Assert.Empty((await NewService(db, agent).GetHistoryAsync(new PagedQuery(), CancellationToken.None)).Items);
+
+        await NewService(db, agent, officer.Id).RunAsync(data.RequestId, CancellationToken.None);
+        var history = await NewService(db, agent).GetHistoryAsync(new PagedQuery(), CancellationToken.None);
+
+        var entry = Assert.Single(history.Items);
+        Assert.Equal((data.WorkflowId, data.RequestId), (entry.WorkflowId, entry.CropPlanRequestId));
+        Assert.Equal(("Plan the next tomato season safely.", "North Farm", "Field A", "Tomato"), (entry.Objective, entry.FarmName, entry.FieldName, entry.CropName));
+        Assert.Equal(("Analyzed", "Medium", ResourceRequirementStatus.Insufficient), (entry.Status, entry.WeatherRisk, entry.RequirementStatus));
+        Assert.Equal("Rani Resource", entry.RunByName);
+        Assert.Equal(SampleAssessment().Headline, entry.Headline);
+        Assert.Equal(AgentStepStatus.Completed, entry.StepStatus);
+
+        var detail = await NewService(db, agent).GetHistoryEntryAsync(entry.WorkflowId, CancellationToken.None);
+        Assert.Equal(entry, detail.Plan);
+        Assert.Equal(SampleAssessment().Explanation, detail.Result.WeatherRiskAssessment!.Explanation);
+        Assert.Equal(20m, detail.Result.ResourceRequirements!.Single().ShortageQuantity);
+        Assert.Equal(["Review stock before planting."], detail.Result.Recommendations);
+    }
+
+    [Fact]
+    public async Task History_includes_safe_failures_and_supports_search()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedAsync(db);
+        await NewService(db, new ThrowingAiClient()).RunAsync(data.RequestId, CancellationToken.None);
+        var service = NewService(db, new ThrowingAiClient());
+
+        var entry = Assert.Single((await service.GetHistoryAsync(new PagedQuery { Search = "tomato" }, CancellationToken.None)).Items);
+        Assert.Equal(("SafeFailure", "Unknown", AgentStepStatus.Failed), (entry.Status, entry.WeatherRisk, entry.StepStatus));
+        Assert.Null(entry.Headline);
+        Assert.Empty((await service.GetHistoryAsync(new PagedQuery { Search = "no such farm" }, CancellationToken.None)).Items);
+        var missing = await Assert.ThrowsAsync<ApiException>(() => service.GetHistoryEntryAsync(Guid.NewGuid(), CancellationToken.None));
+        Assert.Equal("NOT_FOUND", missing.Code);
+    }
+
+    private static WeatherResourceWorkflowService NewService(AppDbContext db, IWeatherResourceAIClient aiClient, Guid? userId = null)
+    {
+        var officer = new StubCurrentUser(ApplicationRole.ResourceOfficer, userId);
         var cropPlanning = new CropPlanningService(
             db,
             officer,
@@ -341,9 +387,9 @@ public sealed class WeatherResourceWorkflowTests
         return new WeatherResourceWorkflowService(db, officer, cropPlanning, aiClient, NullLogger<WeatherResourceWorkflowService>.Instance);
     }
 
-    private sealed class StubCurrentUser(ApplicationRole role) : ICurrentUserService
+    private sealed class StubCurrentUser(ApplicationRole role, Guid? userId = null) : ICurrentUserService
     {
-        public Guid? UserId { get; } = Guid.NewGuid();
+        public Guid? UserId { get; } = userId ?? Guid.NewGuid();
         public ApplicationRole? Role { get; } = role;
         public bool IsInRole(ApplicationRole roleToCheck) => Role == roleToCheck;
     }

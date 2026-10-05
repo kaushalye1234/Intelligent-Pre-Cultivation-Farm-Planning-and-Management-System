@@ -18,6 +18,8 @@ public interface IWeatherResourceWorkflowService
     Task<WeatherResourceRunResponse> RunAsync(Guid cropPlanRequestId, CancellationToken cancellationToken);
     Task<WeatherResourceOutput> GetResultAsync(Guid cropPlanRequestId, CancellationToken cancellationToken);
     Task<PagedResult<WeatherResourceWorkItemResponse>> GetWorkQueueAsync(PagedQuery query, CancellationToken cancellationToken);
+    Task<PagedResult<WeatherResourceHistoryItemResponse>> GetHistoryAsync(PagedQuery query, CancellationToken cancellationToken);
+    Task<WeatherResourceHistoryDetailResponse> GetHistoryEntryAsync(Guid workflowId, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -262,6 +264,143 @@ public sealed class WeatherResourceWorkflowService(
 
         return new PagedResult<WeatherResourceWorkItemResponse>(items, query.Page, query.PageSize, totalCount);
     }
+
+    /// <summary>
+    /// Read-only Resource Officer history: every Weather/Resource analysis that was run and finished (Completed or
+    /// Failed), newest first, with the crop plan it was run for and a summary of the AI result stored on its step.
+    /// The stored output is never changed here, so Member 4 keeps reading the same JSON.
+    /// </summary>
+    public async Task<PagedResult<WeatherResourceHistoryItemResponse>> GetHistoryAsync(PagedQuery query, CancellationToken cancellationToken)
+    {
+        query.Normalize();
+        var steps = HistorySteps();
+        if (!string.IsNullOrWhiteSpace(query.Search))
+        {
+            var search = query.Search.Trim().ToLower();
+            steps = steps.Where(step =>
+                step.AgentWorkflow!.CropPlanRequest!.Objective.ToLower().Contains(search)
+                || step.AgentWorkflow.CropPlanRequest.Farm!.Name.ToLower().Contains(search)
+                || step.AgentWorkflow.CropPlanRequest.Farm!.Location.ToLower().Contains(search)
+                || (step.AgentWorkflow.CropPlanRequest.Field != null && step.AgentWorkflow.CropPlanRequest.Field.Name.ToLower().Contains(search))
+                || step.AgentWorkflow.CropPlanRequest.CropType!.Name.ToLower().Contains(search)
+                || (step.AgentWorkflow.CropPlanRequest.CropVariety != null && step.AgentWorkflow.CropPlanRequest.CropVariety.Name.ToLower().Contains(search)));
+        }
+
+        var totalCount = await steps.CountAsync(cancellationToken);
+        var rows = await ProjectHistory(steps
+                .OrderByDescending(step => step.CompletedAt ?? step.UpdatedAt)
+                .ThenByDescending(step => step.Id)
+                .Skip((query.Page - 1) * query.PageSize)
+                .Take(query.PageSize))
+            .ToListAsync(cancellationToken);
+
+        var entries = await ToHistoryEntriesAsync(rows, cancellationToken);
+        return new PagedResult<WeatherResourceHistoryItemResponse>(entries.Select(entry => entry.Plan).ToList(), query.Page, query.PageSize, totalCount);
+    }
+
+    /// <summary>One history entry with the exact output stored for that workflow's Weather/Resource step.</summary>
+    public async Task<WeatherResourceHistoryDetailResponse> GetHistoryEntryAsync(Guid workflowId, CancellationToken cancellationToken)
+    {
+        var rows = await ProjectHistory(HistorySteps()
+                .Where(step => step.AgentWorkflowId == workflowId)
+                .OrderBy(step => step.Sequence)
+                .Take(1))
+            .ToListAsync(cancellationToken);
+        if (rows.Count == 0)
+            throw new ApiException(HttpStatusCode.NotFound, "NOT_FOUND", "Weather and resource analysis history entry was not found.");
+
+        return (await ToHistoryEntriesAsync(rows, cancellationToken))[0];
+    }
+
+    private IQueryable<AgentStep> HistorySteps() =>
+        dbContext.AgentSteps.AsNoTracking()
+            .Where(step => !step.IsDeleted
+                && step.AgentName == AgentName
+                && step.StepName == StepName
+                && step.StartedAt != null
+                && (step.Status == AgentStepStatus.Completed || step.Status == AgentStepStatus.Failed)
+                && step.AgentWorkflow != null
+                && !step.AgentWorkflow.IsDeleted
+                && step.AgentWorkflow.CropPlanRequest != null
+                && !step.AgentWorkflow.CropPlanRequest.IsDeleted);
+
+    // RunByUserId is the user RunAsync recorded on the run's validation result.
+    private IQueryable<HistoryRow> ProjectHistory(IQueryable<AgentStep> steps) =>
+        steps.Select(step => new HistoryRow(
+            step.AgentWorkflowId,
+            step.AgentWorkflow!.CropPlanRequestId!.Value,
+            step.Id,
+            step.AgentWorkflow.CropPlanRequest!.Objective,
+            step.AgentWorkflow.CropPlanRequest.Farm!.Name,
+            step.AgentWorkflow.CropPlanRequest.Farm!.Location,
+            step.AgentWorkflow.CropPlanRequest.Field == null ? null : step.AgentWorkflow.CropPlanRequest.Field.Name,
+            step.AgentWorkflow.CropPlanRequest.CropType!.Name,
+            step.AgentWorkflow.CropPlanRequest.CropVariety == null ? null : step.AgentWorkflow.CropPlanRequest.CropVariety.Name,
+            step.AgentWorkflow.CropPlanRequest.PreferredStartDate,
+            step.AgentWorkflow.CropPlanRequest.PreferredEndDate,
+            step.Status,
+            step.CompletedAt ?? step.UpdatedAt,
+            dbContext.AgentValidationResults
+                .Where(result => result.AgentWorkflowId == step.AgentWorkflowId
+                    && !result.IsDeleted
+                    && (result.ValidatorName == OutputValidatorName || result.ValidatorName == AvailabilityValidatorName))
+                .OrderByDescending(result => result.CreatedAt)
+                .Select(result => result.CreatedByUserId)
+                .FirstOrDefault(),
+            step.OutputJson));
+
+    private async Task<List<WeatherResourceHistoryDetailResponse>> ToHistoryEntriesAsync(List<HistoryRow> rows, CancellationToken cancellationToken)
+    {
+        var userIds = rows.Where(row => row.RunByUserId.HasValue).Select(row => row.RunByUserId!.Value).Distinct().ToList();
+        var names = userIds.Count == 0
+            ? []
+            : await dbContext.Users.AsNoTracking()
+                .Where(user => userIds.Contains(user.Id))
+                .ToDictionaryAsync(user => user.Id, user => user.FullName, cancellationToken);
+
+        return rows.Select(row =>
+        {
+            var output = ReadOutput(row.OutputJson, row.WorkflowId);
+            var plan = new WeatherResourceHistoryItemResponse(
+                row.WorkflowId,
+                row.CropPlanRequestId,
+                row.StepId,
+                row.Objective,
+                row.FarmName,
+                row.FarmLocation,
+                row.FieldName,
+                row.CropName,
+                row.CropVarietyName,
+                row.PreferredStartDate,
+                row.PreferredEndDate,
+                row.StepStatus,
+                row.AnalyzedAt,
+                row.RunByUserId is { } userId && names.TryGetValue(userId, out var name) ? name : null,
+                output.Status,
+                output.WeatherRisk,
+                output.RequirementStatus,
+                output.RequiresHumanReview,
+                output.WeatherRiskAssessment?.Headline);
+            return new WeatherResourceHistoryDetailResponse(plan, output);
+        }).ToList();
+    }
+
+    private sealed record HistoryRow(
+        Guid WorkflowId,
+        Guid CropPlanRequestId,
+        Guid StepId,
+        string Objective,
+        string FarmName,
+        string FarmLocation,
+        string? FieldName,
+        string CropName,
+        string? CropVarietyName,
+        DateOnly PreferredStartDate,
+        DateOnly PreferredEndDate,
+        AgentStepStatus StepStatus,
+        DateTime AnalyzedAt,
+        Guid? RunByUserId,
+        string OutputJson);
 
     /// <summary>
     /// The agent may only describe what the backend tools returned for this step: stock figures, verified
