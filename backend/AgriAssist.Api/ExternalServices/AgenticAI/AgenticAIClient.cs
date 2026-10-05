@@ -11,7 +11,7 @@ namespace AgriAssist.Api.ExternalServices.AgenticAI;
 public sealed class AgenticAIClient(
     HttpClient httpClient,
     IConfiguration configuration,
-    ILogger<AgenticAIClient> logger) : IAgenticAIClient, IWeatherResourceAIClient, ISchedulingValidationAIClient, ICropFindingAIClient, IInspectionAssistanceAIClient, IInspectionImageAnalysisAIClient
+    ILogger<AgenticAIClient> logger) : IAgenticAIClient, IWeatherResourceAIClient, ISchedulingValidationAIClient, ICropFindingAIClient, IInspectionAssistanceAIClient, IInspectionImageAnalysisAIClient, IResourceRequirementResearchAIClient
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -66,6 +66,13 @@ public sealed class AgenticAIClient(
             "/crop-finding/discover-references",
             input,
             "discover references",
+            cancellationToken);
+
+    public Task<ResourceRequirementResearchResponse> ResearchResourceRequirementAsync(ResourceRequirementResearchInput input, CancellationToken cancellationToken) =>
+        PostCropFindingAsync<ResourceRequirementResearchInput, ResourceRequirementResearchResponse>(
+            "/crop-finding/resource-requirement-research",
+            input,
+            "resource requirement research",
             cancellationToken);
 
     public Task<InspectionNoteAssistanceResponse> GenerateNoteSuggestionsAsync(

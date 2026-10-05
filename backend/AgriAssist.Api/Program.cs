@@ -135,6 +135,12 @@ builder.Services.AddHttpClient<IWeatherService, WeatherService>().RemoveAllLogge
 builder.Services.AddScoped<IWeatherResourceWorkflowService, WeatherResourceWorkflowService>();
 builder.Services.AddScoped<ICropResourceRequirementService, CropResourceRequirementService>();
 builder.Services.AddScoped<IWeatherResourceToolService, WeatherResourceToolService>();
+// Member 3 Admin-only resource requirement research: same long web-search budget as CropFinding.
+builder.Services.AddHttpClient<IResourceRequirementResearchAIClient, AgenticAIClient>(client =>
+    client.Timeout = Timeout.InfiniteTimeSpan);
+builder.Services.AddScoped<IRequestValidator<ResourceRequirementResearchRequest>, ResourceRequirementResearchRequestValidator>();
+builder.Services.AddScoped<IRequestValidator<VerifyResourceRequirementRequest>, VerifyResourceRequirementRequestValidator>();
+builder.Services.AddScoped<IResourceRequirementResearchService, ResourceRequirementResearchService>();
 builder.Services.AddScoped<IWorkflowApprovalService, WorkflowApprovalService>();
 
 builder.Services
