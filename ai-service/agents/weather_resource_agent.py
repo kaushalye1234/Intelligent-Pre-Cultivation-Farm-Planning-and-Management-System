@@ -2,7 +2,6 @@ from collections.abc import Awaitable
 from typing import Any, TypeVar
 from uuid import UUID
 
-from providers.base_llm_provider import BaseLLMProvider
 from schemas.weather_resource import (
     INCOMPLETE,
     INSUFFICIENT,
@@ -36,19 +35,13 @@ T = TypeVar("T")
 class WeatherResourceAgent:
     """Member 3 agent. Gathers verified requirements, field, inventory, reservations and weather through the
     read-only backend tools, then reasons over that tool output with fixed rules. Nothing is estimated, and
-    nothing is reserved: every figure in the output comes from a tool result or simple arithmetic on one."""
+    nothing is reserved: every figure in the output comes from a tool result or simple arithmetic on one.
 
-    def __init__(
-        self,
-        tools: WeatherResourceTools | None = None,
-        llm_provider: BaseLLMProvider | None = None,
-        provider_timeout_seconds: float = 30,
-    ) -> None:
+    The agent does not use the shared LLM provider (OpenAI), so it works the same with or without OPENAI_API_KEY.
+    Keeping facts and recommendations deterministic prevents invented weather, stock or fertilizer data."""
+
+    def __init__(self, tools: WeatherResourceTools | None = None) -> None:
         self._tools = tools
-        # The contract permits an LLM to rewrite text, but the workflow does not need one.
-        # Keeping facts and recommendations deterministic prevents invented weather, stock or fertilizer data.
-        self._llm_provider = llm_provider
-        self._provider_timeout_seconds = provider_timeout_seconds
 
     async def run(self, request: WeatherResourceInput) -> WeatherResourceOutput:
         if self._tools is None:
