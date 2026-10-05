@@ -474,6 +474,24 @@
   object-fit: contain;
 }
 
+.evidence-image-state {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  color: var(--color-text-muted);
+  background: var(--color-surface-muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.evidence-image-state.is-error {
+  color: var(--tone-warn-text);
+  background: var(--tone-warn-bg);
+}
+
 .representative-image-preview figcaption {
   display: flex;
   justify-content: space-between;

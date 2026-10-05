@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from '../api/client'
 import { Roles } from '../routing'
 import type {
@@ -106,8 +106,8 @@ const submittedAssessment: PrePlantingAssessment = {
 const assessmentWithEvidence: PrePlantingAssessment = {
   ...savedAssessment,
   images: [
-    { id: 'image-1', url: 'https://example.test/representative.jpg', contentType: 'image/jpeg', sizeBytes: 4096, isRepresentativeForAi: true },
-    { id: 'image-2', url: 'https://example.test/alternate.jpg', contentType: 'image/jpeg', sizeBytes: 2048, isRepresentativeForAi: false },
+    { id: 'image-1', url: '/api/inspections/inspection-1/images/image-1/content', contentType: 'image/jpeg', sizeBytes: 4096, isRepresentativeForAi: true },
+    { id: 'image-2', url: '/api/inspections/inspection-1/images/image-2/content', contentType: 'image/jpeg', sizeBytes: 2048, isRepresentativeForAi: false },
   ],
 }
 
@@ -156,7 +156,19 @@ const fieldResult: FieldAnalysisResult = {
   recommendedPrePlantingActions: ['Recheck the field before sowing.'],
 }
 
-afterEach(() => vi.restoreAllMocks())
+const originalCreateObjectUrl = URL.createObjectURL
+const originalRevokeObjectUrl = URL.revokeObjectURL
+
+beforeEach(() => {
+  Object.defineProperty(URL, 'createObjectURL', { configurable: true, writable: true, value: vi.fn(() => 'blob:inspection-evidence') })
+  Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, writable: true, value: vi.fn() })
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
+  Object.defineProperty(URL, 'createObjectURL', { configurable: true, writable: true, value: originalCreateObjectUrl })
+  Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, writable: true, value: originalRevokeObjectUrl })
+})
 
 function mockLoads(assessment: PrePlantingAssessment | null, result?: FieldAnalysisResult) {
   return vi.spyOn(api, 'get').mockImplementation(async (url) => {
@@ -173,6 +185,7 @@ function mockImageAnalysisLoads() {
     if (url === '/crop-plans/plan-1/pre-planting-assessment') return { data: assessmentWithEvidence } as never
     if (url === '/crop-plans/plan-1/pre-planting-assessment/image-analysis') return { data: succeededImageAnalysis } as never
     if (url === '/crop-plans/plan-1/pre-planting-assessment/image-analysis/history') return { data: [] } as never
+    if (url.startsWith('/inspections/inspection-1/images/')) return { data: new Blob(['evidence'], { type: 'image/jpeg' }) } as never
     throw new Error('Unexpected GET ' + url)
   })
 }
@@ -305,7 +318,12 @@ describe('PrePlantingAssessmentPanel', () => {
     render(<PrePlantingAssessmentPanel review={review} role={Roles.FieldOfficer} onWorkflowChanged={vi.fn()} />)
 
     const preview = await screen.findByRole('img', { name: /representative evidence/i })
-    expect(preview).toHaveAttribute('src', 'https://example.test/representative.jpg')
+    expect(preview).toHaveAttribute('src', 'blob:inspection-evidence')
+    expect(preview.closest('a')).toHaveAttribute('href', 'blob:inspection-evidence')
+    expect(get).toHaveBeenCalledWith(
+      '/inspections/inspection-1/images/image-1/content',
+      expect.objectContaining({ responseType: 'blob', signal: expect.any(AbortSignal) }),
+    )
     expect(screen.getByRole('heading', { name: 'AI findings' })).toBeInTheDocument()
     expect(screen.getByText('Brown lesions are visible on two leaves.')).toBeInTheDocument()
     expect(screen.getByText('Possible bacterial leaf spot')).toBeInTheDocument()

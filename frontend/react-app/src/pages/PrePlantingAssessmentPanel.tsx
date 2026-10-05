@@ -41,6 +41,8 @@ type ActionState = 'save' | 'upload' | 'submit' | 'run' | 'notes' | 'select-imag
 type NoteFieldKey = keyof InspectionNoteSuggestions
 type NoteDecision = 'Accepted' | 'Officer Edited' | 'Rejected'
 
+const noAssessmentImages: PrePlantingAssessmentImage[] = []
+
 const noteFieldToFormField: Record<NoteFieldKey, keyof PrePlantingAssessmentInput> = {
   soilNotes: 'soilNotes',
   waterConcerns: 'waterConcerns',
@@ -714,7 +716,7 @@ export function PrePlantingAssessmentPanel({
         state={imageAnalysis}
         edit={imageEdit}
         history={imageHistory}
-        images={assessment.images ?? []}
+        images={assessment.images ?? noAssessmentImages}
         canEdit={canEdit}
         busy={busy}
         onAnalyze={() => void analyzeRepresentativeImage()}
@@ -835,6 +837,7 @@ function ImageAnalysisPanel({
   const [editing, setEditing] = useState(false)
   const result = state?.result
   const representative = images.find((image) => image.isRepresentativeForAi) ?? null
+  const evidenceSources = useAuthenticatedEvidenceSources(images)
   const failed = state && ['Failed', 'TimedOut', 'Interrupted', 'Stale', 'Unavailable'].includes(state.status)
 
   function beginEditing() {
@@ -876,9 +879,11 @@ function ImageAnalysisPanel({
 
           {representative ? (
             <figure className="representative-image-preview">
-              <a href={representative.url} target="_blank" rel="noreferrer" aria-label="Open representative evidence in a new tab">
-                <img src={representative.url} alt="Representative evidence for AI analysis" />
-              </a>
+              <EvidenceImageLink
+                source={evidenceSources[representative.id]}
+                alt="Representative evidence for AI analysis"
+                linkLabel="Open representative evidence in a new tab"
+              />
               <figcaption><span>{representative.contentType}</span><span>{Math.ceil(representative.sizeBytes / 1024)} KB</span></figcaption>
             </figure>
           ) : (
@@ -893,9 +898,11 @@ function ImageAnalysisPanel({
             <div className="evidence-selector" aria-label="Uploaded assessment evidence">
               {images.map((image, index) => (
                 <article key={image.id} className={`evidence-selector-item${image.isRepresentativeForAi ? ' is-representative' : ''}`}>
-                  <a href={image.url} target="_blank" rel="noreferrer" aria-label={`Open evidence ${index + 1} in a new tab`}>
-                    <img src={image.url} alt={`Evidence ${index + 1}`} />
-                  </a>
+                  <EvidenceImageLink
+                    source={evidenceSources[image.id]}
+                    alt={`Evidence ${index + 1}`}
+                    linkLabel={`Open evidence ${index + 1} in a new tab`}
+                  />
                   <div><strong>Evidence {index + 1}</strong><span>{Math.ceil(image.sizeBytes / 1024)} KB</span></div>
                   {image.isRepresentativeForAi ? (
                     <CheckCircle2 size={18} aria-label="Selected representative" />
@@ -996,6 +1003,76 @@ function ImageAnalysisPanel({
       </details>
     </section>
   )
+}
+
+function useAuthenticatedEvidenceSources(images: PrePlantingAssessmentImage[]): Record<string, string | null> {
+  const [sources, setSources] = useState<Record<string, string | null>>({})
+
+  useEffect(() => {
+    const controller = new AbortController()
+    const createdUrls: string[] = []
+    let active = true
+    const revokeCreatedUrls = () => {
+      createdUrls.splice(0).forEach((url) => URL.revokeObjectURL(url))
+    }
+
+    void Promise.all(images.map(async (image) => {
+      try {
+        const response = await api.get<Blob>(inspectionImageRequestUrl(image.url), {
+          responseType: 'blob',
+          signal: controller.signal,
+        })
+        const objectUrl = URL.createObjectURL(response.data)
+        createdUrls.push(objectUrl)
+        return [image.id, objectUrl] as const
+      } catch (error) {
+        if (axios.isCancel(error)) return null
+        return [image.id, null] as const
+      }
+    })).then((loaded) => {
+      if (!active) {
+        revokeCreatedUrls()
+        return
+      }
+
+      const next: Record<string, string | null> = {}
+      loaded.forEach((item) => {
+        if (item) next[item[0]] = item[1]
+      })
+      setSources(next)
+    })
+
+    return () => {
+      active = false
+      controller.abort()
+      revokeCreatedUrls()
+    }
+  }, [images])
+
+  return sources
+}
+
+function EvidenceImageLink({ source, alt, linkLabel }: { source: string | null | undefined; alt: string; linkLabel: string }) {
+  return (
+    <a
+      href={source ?? undefined}
+      target="_blank"
+      rel="noreferrer"
+      aria-label={linkLabel}
+      aria-disabled={!source}
+      onClick={(event) => { if (!source) event.preventDefault() }}
+    >
+      {source
+        ? <img src={source} alt={alt} />
+        : <span className={`evidence-image-state${source === null ? ' is-error' : ''}`} aria-live="polite">
+            {source === null ? 'Preview unavailable' : 'Loading image...'}
+          </span>}
+    </a>
+  )
+}
+
+function inspectionImageRequestUrl(value: string): string {
+  return value.startsWith('/api/') ? value.slice(4) : value
 }
 
 function editableLines(value: string): string[] {
