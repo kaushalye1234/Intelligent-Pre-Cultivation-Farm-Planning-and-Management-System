@@ -3,6 +3,7 @@ using AgriAssist.Api.Data;
 using AgriAssist.Api.Dtos.TaskApproval;
 using AgriAssist.Api.Models.CropPlanning;
 using AgriAssist.Api.Models.Shared;
+using AgriAssist.Api.Services.Resources;
 using Microsoft.EntityFrameworkCore;
 
 namespace AgriAssist.Api.Services.TaskApproval;
@@ -32,7 +33,6 @@ public static class SchedulingEvidenceBuilder
                 .Select(item => item.Name)
                 .SingleOrDefaultAsync(cancellationToken)
             : null;
-        var location = plan.Farm?.Location;
         var profiles = await dbContext.CropReferenceProfiles.AsNoTracking()
             .Include(item => item.Stages)
             .Include(item => item.Rules)
@@ -41,9 +41,9 @@ public static class SchedulingEvidenceBuilder
         var profile = profiles
             .Where(item => !pinnedProfileId.HasValue || item.Id == pinnedProfileId.Value)
             .Where(item => item.VarietyName is null || string.Equals(item.VarietyName, varietyName, StringComparison.OrdinalIgnoreCase))
-            .Where(item => item.Region is null || RegionMatches(item.Region, location))
+            .Where(item => CropReferenceRegionMatcher.Rank(item.Region, plan.Farm) >= 0)
             .OrderByDescending(item => item.VarietyName is not null)
-            .ThenByDescending(item => item.Region is not null)
+            .ThenByDescending(item => CropReferenceRegionMatcher.Rank(item.Region, plan.Farm))
             .ThenByDescending(item => item.VerifiedAt)
             .ThenBy(item => item.Id)
             .FirstOrDefault();
@@ -100,8 +100,4 @@ public static class SchedulingEvidenceBuilder
         return null;
     }
 
-    private static bool RegionMatches(string region, string? location) =>
-        !string.IsNullOrWhiteSpace(location)
-        && location.Split(',').Select(part => part.Trim()).Append(location.Trim())
-            .Any(part => string.Equals(part, region.Trim(), StringComparison.OrdinalIgnoreCase));
 }
