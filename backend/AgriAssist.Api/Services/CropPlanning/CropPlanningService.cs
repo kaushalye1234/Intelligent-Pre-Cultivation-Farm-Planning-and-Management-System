@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Data;
 using AgriAssist.Api.Data;
 using AgriAssist.Api.Dtos.CropPlanning;
+using AgriAssist.Api.Dtos.FinalCultivationGuide;
 using AgriAssist.Api.Dtos.Inspections;
 using AgriAssist.Api.Dtos.Shared;
 using AgriAssist.Api.ExternalServices.AgenticAI;
@@ -1631,6 +1632,29 @@ public sealed class CropPlanningService(
         var warnings = (fieldAnalysis?.Warnings ?? []).Concat(weather?.Warnings ?? [])
             .Where(item => !string.IsNullOrWhiteSpace(item)).Distinct(StringComparer.Ordinal).ToArray();
 
+        FinalCultivationGuideOutputDto? finalGuide = null;
+        var finalGuideStep = workflow.Steps
+            .Where(item => !item.IsDeleted
+                && item.AgentName == "FinalCultivationGuideAgent"
+                && item.CandidateRevision == workflow.CandidateRevision
+                && item.Status == AgentStepStatus.Completed)
+            .OrderByDescending(item => item.Sequence)
+            .FirstOrDefault();
+        if (finalGuideStep is not null)
+        {
+            try
+            {
+                var candidateGuide = JsonSerializer.Deserialize<FinalCultivationGuideOutputDto>(finalGuideStep.OutputJson, JsonOptions);
+                if (candidateGuide?.WorkflowId == workflow.Id
+                    && candidateGuide.ApprovedRevision == workflow.CandidateRevision)
+                    finalGuide = candidateGuide;
+            }
+            catch (JsonException)
+            {
+                finalGuide = null;
+            }
+        }
+
         return new FarmerApprovedPlanResponse(
             Member2CropHealthContractVersions.FarmerApprovedPlan,
             request.Id,
@@ -1646,7 +1670,8 @@ public sealed class CropPlanningService(
             weather?.Recommendations ?? [],
             tasks,
             irrigation,
-            cropHealth);
+            cropHealth,
+            finalGuide);
     }
 
     public async Task<Member3HandoffResponse> GetMember3HandoffAsync(Guid requestId, CancellationToken cancellationToken)

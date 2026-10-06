@@ -16,6 +16,7 @@ using AgriAssist.Api.Services.Shared;
 using AgriAssist.Api.Services.CropPlanning;
 using AgriAssist.Api.Services.Inspections;
 using AgriAssist.Api.Services.Resources;
+using AgriAssist.Api.Services.FinalCultivationGuide;
 using AgriAssist.Api.Services.TaskApproval;
 using AgriAssist.Api.ExternalServices.AgenticAI;
 using AgriAssist.Api.Validators.Shared;
@@ -126,6 +127,7 @@ builder.Services.AddScoped<ITaskApprovalService, TaskApprovalService>();
 builder.Services.AddHttpClient<IAgenticAIClient, AgenticAIClient>();
 builder.Services.AddHttpClient<IWeatherResourceAIClient, AgenticAIClient>();
 builder.Services.AddHttpClient<ISchedulingValidationAIClient, AgenticAIClient>();
+builder.Services.AddHttpClient<IFinalCultivationGuideAIClient, AgenticAIClient>();
 builder.Services.AddHttpClient<ICropFindingAIClient, AgenticAIClient>(client =>
     client.Timeout = Timeout.InfiniteTimeSpan);
 builder.Services.AddHttpClient<IInspectionAssistanceAIClient, AgenticAIClient>();
@@ -142,6 +144,7 @@ builder.Services.AddScoped<IRequestValidator<ResourceRequirementResearchRequest>
 builder.Services.AddScoped<IRequestValidator<VerifyResourceRequirementRequest>, VerifyResourceRequirementRequestValidator>();
 builder.Services.AddScoped<IResourceRequirementResearchService, ResourceRequirementResearchService>();
 builder.Services.AddScoped<IWorkflowApprovalService, WorkflowApprovalService>();
+builder.Services.AddScoped<IFinalCultivationGuideService, FinalCultivationGuideService>();
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)

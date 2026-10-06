@@ -480,6 +480,102 @@ class FarmerApprovedCropHealth {
       );
 }
 
+class FinalGuideMonth {
+  const FinalGuideMonth({
+    required this.month,
+    required this.summary,
+    required this.fieldAdvice,
+    required this.weatherAdvice,
+  });
+
+  final String month;
+  final String summary;
+  final List<String> fieldAdvice;
+  final List<String> weatherAdvice;
+
+  factory FinalGuideMonth.fromJson(Map<String, dynamic> json) =>
+      FinalGuideMonth(
+        month: json['month'] as String? ?? '',
+        summary: json['summary'] as String? ?? '',
+        fieldAdvice: (json['fieldAdvice'] as List<dynamic>? ?? const [])
+            .whereType<String>()
+            .toList(),
+        weatherAdvice: (json['weatherAdvice'] as List<dynamic>? ?? const [])
+            .whereType<String>()
+            .toList(),
+      );
+}
+
+class FinalGuideActivity {
+  const FinalGuideActivity({
+    required this.title,
+    required this.scheduledAt,
+    required this.quantity,
+    required this.unit,
+    required this.durationMinutes,
+  });
+
+  final String title;
+  final String? scheduledAt;
+  final num? quantity;
+  final String? unit;
+  final int? durationMinutes;
+
+  factory FinalGuideActivity.fromJson(Map<String, dynamic> json) =>
+      FinalGuideActivity(
+        title: json['title'] as String? ?? '',
+        scheduledAt: json['scheduledAt'] as String?,
+        quantity: json['quantity'] as num?,
+        unit: json['unit'] as String?,
+        durationMinutes: json['durationMinutes'] as int?,
+      );
+}
+
+class FinalCultivationGuide {
+  const FinalCultivationGuide({
+    required this.weeklyGuidance,
+    required this.currentStageExplanation,
+    required this.monthlyGuidance,
+    required this.risks,
+    required this.harvestPreparation,
+    required this.whyThisPlan,
+    required this.approvedActivities,
+  });
+
+  final List<String> weeklyGuidance;
+  final String? currentStageExplanation;
+  final List<FinalGuideMonth> monthlyGuidance;
+  final List<String> risks;
+  final List<String> harvestPreparation;
+  final String whyThisPlan;
+  final List<FinalGuideActivity> approvedActivities;
+
+  factory FinalCultivationGuide.fromJson(Map<String, dynamic> json) =>
+      FinalCultivationGuide(
+        weeklyGuidance: (json['weeklyGuidance'] as List<dynamic>? ?? const [])
+            .whereType<String>()
+            .toList(),
+        currentStageExplanation: json['currentStageExplanation'] as String?,
+        monthlyGuidance: (json['monthlyGuidance'] as List<dynamic>? ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(FinalGuideMonth.fromJson)
+            .toList(),
+        risks: (json['risks'] as List<dynamic>? ?? const [])
+            .whereType<String>()
+            .toList(),
+        harvestPreparation:
+            (json['harvestPreparation'] as List<dynamic>? ?? const [])
+                .whereType<String>()
+                .toList(),
+        whyThisPlan: json['whyThisPlan'] as String? ?? '',
+        approvedActivities:
+            (json['approvedActivities'] as List<dynamic>? ?? const [])
+                .whereType<Map<String, dynamic>>()
+                .map(FinalGuideActivity.fromJson)
+                .toList(),
+      );
+}
+
 class FarmerApprovedPlan {
   const FarmerApprovedPlan({
     required this.contractVersion,
@@ -497,6 +593,7 @@ class FarmerApprovedPlan {
     required this.approvedTasks,
     required this.approvedIrrigationSchedules,
     required this.cropHealth,
+    required this.finalGuide,
   });
   final int contractVersion;
   final String cropPlanRequestId;
@@ -513,6 +610,7 @@ class FarmerApprovedPlan {
   final List<FarmerApprovedTask> approvedTasks;
   final List<FarmerApprovedIrrigation> approvedIrrigationSchedules;
   final FarmerApprovedCropHealth? cropHealth;
+  final FinalCultivationGuide? finalGuide;
 
   factory FarmerApprovedPlan.fromJson(Map<String, dynamic> json) =>
       FarmerApprovedPlan(
@@ -544,6 +642,11 @@ class FarmerApprovedPlan {
         cropHealth: json['cropHealth'] is Map<String, dynamic>
             ? FarmerApprovedCropHealth.fromJson(
                 json['cropHealth'] as Map<String, dynamic>,
+              )
+            : null,
+        finalGuide: json['finalGuide'] is Map<String, dynamic>
+            ? FinalCultivationGuide.fromJson(
+                json['finalGuide'] as Map<String, dynamic>,
               )
             : null,
       );
