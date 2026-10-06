@@ -87,4 +87,4 @@
 - [x] Run backend, AI service, React, and Flutter checks required by repository guidance. Backend PostgreSQL-specific integration tests were skipped locally because no isolated test connection string was configured; CI supplies an isolated PostgreSQL service.
 - [x] Run `git diff --check` and a conflict-marker scan.
 - [ ] Confirm no `.env`, secrets, generated output, or unrelated files are staged.
-- [ ] Review the final diff and create a focused commit/PR to `dev` with test evidence and the remaining data prerequisites explained.
+- [x] Review the final diff and create a focused commit/PR to `dev` with test evidence and the remaining data prerequisites explained (PR #81).
