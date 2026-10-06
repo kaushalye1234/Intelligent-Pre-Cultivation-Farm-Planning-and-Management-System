@@ -338,6 +338,7 @@ public sealed class InspectionService(
             .Where(item => item.FieldInspectionId == inspection.Id && item.IsRepresentativeForAi && !item.IsDeleted)
             .ToListAsync(cancellationToken);
         foreach (var item in current) item.IsRepresentativeForAi = false;
+        if (current.Count > 0) await dbContext.SaveChangesAsync(cancellationToken);
         selected.IsRepresentativeForAi = true;
         selected.UpdatedAt = DateTime.UtcNow;
         selected.UpdatedByUserId = currentUser.UserId;

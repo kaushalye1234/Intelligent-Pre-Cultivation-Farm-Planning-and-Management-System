@@ -1,7 +1,13 @@
 using AgriAssist.Api.Data;
+using AgriAssist.Api.Dtos.Inspections;
+using AgriAssist.Api.ExternalServices.Cloudinary;
 using AgriAssist.Api.Models.CropPlanning;
 using AgriAssist.Api.Models.Inspections;
 using AgriAssist.Api.Models.Shared;
+using AgriAssist.Api.Services.Inspections;
+using AgriAssist.Api.Services.Shared;
+using AgriAssist.Api.Validators.Inspections;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 
 namespace AgriAssist.Api.Tests;
@@ -29,7 +35,9 @@ public sealed class InspectionImageConcurrencyPostgreSqlIntegrationTests
             var inspection = await LockAsync(db, data.InspectionId);
             if (inspection.Status != InspectionStatus.InProgress) return false;
             var images = await db.InspectionImages.Where(item => item.FieldInspectionId == inspection.Id).ToListAsync();
-            foreach (var image in images) image.IsRepresentativeForAi = image.Id == data.SecondImageId;
+            foreach (var image in images) image.IsRepresentativeForAi = false;
+            await db.SaveChangesAsync();
+            images.Single(image => image.Id == data.SecondImageId).IsRepresentativeForAi = true;
             await db.SaveChangesAsync();
             await transaction.CommitAsync();
             return true;
@@ -55,6 +63,35 @@ public sealed class InspectionImageConcurrencyPostgreSqlIntegrationTests
         await using var verify = NewDbContext();
         Assert.Equal(InspectionStatus.Completed, await verify.FieldInspections.Where(item => item.Id == data.InspectionId).Select(item => item.Status).SingleAsync());
         Assert.True(await verify.InspectionImages.CountAsync(item => item.FieldInspectionId == data.InspectionId && item.IsRepresentativeForAi) <= 1);
+    }
+
+    [PostgreSqlFact]
+    public async Task Selecting_a_replacement_representative_clears_the_current_image_first()
+    {
+        var data = await SeedAsync();
+        await using var db = NewDbContext();
+        var planId = await db.FieldInspections
+            .Where(item => item.Id == data.InspectionId)
+            .Select(item => item.CropPlanRequestId)
+            .SingleAsync()
+            ?? throw new InvalidOperationException("The seeded pre-planting inspection must have a crop plan.");
+        var service = new InspectionService(
+            db,
+            new OfficerCurrentUser(data.OfficerId),
+            new UnusedCloudinaryService(),
+            new FieldInspectionRequestValidator(),
+            new ObservationRequestValidator(),
+            new CropIssueRequestValidator(),
+            new FollowUpRecommendationRequestValidator());
+
+        var selected = await service.SelectRepresentativeImageAsync(planId, data.SecondImageId, CancellationToken.None);
+
+        Assert.Equal(data.SecondImageId, selected.Id);
+        await using var verify = NewDbContext();
+        Assert.Equal(data.SecondImageId, await verify.InspectionImages
+            .Where(item => item.FieldInspectionId == data.InspectionId && item.IsRepresentativeForAi)
+            .Select(item => item.Id)
+            .SingleAsync());
     }
 
     [PostgreSqlFact]
@@ -259,6 +296,22 @@ public sealed class InspectionImageConcurrencyPostgreSqlIntegrationTests
         ?? throw new InvalidOperationException($"{ConnectionVariable} is required.");
 
     private sealed record Seeded(Guid InspectionId, Guid OfficerId, Guid FirstImageId, Guid SecondImageId, Guid? AnalysisId);
+
+    private sealed class OfficerCurrentUser(Guid userId) : ICurrentUserService
+    {
+        public Guid? UserId { get; } = userId;
+        public ApplicationRole? Role => ApplicationRole.FieldOfficer;
+        public bool IsInRole(ApplicationRole role) => role == ApplicationRole.FieldOfficer;
+    }
+
+    private sealed class UnusedCloudinaryService : ICloudinaryService
+    {
+        public Task<CloudinaryUploadResult> UploadInspectionImageAsync(IFormFile file, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<CloudinaryRetrievedAsset> RetrieveInspectionImageAsync(string publicId, long? storageVersion, string deliveryType, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+    }
 
     private sealed class PostgreSqlFactAttribute : FactAttribute
     {
