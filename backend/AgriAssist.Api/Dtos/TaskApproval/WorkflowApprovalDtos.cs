@@ -155,6 +155,12 @@ public sealed record WorkflowDecisionRequest(
     string IdempotencyKey,
     string Comment);
 
+public sealed record WorkflowRetryRequest(
+    int ExpectedWorkflowVersion,
+    string Reason,
+    DateOnly? PreferredStartDate = null,
+    DateOnly? PreferredEndDate = null);
+
 public sealed record CropHealthGuidanceDecisionRequest(
     int CandidateRevision,
     int ExpectedWorkflowVersion,

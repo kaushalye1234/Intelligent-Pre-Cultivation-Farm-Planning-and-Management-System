@@ -95,7 +95,7 @@ def payload(*recommendations):
 
 def research_input(resource_name="Urea", resource_unit="kg", crop_name="Chili", **overrides):
     values = {
-        "adminUserId": str(uuid4()),
+        "actorUserId": str(uuid4()),
         "cropTypeId": str(uuid4()),
         "cropName": crop_name,
         "resourceId": str(uuid4()),

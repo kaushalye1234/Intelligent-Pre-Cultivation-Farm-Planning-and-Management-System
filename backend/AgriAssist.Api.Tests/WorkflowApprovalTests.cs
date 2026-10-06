@@ -4,6 +4,8 @@ using AgriAssist.Api.Data;
 using AgriAssist.Api.Dtos.TaskApproval;
 using AgriAssist.Api.Dtos.CropPlanning;
 using AgriAssist.Api.Dtos.Inspections;
+using AgriAssist.Api.Dtos.Resources;
+using AgriAssist.Api.Dtos.Shared;
 using AgriAssist.Api.ExternalServices.AgenticAI;
 using AgriAssist.Api.Models.CropPlanning;
 using AgriAssist.Api.Models.Inspections;
@@ -163,6 +165,105 @@ public sealed class WorkflowApprovalTests
         Assert.Equal(AgentWorkflowStatus.Completed, approved.Status);
         Assert.Contains(await db.FarmTasks.ToListAsync(), task => task.Title == "Complete field sanitation"
             && task.Description == "Clean the field and remove visibly affected crop material before planting.");
+    }
+
+    [Fact]
+    public async Task Retry_refreshes_member3_after_officer_updates_window_and_uses_new_output_for_scheduling()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedAsync(db);
+        data.Workflow.Status = AgentWorkflowStatus.CandidateBlocked;
+        data.Workflow.CurrentStep = "CANDIDATE_BLOCKED";
+        var schedulingStep = data.Workflow.Steps.Single(item => item.AgentName == "SchedulingValidationAgent");
+        schedulingStep.Status = AgentStepStatus.Failed;
+        schedulingStep.ErrorCode = "CANDIDATE_BLOCKED";
+        var weather = new RetryWeatherResourceWorkflowService(db);
+        var service = NewService(db, data.Approver.Id, input =>
+        {
+            Assert.Equal("Sufficient", input.WeatherResourceOutput.GetProperty("requirementStatus").GetString());
+            return Missing(input, "Candidate still needs a verified crop profile.");
+        }, weather: weather);
+        var newEndDate = data.Request.PreferredStartDate.AddDays(120);
+
+        var review = await service.RetryCandidateAsync(data.Workflow.Id,
+            new WorkflowRetryRequest(data.Workflow.Version, "Crop reference indicates a longer growing period.", data.Request.PreferredStartDate, newEndDate),
+            CancellationToken.None);
+
+        Assert.Equal(1, weather.Calls);
+        Assert.Equal(2, review.Workflow.CandidateRevision);
+        Assert.Equal(newEndDate, review.PreferredEndDate);
+        Assert.Equal(AgentWorkflowStatus.MissingDependency, review.Workflow.Status);
+        var history = await db.CropPlanRequestHistories.SingleAsync();
+        Assert.Equal(data.Approver.Id, history.ChangedByUserId);
+        Assert.Contains("Crop reference indicates", history.Reason);
+        Assert.Equal(CropPlanHistoryAction.SchedulingRetry, history.Action);
+        Assert.Equal(2, db.AgentValidationResults.Single().CandidateRevision);
+    }
+
+    [Fact]
+    public async Task Retry_rejects_stale_version_without_changing_dates_or_starting_member_three()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedAsync(db);
+        data.Workflow.Status = AgentWorkflowStatus.MissingDependency;
+        var originalEndDate = data.Request.PreferredEndDate;
+        await db.SaveChangesAsync();
+        var weather = new RetryWeatherResourceWorkflowService(db);
+        var service = NewService(db, data.Approver.Id, Candidate, weather: weather);
+
+        var directGenerate = await Assert.ThrowsAsync<ApiException>(() => service.GenerateCandidateAsync(data.Workflow.Id, CancellationToken.None));
+        Assert.Equal("SCHEDULING_RETRY_REQUIRED", directGenerate.Code);
+
+        var exception = await Assert.ThrowsAsync<ApiException>(() => service.RetryCandidateAsync(data.Workflow.Id,
+            new WorkflowRetryRequest(data.Workflow.Version + 1, "This edit is stale.", data.Request.PreferredStartDate, originalEndDate.AddDays(10)),
+            CancellationToken.None));
+
+        Assert.Equal("WORKFLOW_STALE", exception.Code);
+        Assert.Equal(0, weather.Calls);
+        Assert.Empty(db.CropPlanRequestHistories);
+        Assert.Equal(originalEndDate, data.Request.PreferredEndDate);
+    }
+
+    [Fact]
+    public async Task Retry_marks_workflow_retryable_when_member_three_refresh_throws()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedAsync(db);
+        data.Workflow.Status = AgentWorkflowStatus.CandidateBlocked;
+        var schedulingStep = data.Workflow.Steps.Single(item => item.AgentName == "SchedulingValidationAgent");
+        schedulingStep.Status = AgentStepStatus.Failed;
+        await db.SaveChangesAsync();
+        var service = NewService(db, data.Approver.Id, Candidate, weather: new RetryWeatherResourceWorkflowService(db, fail: true));
+
+        var review = await service.RetryCandidateAsync(data.Workflow.Id,
+            new WorkflowRetryRequest(data.Workflow.Version, "Recheck current conditions.", data.Request.PreferredStartDate, data.Request.PreferredEndDate),
+            CancellationToken.None);
+
+        Assert.Equal(AgentWorkflowStatus.Failed, review.Workflow.Status);
+        Assert.Contains(review.Steps, step => step.AgentName == "WeatherResourceAgent");
+        Assert.Equal("WEATHER_RESOURCE_RETRY_FAILED", (await db.AgentSteps.SingleAsync(step => step.AgentName == "WeatherResourceAgent")).ErrorCode);
+    }
+
+    [Fact]
+    public async Task Retry_after_revision_request_reuses_the_revision_already_opened_by_the_decision()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedAsync(db);
+        data.Workflow.Status = AgentWorkflowStatus.RevisionRequested;
+        data.Workflow.CandidateRevision = 2;
+        data.Workflow.RevisionCount = 1;
+        data.Workflow.Steps.Single(item => item.AgentName == "SchedulingValidationAgent").Status = AgentStepStatus.Failed;
+        await db.SaveChangesAsync();
+        var weather = new RetryWeatherResourceWorkflowService(db);
+        var service = NewService(db, data.Approver.Id, input => Missing(input, "Evidence is still missing."), weather: weather);
+
+        var review = await service.RetryCandidateAsync(data.Workflow.Id,
+            new WorkflowRetryRequest(data.Workflow.Version, "Officer corrected the operation window.", data.Request.PreferredStartDate, data.Request.PreferredEndDate),
+            CancellationToken.None);
+
+        Assert.Equal(2, review.Workflow.CandidateRevision);
+        Assert.Equal(1, review.Workflow.RevisionCount);
+        Assert.Equal(2, Assert.Single(db.AgentValidationResults).CandidateRevision);
     }
 
     [Fact]
@@ -671,9 +772,19 @@ public sealed class WorkflowApprovalTests
             await service.RequestRevisionAsync(data.Workflow.Id,
                 new WorkflowDecisionRequest(review.Workflow.CandidateRevision, review.Workflow.Version, $"revision-{revision}", "Adjust the proposed schedule."),
                 CancellationToken.None);
+            if (revision < 3)
+            {
+                var latest = await db.AgentWorkflows.SingleAsync();
+                await service.RetryCandidateAsync(data.Workflow.Id,
+                    new WorkflowRetryRequest(latest.Version, "Apply the requested schedule revision.", data.Request.PreferredStartDate, data.Request.PreferredEndDate),
+                    CancellationToken.None);
+            }
         }
 
-        var finalReview = await service.GenerateCandidateAsync(data.Workflow.Id, CancellationToken.None);
+        var latestWorkflow = await db.AgentWorkflows.SingleAsync();
+        var finalReview = await service.RetryCandidateAsync(data.Workflow.Id,
+            new WorkflowRetryRequest(latestWorkflow.Version, "Generate the final allowed candidate revision.", data.Request.PreferredStartDate, data.Request.PreferredEndDate),
+            CancellationToken.None);
         var exception = await Assert.ThrowsAsync<ApiException>(() => service.RequestRevisionAsync(data.Workflow.Id,
             new WorkflowDecisionRequest(finalReview.Workflow.CandidateRevision, finalReview.Workflow.Version, "revision-4", "Another change."),
             CancellationToken.None));
@@ -732,7 +843,8 @@ public sealed class WorkflowApprovalTests
         AppDbContext db,
         Guid userId,
         Func<SchedulingValidationInput, SchedulingValidationOutput> response,
-        ApplicationRole role = ApplicationRole.AgriculturalOfficer)
+        ApplicationRole role = ApplicationRole.AgriculturalOfficer,
+        IWeatherResourceWorkflowService? weather = null)
     {
         var currentUser = new FixedCurrentUserService(role, userId);
         var resources = new ResourceService(
@@ -743,7 +855,39 @@ public sealed class WorkflowApprovalTests
             new ResourceRequestValidator(),
             new InventoryStockRequestValidator(),
             new ResourceReservationRequestValidator());
-        return new WorkflowApprovalService(db, currentUser, new FakeSchedulingClient(response), resources);
+        return new WorkflowApprovalService(db, currentUser, new FakeSchedulingClient(response), resources,
+            weather ?? new RetryWeatherResourceWorkflowService(db));
+    }
+
+    private sealed class RetryWeatherResourceWorkflowService(AppDbContext db, bool fail = false) : IWeatherResourceWorkflowService
+    {
+        public int Calls { get; private set; }
+
+        public async Task<WeatherResourceRunResponse> RunAsync(Guid cropPlanRequestId, CancellationToken cancellationToken)
+        {
+            Calls++;
+            if (fail) throw new InvalidOperationException("Fixture failure.");
+            var workflow = await db.AgentWorkflows.Include(item => item.Steps)
+                .SingleAsync(item => item.CropPlanRequestId == cropPlanRequestId, cancellationToken);
+            var step = workflow.Steps.Single(item => item.AgentName == "WeatherResourceAgent");
+            step.Status = AgentStepStatus.Completed;
+            step.OutputJson = JsonSerializer.Serialize(new
+            {
+                workflowId = workflow.Id,
+                status = "Analyzed",
+                weatherRisk = "Medium",
+                requirementStatus = "Sufficient"
+            }, JsonOptions);
+            workflow.Status = AgentWorkflowStatus.Pending;
+            workflow.CurrentStep = "SchedulingValidationAgent";
+            await db.SaveChangesAsync(cancellationToken);
+            return new WeatherResourceRunResponse(workflow.Id, cropPlanRequestId, step.Id, "Analyzed", "Medium", false, [], "Sufficient");
+        }
+
+        public Task<WeatherResourceOutput> GetResultAsync(Guid id, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<PagedResult<WeatherResourceWorkItemResponse>> GetWorkQueueAsync(PagedQuery query, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<PagedResult<WeatherResourceHistoryItemResponse>> GetHistoryAsync(PagedQuery query, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<WeatherResourceHistoryDetailResponse> GetHistoryEntryAsync(Guid id, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
     private static SchedulingValidationOutput Candidate(SchedulingValidationInput input) => Candidate(input, null, 0);

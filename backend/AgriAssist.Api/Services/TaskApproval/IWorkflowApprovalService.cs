@@ -9,6 +9,7 @@ public interface IWorkflowApprovalService
     Task<WorkflowReviewResponse> GetAsync(Guid workflowId, CancellationToken cancellationToken);
     Task<WorkflowHistoryResponse> GetHistoryAsync(Guid workflowId, CancellationToken cancellationToken);
     Task<WorkflowReviewResponse> GenerateCandidateAsync(Guid workflowId, CancellationToken cancellationToken);
+    Task<WorkflowReviewResponse> RetryCandidateAsync(Guid workflowId, WorkflowRetryRequest request, CancellationToken cancellationToken);
     Task<WorkflowReviewResponse> DecideCropHealthGuidanceAsync(Guid workflowId, CropHealthGuidanceDecisionRequest request, CancellationToken cancellationToken);
     Task<WorkflowReviewResponse> UpdateCropHealthCandidateAsync(Guid workflowId, string actionKey, CropHealthCandidateOperationalRequest request, CancellationToken cancellationToken);
     Task<WorkflowDecisionResponse> ApproveAsync(Guid workflowId, WorkflowDecisionRequest request, CancellationToken cancellationToken);

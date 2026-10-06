@@ -21,7 +21,7 @@ public interface IResourceRequirementResearchService
 }
 
 /// <summary>
-/// Admin-only Member 3 Resource Requirement Research. ResearchAsync asks the ai-service, which searches only the
+/// Agricultural Officer/Admin Member 3 Resource Requirement Research. ResearchAsync asks the ai-service, which searches only the
 /// approved agricultural sources, and returns an unverified draft; it never writes to the database.
 /// VerifyAndSaveAsync stores the value an Admin checked as a ResourceRequirement rule in the existing crop reference
 /// data, which GetCropResourceRequirements and the WeatherResourceAgent already read. Nothing else changes.
@@ -46,7 +46,7 @@ public sealed class ResourceRequirementResearchService(
         CancellationToken cancellationToken)
     {
         Validate(researchValidator.Validate(request));
-        var adminId = RequireAdmin();
+        var actorId = RequireResearcher();
         var crop = await LoadCropAsync(request.CropTypeId, cancellationToken);
         var varietyName = await LoadVarietyNameAsync(crop.Id, request.CropVarietyId, cancellationToken);
         var resource = await LoadResourceAsync(request.ResourceId, cancellationToken);
@@ -59,7 +59,7 @@ public sealed class ResourceRequirementResearchService(
 
         // Names and unit come from the database, never from the client.
         var input = new ResourceRequirementResearchInput(
-            adminId, crop.Id, crop.Name, request.CropVarietyId, varietyName, CleanOptional(request.Region),
+            actorId, crop.Id, crop.Name, request.CropVarietyId, varietyName, CleanOptional(request.Region),
             resource.Id, resource.Name, resource.Unit, otherCrops);
         var response = await CallAsync(() => aiClient.ResearchResourceRequirementAsync(input, cancellationToken), cancellationToken);
 
@@ -285,10 +285,17 @@ public sealed class ResourceRequirementResearchService(
         }
     }
 
+    private Guid RequireResearcher()
+    {
+        if (currentUser.Role is not (ApplicationRole.Admin or ApplicationRole.AgriculturalOfficer) || !currentUser.UserId.HasValue)
+            throw new ApiException(HttpStatusCode.Forbidden, "AGRICULTURAL_OFFICER_REQUIRED", "An Agricultural Officer or Admin account is required.");
+        return currentUser.UserId.Value;
+    }
+
     private Guid RequireAdmin()
     {
-        if (!currentUser.IsInRole(ApplicationRole.Admin) || !currentUser.UserId.HasValue)
-            throw new ApiException(HttpStatusCode.Forbidden, "ADMIN_REQUIRED", "An Admin account is required.");
+        if (currentUser.Role != ApplicationRole.Admin || !currentUser.UserId.HasValue)
+            throw new ApiException(HttpStatusCode.Forbidden, "ADMIN_REQUIRED", "An Admin account is required to verify and save researched requirements.");
         return currentUser.UserId.Value;
     }
 

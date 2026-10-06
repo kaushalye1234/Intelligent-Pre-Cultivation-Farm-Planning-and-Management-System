@@ -219,7 +219,7 @@ public sealed class ResourceRequirementResearchTests
     }
 
     [Fact]
-    public async Task Endpoints_are_admin_only_and_never_expose_service_tokens()
+    public async Task Agricultural_officer_can_research_but_only_admin_can_verify_and_save()
     {
         const string serviceToken = "test-ai-service-token-value";
         const string toolToken = "test-ai-tool-token-value";
@@ -257,15 +257,17 @@ public sealed class ResourceRequirementResearchTests
 
         using var anonymous = factory.CreateClient();
         using var farmer = await ClientForAsync(factory, ApplicationRole.Farmer);
-        using var officer = await ClientForAsync(factory, ApplicationRole.ResourceOfficer);
+        using var officer = await ClientForAsync(factory, ApplicationRole.AgriculturalOfficer);
+        using var resourceOfficer = await ClientForAsync(factory, ApplicationRole.ResourceOfficer);
         using var admin = await ClientForAsync(factory, ApplicationRole.Admin);
 
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.PostAsJsonAsync(path, research)).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await farmer.PostAsJsonAsync(path, research)).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await officer.PostAsJsonAsync(path, research)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await resourceOfficer.PostAsJsonAsync(path, research)).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await farmer.PostAsJsonAsync($"{path}/verify", verify)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await officer.PostAsJsonAsync($"{path}/verify", verify)).StatusCode);
 
-        var response = await admin.PostAsJsonAsync(path, research);
+        var response = await officer.PostAsJsonAsync(path, research);
         var body = await response.Content.ReadAsStringAsync();
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("\"verified\":false", body);

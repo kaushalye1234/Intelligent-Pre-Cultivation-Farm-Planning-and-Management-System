@@ -7,21 +7,23 @@ using Microsoft.AspNetCore.Mvc;
 namespace AgriAssist.Api.Controllers.Resources;
 
 /// <summary>
-/// Member 3 Admin-only Resource Requirement Research. Research returns an unverified, sourced draft and never saves;
-/// verify stores the Admin-checked value as a ResourceRequirement rule for the WeatherResourceAgent to read.
+/// Research can return an unverified, sourced draft to Agricultural Officers and Admins. Only Admins
+/// can save the recommendation as a verified ResourceRequirement rule for the WeatherResourceAgent.
 /// </summary>
 [ApiController]
 [Route("api/resources/requirement-research")]
-[Authorize(Roles = nameof(ApplicationRole.Admin))]
+[Authorize]
 public sealed class ResourceRequirementResearchController(IResourceRequirementResearchService researchService) : ControllerBase
 {
     [HttpPost]
+    [Authorize(Roles = $"{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
     public async Task<ActionResult<ResourceRequirementResearchResponse>> Research(
         ResourceRequirementResearchRequest request,
         CancellationToken cancellationToken) =>
         Ok(await researchService.ResearchAsync(request, cancellationToken));
 
     [HttpPost("verify")]
+    [Authorize(Roles = nameof(ApplicationRole.Admin))]
     public async Task<ActionResult<VerifiedResourceRequirementResponse>> Verify(
         VerifyResourceRequirementRequest request,
         CancellationToken cancellationToken) =>

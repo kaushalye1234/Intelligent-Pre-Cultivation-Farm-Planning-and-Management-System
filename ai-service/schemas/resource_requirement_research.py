@@ -21,7 +21,7 @@ AreaUnit = Literal["acre", "hectare"]
 
 
 class ResourceRequirementResearchInput(CamelModel):
-    admin_user_id: UUID
+    actor_user_id: UUID
     crop_type_id: UUID
     crop_name: str = Field(min_length=1, max_length=120)
     crop_variety_id: UUID | None = None

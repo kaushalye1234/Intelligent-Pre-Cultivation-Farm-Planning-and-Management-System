@@ -1,22 +1,30 @@
 import { Component, useCallback, useEffect, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
-import { ArrowLeft, Check, Play, RotateCcw, X } from 'lucide-react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { ArrowLeft, Check, Play, RotateCcw, Search, X } from 'lucide-react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, getErrorMessage } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
-import { TextAreaInput } from '../components/FormControls'
+import { TextAreaInput, TextInput } from '../components/FormControls'
 import { EmptyState, ErrorState, LoadingState } from '../components/States'
 import { StatusPill } from '../components/StatusPill'
 import { Button, Modal, Notice, PageHeader } from '../components/Ui'
+import { ResourceRequirementResearchPanel } from '../components/ResourceRequirementResearchPanel'
 import { formatDateTime } from '../format'
 import { isDecisionRole } from '../routing'
-import type { WorkflowReview } from '../types'
+import type { CropType, CropVariety, PagedResult, PrePlantingContext, WorkflowReview } from '../types'
 import { PrePlantingAssessmentPanel } from './PrePlantingAssessmentPanel'
 import { parseSchedulingOutput, safeSourceUrl } from './schedulingProposal'
 import type { ProposalSource } from './schedulingProposal'
 import { workflowStatusLabels } from './workflowStatusLabels'
 
 type DecisionKind = 'approve' | 'reject' | 'request-revision'
+
+async function allItems<T>(path: string): Promise<T[]> {
+  const first = await api.get<PagedResult<T>>(path, { params: { page: 1, pageSize: 100 } })
+  const pages = await Promise.all(Array.from({ length: Math.max(0, first.data.totalPages - 1) }, (_, index) =>
+    api.get<PagedResult<T>>(path, { params: { page: index + 2, pageSize: 100 } })))
+  return [first.data, ...pages.map((page) => page.data)].flatMap((page) => page.items)
+}
 
 class PrePlantingAssessmentErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false }
@@ -68,16 +76,23 @@ export function WorkflowReviewPage() {
   const [comment, setComment] = useState('')
   const [guidanceDecision, setGuidanceDecision] = useState<'Included' | 'Rejected' | null>(null)
   const [guidanceReason, setGuidanceReason] = useState('')
+  const [retryReason, setRetryReason] = useState('')
+  const [retryWindow, setRetryWindow] = useState<{ version: number; start: string; end: string } | null>(null)
+  const [researchOpen, setResearchOpen] = useState(false)
+  const [researchLoading, setResearchLoading] = useState(false)
+  const [researchError, setResearchError] = useState('')
+  const [researchContext, setResearchContext] = useState<PrePlantingContext | null>(null)
+  const [crops, setCrops] = useState<CropType[]>([])
+  const [varieties, setVarieties] = useState<CropVariety[]>([])
 
   const canDecide = isDecisionRole(user?.role)
 
   const loadReview = useCallback(async () => {
     if (!id) return
-    setIsLoading(true)
-    setError('')
     try {
       const response = await api.get<WorkflowReview>(`/task-approval/workflows/${id}`)
       setReview(response.data)
+      setError('')
     } catch (err) {
       setError(getErrorMessage(err))
     } finally {
@@ -103,6 +118,72 @@ export function WorkflowReviewPage() {
       setError(getErrorMessage(err))
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  async function retryScheduling(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!id || !review) return
+    if (!retryReason.trim()) {
+      setError('Explain what evidence or date-window change should be rechecked.')
+      return
+    }
+    const preferredStartDate = retryWindow?.version === review.workflow.version ? retryWindow.start : review.preferredStartDate
+    const preferredEndDate = retryWindow?.version === review.workflow.version ? retryWindow.end : review.preferredEndDate
+    if (!preferredStartDate || !preferredEndDate || preferredEndDate <= preferredStartDate) {
+      setError('Choose a valid preferred date window. The end date must be after the start date.')
+      return
+    }
+    setIsSubmitting(true)
+    setError('')
+    setSuccess('')
+    try {
+      const response = await api.post<WorkflowReview>(`/task-approval/workflows/${id}/retry-scheduling`, {
+        expectedWorkflowVersion: review.workflow.version,
+        reason: retryReason.trim(),
+        preferredStartDate,
+        preferredEndDate,
+      })
+      setReview(response.data)
+      setRetryWindow(null)
+      setRetryReason('')
+      setSuccess(response.data.workflow.status === 8
+        ? 'Updated weather/resource evidence was used. A new scheduling candidate is ready for officer review.'
+        : 'Evidence refresh and retry completed. Review the new blocking reasons and update verified evidence if needed.')
+    } catch (err) {
+      setError(getErrorMessage(err))
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  async function openResourceResearch() {
+    const currentReview = review
+    if (!currentReview) return
+    if (researchOpen) {
+      setResearchOpen(false)
+      return
+    }
+    if (!currentReview.workflow.cropPlanRequestId) {
+      setResearchError('This workflow has no linked crop request for research context.')
+      return
+    }
+    setResearchOpen(true)
+    setResearchLoading(true)
+    setResearchError('')
+    try {
+      const [context, nextCrops, nextVarieties] = await Promise.all([
+        api.get<PrePlantingContext>(`/crop-plans/${currentReview.workflow.cropPlanRequestId}/pre-planting-context`),
+        allItems<CropType>('/crop-planning/crop-types'),
+        allItems<CropVariety>('/crop-planning/crop-varieties'),
+      ])
+      setResearchContext(context.data)
+      setCrops(nextCrops)
+      setVarieties(nextVarieties)
+    } catch (err) {
+      setResearchError(getErrorMessage(err))
+    } finally {
+      setResearchLoading(false)
     }
   }
 
@@ -188,13 +269,17 @@ export function WorkflowReviewPage() {
   if (!review) return <ErrorState message={error || 'Workflow review is unavailable.'} />
 
   const pendingApproval = review.workflow.status === 8
+  const activeRetryWindow = retryWindow?.version === review.workflow.version ? retryWindow : null
+  const preferredStartDate = activeRetryWindow?.start ?? review.preferredStartDate
+  const preferredEndDate = activeRetryWindow?.end ?? review.preferredEndDate
   const schedulingStep = [...review.steps].reverse().find((step) => step.agentName === 'SchedulingValidationAgent' &&
     step.candidateRevision === review.workflow.candidateRevision)
   const proposal = parseSchedulingOutput(schedulingStep?.output)
+  const needsCropReference = proposal?.blocking.some((message) => /verified crop profile|crop reference.*stage/i.test(message)) ?? false
   const guidanceDecisionPending = proposal?.cropHealthGuidance?.decision === 'PendingDecision'
-  const canGenerate = canDecide
-    && (review.workflow.currentStep === 'SchedulingValidationAgent' || review.workflow.status === 10)
-    && ![3, 4, 6, 8, 9].includes(review.workflow.status)
+  const canGenerate = canDecide && review.workflow.currentStep === 'SchedulingValidationAgent'
+    && review.workflow.status === 2
+  const canRetry = canDecide && [5, 10, 11, 12].includes(review.workflow.status)
 
   return (
     <section className="page-stack">
@@ -223,6 +308,34 @@ export function WorkflowReviewPage() {
         </div>
       </section>
 
+      {canRetry ? <section className="work-section" aria-label="Retry scheduling">
+        <h2>Resolve the blocker and retry</h2>
+        <p>AI research can find cited suggestions, but it does not verify them. Only an Admin can save a researched resource requirement. Retry refreshes Member 3 weather/resource analysis and then runs Member 4 again.</p>
+        {needsCropReference ? <Notice tone="warning">This workflow also needs a matching active crop reference profile with verified stages. Add or activate that sourced profile under <Link to="/crop-planning">Crop Planning → Verified crop references</Link>, then retry. AI will not invent stage durations.</Notice> : null}
+        <div className="row-actions">
+          <Button variant="secondary" icon={<Search size={15} aria-hidden="true" />} onClick={() => void openResourceResearch()} disabled={researchLoading || isSubmitting}>
+            {researchOpen ? 'Hide AI research' : 'Research missing resource data'}
+          </Button>
+        </div>
+        {researchLoading ? <p role="status">Loading crop and region context…</p> : null}
+        {researchError ? <Notice tone="error">{researchError}</Notice> : null}
+        {researchOpen && !researchLoading && researchContext ? <ResourceRequirementResearchPanel
+          crops={crops}
+          varieties={varieties}
+          canVerify={user?.role === 5}
+          initialValues={{ cropTypeId: researchContext.cropTypeId, cropVarietyId: researchContext.cropVarietyId, region: researchContext.farmDistrict || researchContext.farmLocation }}
+          onSaved={() => setSuccess('Admin-verified resource evidence was saved. Retry scheduling to refresh Member 3 and Member 4.')}
+        /> : null}
+        <form className="form-grid" onSubmit={(event) => void retryScheduling(event)}>
+          <TextInput label="Preferred start date" type="date" value={preferredStartDate} required onChange={(start) => setRetryWindow({ version: review.workflow.version, start, end: preferredEndDate })} />
+          <TextInput label="Preferred end date" type="date" value={preferredEndDate} required onChange={(end) => setRetryWindow({ version: review.workflow.version, start: preferredStartDate, end })} />
+          <TextAreaInput label="Reason for retry" value={retryReason} required rows={3} onChange={setRetryReason} />
+          <Button type="submit" icon={<RotateCcw size={15} aria-hidden="true" />} disabled={isSubmitting || !retryReason.trim() || !preferredStartDate || !preferredEndDate || preferredEndDate <= preferredStartDate}>
+            {isSubmitting ? 'Refreshing evidence…' : 'Retry scheduling'}
+          </Button>
+        </form>
+      </section> : null}
+
       <PrePlantingAssessmentErrorBoundary key={`${review.workflow.cropPlanRequestId}:${review.workflow.version}`}>
         <PrePlantingAssessmentPanel
           review={review}
@@ -231,7 +344,7 @@ export function WorkflowReviewPage() {
         />
       </PrePlantingAssessmentErrorBoundary>
 
-      {review.workflow.status === 12 ? <Notice tone="error">This proposal is blocked and cannot be approved. After stock, weather, or reference evidence changes, run a new upstream workflow before generating another candidate. No farm work has been created.</Notice> : null}
+      {review.workflow.status === 12 ? <Notice tone="error">This proposal is blocked and cannot be approved. Use Retry scheduling after the underlying evidence or date window changes. No farm work has been created.</Notice> : null}
 
       {proposal ? <section className="work-section" aria-label="Scheduling proposal">
         <h2>Scheduling proposal</h2>

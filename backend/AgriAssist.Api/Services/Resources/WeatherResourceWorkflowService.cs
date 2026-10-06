@@ -146,6 +146,7 @@ public sealed class WeatherResourceWorkflowService(
         dbContext.AgentValidationResults.Add(new AgentValidationResult
         {
             AgentWorkflowId = workflow.Id,
+            CandidateRevision = workflow.CandidateRevision,
             ValidatorName = validatorName,
             IsValid = validationErrors.Count == 0,
             ErrorsJson = JsonSerializer.Serialize(validationErrors, JsonOptions),
