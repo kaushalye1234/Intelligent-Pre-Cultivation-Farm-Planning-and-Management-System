@@ -1,4 +1,5 @@
 ﻿import { render, screen, waitFor, within } from '@testing-library/react'
+import { useState } from 'react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -132,6 +133,37 @@ describe('React public website and portal routing', () => {
     await userEvent.click(screen.getByRole('button', { name: /sign in/i }))
 
     expect(await screen.findByText('Admin dashboard target')).toBeInTheDocument()
+  })
+
+  it('returns to a requested workflow after staff login', async () => {
+    const officer: UserProfile = { ...fieldOfficer, role: 4 }
+    function StatefulAuth({ children }: { children: React.ReactNode }) {
+      const [user, setUser] = useState<UserProfile | null>(null)
+      const login = vi.fn(async () => {
+        setUser(officer)
+        return { status: 'authenticated' as const, user: officer }
+      })
+      return <AuthContext.Provider value={authValue({ user, token: user ? 'token' : null, isAuthenticated: Boolean(user), login })}>{children}</AuthContext.Provider>
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/task-approval/workflows/workflow-1']}>
+        <StatefulAuth>
+          <Routes>
+            <Route path="/task-approval/workflows/:id" element={<ProtectedRoute allowedRoles={[4]}><div>Workflow review target</div></ProtectedRoute>} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/officer/dashboard" element={<div>Officer dashboard target</div>} />
+          </Routes>
+        </StatefulAuth>
+      </MemoryRouter>,
+    )
+
+    await screen.findByRole('heading', { name: /welcome back/i })
+    await userEvent.type(screen.getByLabelText(/email/i), 'officer@example.test')
+    await userEvent.type(screen.getByLabelText(/password/i), 'Demo!Password1')
+    await userEvent.click(screen.getByRole('button', { name: /sign in/i }))
+
+    expect(await screen.findByText('Workflow review target')).toBeInTheDocument()
   })
 
   it('redirects protected routes to login when unauthenticated', () => {

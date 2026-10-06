@@ -85,6 +85,7 @@ void main() {
 
     await tester.tap(find.text('Home'));
     await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
     await tester.ensureVisible(find.text('Create Crop Plan'));
     await tester.tap(find.text('Create Crop Plan'));
     await tester.pumpAndSettle();

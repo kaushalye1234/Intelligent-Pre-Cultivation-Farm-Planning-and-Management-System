@@ -1,4 +1,4 @@
-﻿import { Navigate, Outlet } from 'react-router-dom'
+﻿import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { getDashboardPath } from '../routing'
 import type { ApplicationRole } from '../types'
@@ -6,13 +6,14 @@ import { LoadingState } from './States'
 
 export function ProtectedRoute({ allowedRoles, children }: { allowedRoles?: ApplicationRole[]; children?: React.ReactNode }) {
   const { isAuthenticated, isLoading, user } = useAuth()
+  const location = useLocation()
 
   if (isLoading) {
     return <LoadingState label="Checking session" />
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />
+    return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}${location.hash}` }} />
   }
 
   if (allowedRoles && user && !allowedRoles.includes(user.role)) {
