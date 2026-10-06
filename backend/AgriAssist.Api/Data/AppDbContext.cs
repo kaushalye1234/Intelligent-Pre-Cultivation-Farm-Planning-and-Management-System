@@ -387,6 +387,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.Property(step => step.ErrorMessageSafe).HasMaxLength(1000);
             entity.HasOne(step => step.AgentWorkflow).WithMany(workflow => workflow.Steps).HasForeignKey(step => step.AgentWorkflowId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(step => new { step.AgentWorkflowId, step.Sequence });
+            entity.HasIndex(step => new { step.AgentWorkflowId, step.CandidateRevision })
+                .IsUnique()
+                .HasDatabaseName("IX_AgentSteps_FinalGuideRevision")
+                .HasFilter("\"AgentName\" = 'FinalCultivationGuideAgent' AND \"IsDeleted\" = FALSE");
         });
 
         modelBuilder.Entity<AgentToolExecution>(entity =>

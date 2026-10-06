@@ -27,8 +27,7 @@ class ApprovedCropPlanScreen extends StatelessWidget {
                 const JourneyEmptyState(
                   icon: Icons.cloud_off_outlined,
                   title: 'Could not load this plan',
-                  message:
-                      'Return to Plans, refresh, and try opening the approved plan again.',
+                  message: 'Return to Plans, refresh, and try opening the approved plan again.',
                 ),
               ],
             );
@@ -46,8 +45,7 @@ class ApprovedCropPlanScreen extends StatelessWidget {
                 const JourneyEmptyState(
                   icon: Icons.lock_clock_outlined,
                   title: 'Final details are not available yet',
-                  message:
-                      'Approved plan details will appear here when the workflow reports them.',
+                  message: 'Approved plan details will appear here when the workflow reports them.',
                 ),
               ],
             );
@@ -119,6 +117,91 @@ class ApprovedCropPlanScreen extends StatelessWidget {
                   ],
                 ),
               ),
+              if (detail.finalGuide != null) ...[
+                const SizedBox(height: 24),
+                _FinalGuideAdviceSection(
+                  title: 'What to do this week',
+                  advice: detail.finalGuide!.weeklyGuidance,
+                  icon: Icons.today_outlined,
+                ),
+                if (detail.finalGuide!.currentStageExplanation != null) ...[
+                  const SizedBox(height: 18),
+                  const JourneySectionHeading(title: 'Current growth stage'),
+                  const SizedBox(height: 10),
+                  JourneyCard(
+                    child: Text(detail.finalGuide!.currentStageExplanation!),
+                  ),
+                ],
+                if (detail.finalGuide!.approvedActivities.isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  const JourneySectionHeading(
+                    title: 'Officer-approved activities',
+                  ),
+                  const SizedBox(height: 10),
+                  for (final activity in detail.finalGuide!.approvedActivities)
+                    JourneyCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            activity.title,
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          if (activity.scheduledAt != null)
+                            Text(journeyDate(activity.scheduledAt!)),
+                          if (activity.quantity != null)
+                            Text(
+                              '${activity.quantity} ${activity.unit ?? ''}'
+                                  .trim(),
+                            ),
+                          if (activity.durationMinutes != null)
+                            Text(
+                              'Duration: ${activity.durationMinutes} minutes',
+                            ),
+                        ],
+                      ),
+                    ),
+                ],
+                if (detail.finalGuide!.monthlyGuidance.isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  const JourneySectionHeading(
+                    title: 'Monthly cultivation guide',
+                  ),
+                  const SizedBox(height: 10),
+                  for (final month in detail.finalGuide!.monthlyGuidance)
+                    JourneyCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            month.month,
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          Text(month.summary),
+                          for (final advice in [
+                            ...month.fieldAdvice,
+                            ...month.weatherAdvice,
+                          ])
+                            Text('• $advice'),
+                        ],
+                      ),
+                    ),
+                ],
+                if (detail.finalGuide!.risks.isNotEmpty)
+                  _FinalGuideAdviceSection(
+                    title: 'Risks to watch',
+                    advice: detail.finalGuide!.risks,
+                    icon: Icons.warning_amber_rounded,
+                  ),
+                if (detail.finalGuide!.harvestPreparation.isNotEmpty)
+                  _FinalGuideAdviceSection(
+                    title: 'Harvest preparation',
+                    advice: detail.finalGuide!.harvestPreparation,
+                    icon: Icons.agriculture_outlined,
+                  ),
+                const JourneySectionHeading(title: 'Why this plan'),
+                JourneyCard(child: Text(detail.finalGuide!.whyThisPlan)),
+              ],
               const SizedBox(height: 24),
               const JourneySectionHeading(title: 'Plan Overview'),
               const SizedBox(height: 12),
@@ -190,8 +273,7 @@ class ApprovedCropPlanScreen extends StatelessWidget {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        detail.fieldSummary ??
-                            'No field insight was included in this approved plan.',
+                        detail.fieldSummary ?? 'No field insight was included in this approved plan.',
                         style: Theme.of(context).textTheme.bodyLarge,
                       ),
                     ),
@@ -214,8 +296,7 @@ class ApprovedCropPlanScreen extends StatelessWidget {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        detail.weatherSummary ??
-                            'No weather insight was included in this approved plan.',
+                        detail.weatherSummary ?? 'No weather insight was included in this approved plan.',
                         style: Theme.of(context).textTheme.bodyLarge,
                       ),
                     ),
@@ -238,8 +319,7 @@ class ApprovedCropPlanScreen extends StatelessWidget {
                 const JourneyEmptyState(
                   icon: Icons.lightbulb_outline_rounded,
                   title: 'No recommendations listed',
-                  message:
-                      'This approved plan did not include additional recommendations.',
+                  message: 'This approved plan did not include additional recommendations.',
                 ),
               for (final recommendation in detail.recommendations) ...[
                 JourneyCard(
@@ -357,8 +437,7 @@ class ApprovedCropPlanScreen extends StatelessWidget {
                 const JourneyEmptyState(
                   icon: Icons.task_alt_outlined,
                   title: 'No linked tasks available',
-                  message:
-                      'Tasks for this workflow will be shown here when available.',
+                  message: 'Tasks for this workflow will be shown here when available.',
                 ),
               for (final task in tasks) ...[
                 JourneyCard(
@@ -406,8 +485,7 @@ class ApprovedCropPlanScreen extends StatelessWidget {
                 const JourneyEmptyState(
                   icon: Icons.water_drop_outlined,
                   title: 'No linked irrigation schedule',
-                  message:
-                      'A schedule for this workflow will be shown here when available.',
+                  message: 'A schedule for this workflow will be shown here when available.',
                 ),
               for (final schedule in schedules) ...[
                 JourneyCard(
@@ -481,6 +559,45 @@ class ApprovedCropPlanScreen extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+}
+
+class _FinalGuideAdviceSection extends StatelessWidget {
+  const _FinalGuideAdviceSection({
+    required this.title,
+    required this.advice,
+    required this.icon,
+  });
+
+  final String title;
+  final List<String> advice;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    if (advice.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 18),
+        JourneySectionHeading(title: title),
+        const SizedBox(height: 10),
+        for (final item in advice)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: JourneyCard(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(icon, color: AgriColors.forestLight),
+                  const SizedBox(width: 12),
+                  Expanded(child: Text(item)),
+                ],
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

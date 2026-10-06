@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using AgriAssist.Api.Dtos.CropPlanning;
+using AgriAssist.Api.Dtos.FinalCultivationGuide;
 using AgriAssist.Api.Dtos.Inspections;
 using AgriAssist.Api.Dtos.Resources;
 using AgriAssist.Api.Dtos.TaskApproval;
@@ -11,7 +12,7 @@ namespace AgriAssist.Api.ExternalServices.AgenticAI;
 public sealed class AgenticAIClient(
     HttpClient httpClient,
     IConfiguration configuration,
-    ILogger<AgenticAIClient> logger) : IAgenticAIClient, IWeatherResourceAIClient, ISchedulingValidationAIClient, ICropFindingAIClient, IInspectionAssistanceAIClient, IInspectionImageAnalysisAIClient, IResourceRequirementResearchAIClient
+    ILogger<AgenticAIClient> logger) : IAgenticAIClient, IWeatherResourceAIClient, ISchedulingValidationAIClient, ICropFindingAIClient, IInspectionAssistanceAIClient, IInspectionImageAnalysisAIClient, IResourceRequirementResearchAIClient, IFinalCultivationGuideAIClient
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -45,6 +46,16 @@ public sealed class AgenticAIClient(
             input,
             input.WorkflowId,
             "scheduling validation",
+            cancellationToken);
+
+    public Task<FinalCultivationGuideOutputDto> GenerateFinalCultivationGuideAsync(
+        FinalCultivationGuideInputDto input,
+        CancellationToken cancellationToken) =>
+        PostAsync<FinalCultivationGuideInputDto, FinalCultivationGuideOutputDto>(
+            "/workflows/crop-planning/final-cultivation-guide",
+            input,
+            input.WorkflowId,
+            "final cultivation guide",
             cancellationToken);
 
     public Task<CropSuggestionsResponse> SuggestCropsAsync(SuggestCropsInput input, CancellationToken cancellationToken) =>

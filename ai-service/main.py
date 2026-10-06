@@ -45,6 +45,8 @@ from schemas.inspection_image_analysis import (
 from schemas.resource_requirement_research import ResourceRequirementResearchInput, ResourceRequirementResearchResponse
 from schemas.weather_resource import WeatherResourceInput, WeatherResourceOutput
 from schemas.scheduling_validation import SchedulingValidationInput, SchedulingValidationOutput
+from schemas.final_cultivation_guide import FinalCultivationGuideInput, FinalCultivationGuideOutput
+from agents.final_cultivation_guide_agent import FinalCultivationGuideAgent
 from tools.backend_tool_client import BackendToolClient
 from tools.crop_planning_tools import CropPlanningTools
 from tools.scheduling_evidence_tools import SchedulingEvidenceTools
@@ -450,3 +452,15 @@ async def run_scheduling_validation(
     graph = build_scheduling_validation_graph(agent)
     state = await graph.ainvoke({"request": request, "output": None})
     return state["output"]
+
+
+@app.post(
+    "/workflows/crop-planning/final-cultivation-guide",
+    response_model=FinalCultivationGuideOutput,
+    dependencies=[Depends(require_service_token)],
+)
+async def generate_final_cultivation_guide(
+    request: FinalCultivationGuideInput,
+    settings: Settings = Depends(get_settings),
+) -> FinalCultivationGuideOutput:
+    return await FinalCultivationGuideAgent(create_provider(settings)).run(request)
