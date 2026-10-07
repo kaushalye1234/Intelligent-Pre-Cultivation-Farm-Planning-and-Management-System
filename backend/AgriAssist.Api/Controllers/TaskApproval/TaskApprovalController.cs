@@ -38,6 +38,11 @@ public sealed class TaskApprovalController(
     public async Task<ActionResult<WorkflowReviewResponse>> GenerateWorkflowCandidate(Guid id, CancellationToken cancellationToken) =>
         Ok(await workflowApprovalService.GenerateCandidateAsync(id, cancellationToken));
 
+    [HttpPost("workflows/{id:guid}/retry-scheduling")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
+    public async Task<ActionResult<WorkflowReviewResponse>> RetryWorkflowScheduling(Guid id, WorkflowRetryRequest request, CancellationToken cancellationToken) =>
+        Ok(await workflowApprovalService.RetryCandidateAsync(id, request, cancellationToken));
+
     [HttpPost("workflows/{id:guid}/crop-health-guidance-decision")]
     [Authorize(Roles = $"{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
     public async Task<ActionResult<WorkflowReviewResponse>> DecideCropHealthGuidance(Guid id, CropHealthGuidanceDecisionRequest request, CancellationToken cancellationToken) =>

@@ -20,5 +20,6 @@ public enum CropPlanHistoryAction
 {
     StatusChanged = 1,
     Cancelled = 2,
-    Archived = 3
+    Archived = 3,
+    SchedulingRetry = 4
 }

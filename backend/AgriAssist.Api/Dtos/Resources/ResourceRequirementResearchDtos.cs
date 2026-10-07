@@ -9,9 +9,9 @@ public sealed record ResourceRequirementResearchRequest(
     Guid? CropVarietyId = null,
     string? Region = null);
 
-/// <summary>Body sent to the ai-service. Crop and resource names and the unit always come from the database.</summary>
+/// <summary>Body sent to the ai-service. Actor identity, crop/resource names and units come from the backend.</summary>
 public sealed record ResourceRequirementResearchInput(
-    Guid AdminUserId,
+    Guid ActorUserId,
     Guid CropTypeId,
     string CropName,
     Guid? CropVarietyId,

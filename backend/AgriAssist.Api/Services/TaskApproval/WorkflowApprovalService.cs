@@ -24,7 +24,8 @@ public sealed class WorkflowApprovalService(
     AppDbContext dbContext,
     ICurrentUserService currentUser,
     ISchedulingValidationAIClient aiClient,
-    IResourceService resourceService) : IWorkflowApprovalService
+    IResourceService resourceService,
+    IWeatherResourceWorkflowService weatherResourceWorkflowService) : IWorkflowApprovalService
 {
     private const string FieldAnalysisAgentName = "CropFieldAnalysisAgent";
     private const string SchedulingAgentName = "SchedulingValidationAgent";
@@ -85,6 +86,8 @@ public sealed class WorkflowApprovalService(
             throw Conflict("SCHEDULING_ALREADY_RUNNING", "Scheduling validation is already running for this workflow.");
         if (workflow.Status is AgentWorkflowStatus.Completed or AgentWorkflowStatus.Rejected or AgentWorkflowStatus.Cancelled)
             throw Conflict("WORKFLOW_TERMINAL", "A completed, rejected, or cancelled workflow cannot generate another candidate.");
+        if (workflow.Status != AgentWorkflowStatus.Pending || workflow.CurrentStep != SchedulingAgentName)
+            throw Conflict("SCHEDULING_RETRY_REQUIRED", "Refresh upstream weather and resource evidence through Retry Scheduling before trying this workflow again.");
 
         var input = await BuildInputAsync(workflow, plan, cancellationToken);
         var actor = RequireUser();
@@ -151,6 +154,162 @@ public sealed class WorkflowApprovalService(
         MarkUpdated(workflow, actor);
         await dbContext.SaveChangesAsync(cancellationToken);
         return await MapReviewAsync(workflow, cancellationToken);
+    }
+
+    public async Task<WorkflowReviewResponse> RetryCandidateAsync(
+        Guid workflowId,
+        WorkflowRetryRequest request,
+        CancellationToken cancellationToken)
+    {
+        RequireSchedulingOperator();
+        ValidateRetryRequest(request);
+
+        await using var transaction = await BeginTransactionAsync(cancellationToken);
+        var workflow = await LoadForReviewAsync(workflowId, asTracking: true, cancellationToken);
+        var plan = workflow.CropPlanRequest ?? throw NotFound("Crop plan request");
+        if (workflow.Version != request.ExpectedWorkflowVersion)
+            throw Conflict("WORKFLOW_STALE", "The workflow changed after it was reviewed. Refresh before retrying.");
+        if (workflow.Status is not (AgentWorkflowStatus.MissingDependency or AgentWorkflowStatus.CandidateBlocked
+            or AgentWorkflowStatus.Failed or AgentWorkflowStatus.RevisionRequested))
+            throw Conflict("SCHEDULING_RETRY_NOT_ALLOWED", "Retry is available only for a blocked or failed workflow awaiting correction.");
+        var beginsNewRevision = workflow.Status != AgentWorkflowStatus.RevisionRequested;
+        if (beginsNewRevision && workflow.RevisionCount >= MaxRevisionCount)
+            throw Conflict("REVISION_LIMIT_REACHED", $"A workflow can be retried at most {MaxRevisionCount} times.");
+
+        var schedulingStep = FindSchedulingStep(workflow);
+        var weatherStep = workflow.Steps.SingleOrDefault(item => item.AgentName == WeatherResourceWorkflowService.AgentName
+            && item.StepName == WeatherResourceWorkflowService.StepName)
+            ?? throw NotFound("Weather and resource analysis step");
+        if (schedulingStep.Status == AgentStepStatus.Running || weatherStep.Status == AgentStepStatus.Running)
+            throw Conflict("SCHEDULING_ALREADY_RUNNING", "An upstream or scheduling analysis is already running for this workflow.");
+
+        var actor = RequireUser();
+        var previousStart = plan.PreferredStartDate;
+        var previousEnd = plan.PreferredEndDate;
+        var startDate = request.PreferredStartDate ?? previousStart;
+        var endDate = request.PreferredEndDate ?? previousEnd;
+        var datesChanged = startDate != previousStart || endDate != previousEnd;
+
+        // Claim the retry with a compare-and-swap so two officers cannot launch duplicate upstream runs.
+        if (dbContext.Database.IsRelational())
+        {
+            var now = DateTime.UtcNow;
+            var claimed = await dbContext.AgentWorkflows
+                .Where(item => item.Id == workflow.Id && item.Version == request.ExpectedWorkflowVersion
+                    && (item.Status == AgentWorkflowStatus.MissingDependency || item.Status == AgentWorkflowStatus.CandidateBlocked
+                        || item.Status == AgentWorkflowStatus.Failed || item.Status == AgentWorkflowStatus.RevisionRequested)
+                    && !item.IsDeleted)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(item => item.Version, item => item.Version + 1)
+                    .SetProperty(item => item.Status, AgentWorkflowStatus.Running)
+                    .SetProperty(item => item.CurrentStep, WeatherResourceWorkflowService.AgentName)
+                    .SetProperty(item => item.CompletedAt, (DateTime?)null)
+                    .SetProperty(item => item.UpdatedAt, now)
+                    .SetProperty(item => item.UpdatedByUserId, actor), cancellationToken);
+            if (claimed != 1)
+                throw Conflict("WORKFLOW_CHANGED", "Another retry or workflow update happened first. Refresh before trying again.");
+        }
+
+        if (datesChanged)
+        {
+            plan.PreferredStartDate = startDate;
+            plan.PreferredEndDate = endDate;
+            MarkUpdated(plan, actor);
+        }
+
+        dbContext.CropPlanRequestHistories.Add(new CropPlanRequestHistory
+        {
+            CropPlanRequestId = plan.Id,
+            FromStatus = plan.Status,
+            ToStatus = plan.Status,
+            Action = CropPlanHistoryAction.SchedulingRetry,
+            Note = datesChanged
+                ? $"Scheduling retry changed the preferred window from {previousStart:yyyy-MM-dd}–{previousEnd:yyyy-MM-dd} to {startDate:yyyy-MM-dd}–{endDate:yyyy-MM-dd}."
+                : "Scheduling retry refreshed weather and resource evidence using the current preferred window.",
+            Reason = request.Reason.Trim(),
+            ChangedByUserId = actor,
+            ChangedByRole = currentUser.Role,
+            CreatedByUserId = actor,
+            UpdatedByUserId = actor
+        });
+
+        if (beginsNewRevision)
+        {
+            workflow.CandidateRevision++;
+            workflow.RevisionCount++;
+        }
+        workflow.Version = request.ExpectedWorkflowVersion + 1;
+        workflow.Status = AgentWorkflowStatus.Running;
+        workflow.CurrentStep = WeatherResourceWorkflowService.AgentName;
+        workflow.CompletedAt = null;
+        MarkUpdated(workflow, actor);
+        if (dbContext.Database.IsRelational())
+            dbContext.Entry(workflow).Property(item => item.Version).IsModified = false;
+
+        weatherStep.CandidateRevision = workflow.CandidateRevision;
+        weatherStep.InputJson = "{}";
+        weatherStep.OutputJson = "{}";
+        weatherStep.Status = AgentStepStatus.Pending;
+        weatherStep.StartedAt = null;
+        weatherStep.CompletedAt = null;
+        weatherStep.RetryCount++;
+        weatherStep.ErrorCode = null;
+        weatherStep.ErrorMessageSafe = null;
+        MarkUpdated(weatherStep, actor);
+
+        schedulingStep.CandidateRevision = workflow.CandidateRevision;
+        schedulingStep.InputJson = "{}";
+        schedulingStep.OutputJson = "{}";
+        schedulingStep.Status = AgentStepStatus.Pending;
+        schedulingStep.StartedAt = null;
+        schedulingStep.CompletedAt = null;
+        schedulingStep.RetryCount++;
+        schedulingStep.ErrorCode = null;
+        schedulingStep.ErrorMessageSafe = null;
+        MarkUpdated(schedulingStep, actor);
+
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+            if (transaction is not null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                await transaction.DisposeAsync();
+            }
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw Conflict("WORKFLOW_CHANGED", "The workflow changed during retry. Refresh before trying again.");
+        }
+
+        WeatherResourceRunResponse refreshed;
+        try
+        {
+            refreshed = await weatherResourceWorkflowService.RunAsync(plan.Id, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            workflow.Status = AgentWorkflowStatus.Failed;
+            workflow.CurrentStep = "WeatherResourceRetryFailed";
+            workflow.CompletedAt = DateTime.UtcNow;
+            weatherStep.Status = AgentStepStatus.Failed;
+            weatherStep.ErrorCode = "WEATHER_RESOURCE_RETRY_FAILED";
+            weatherStep.ErrorMessageSafe = "Weather and resource analysis could not be refreshed. Check the connection and retry.";
+            weatherStep.CompletedAt = DateTime.UtcNow;
+            workflow.Version++;
+            MarkUpdated(workflow, actor);
+            MarkUpdated(weatherStep, actor);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return await MapReviewAsync(workflow, cancellationToken);
+        }
+        if (!refreshed.Status.Equals("Analyzed", StringComparison.OrdinalIgnoreCase))
+            return await GetAsync(workflowId, cancellationToken);
+
+        return await GenerateCandidateAsync(workflowId, cancellationToken);
     }
 
     public Task<WorkflowDecisionResponse> ApproveAsync(Guid workflowId, WorkflowDecisionRequest request, CancellationToken cancellationToken) =>
@@ -1117,6 +1276,18 @@ public sealed class WorkflowApprovalService(
             throw BadRequest("DECISION_COMMENT_INVALID", "Decision comment must be 1000 characters or fewer.");
         if (decision is ApprovalDecisionType.Rejected or ApprovalDecisionType.RevisionRequested && string.IsNullOrWhiteSpace(request.Comment))
             throw BadRequest("DECISION_COMMENT_REQUIRED", "A reason is required when rejecting or requesting revision.");
+    }
+
+    private static void ValidateRetryRequest(WorkflowRetryRequest request)
+    {
+        if (request.ExpectedWorkflowVersion < 1)
+            throw BadRequest("WORKFLOW_VERSION_REQUIRED", "The expected workflow version is required.");
+        if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length > 1000)
+            throw BadRequest("SCHEDULING_RETRY_REASON_REQUIRED", "A reason of 1 to 1000 characters is required for every retry.");
+        if (request.PreferredStartDate.HasValue != request.PreferredEndDate.HasValue)
+            throw BadRequest("SCHEDULING_RETRY_WINDOW_INVALID", "Provide both preferred dates or leave both unchanged.");
+        if (request.PreferredStartDate.HasValue && request.PreferredEndDate <= request.PreferredStartDate)
+            throw BadRequest("SCHEDULING_RETRY_WINDOW_INVALID", "The preferred end date must be after the preferred start date.");
     }
 
     private async Task<IDbContextTransaction?> BeginTransactionAsync(CancellationToken cancellationToken) =>

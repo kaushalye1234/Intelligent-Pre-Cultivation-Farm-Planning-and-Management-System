@@ -61,6 +61,22 @@ public sealed class WeatherResourceWorkflowTests
     }
 
     [Fact]
+    public async Task Run_records_validation_for_the_current_candidate_revision()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedAsync(db);
+        var workflow = await db.AgentWorkflows.Include(item => item.Steps).SingleAsync();
+        workflow.CandidateRevision = 2;
+        workflow.Steps.Single(step => step.AgentName == "WeatherResourceAgent").CandidateRevision = 2;
+        await db.SaveChangesAsync();
+
+        var result = await NewService(db, new ToolCallingAgent(db)).RunAsync(data.RequestId, CancellationToken.None);
+
+        Assert.Equal("Analyzed", result.Status);
+        Assert.Equal(2, Assert.Single(db.AgentValidationResults).CandidateRevision);
+    }
+
+    [Fact]
     public async Task Run_reports_sufficient_when_verified_requirement_is_covered()
     {
         await using var db = NewDbContext();

@@ -44,14 +44,14 @@ function draft(overrides: Partial<ResourceRequirementResearchResponse> = {}): Re
   }
 }
 
-async function renderAndResearch(response: ResourceRequirementResearchResponse) {
+async function renderAndResearch(response: ResourceRequirementResearchResponse, canVerify = true) {
   vi.spyOn(api, 'get').mockResolvedValue(paged(resources))
   const post = vi.spyOn(api, 'post').mockImplementation((url: string) => {
     if (url === '/resources/requirement-research') return Promise.resolve({ data: response })
     return Promise.resolve({ data: { resourceName: 'Urea', quantityPerArea: 195, resourceUnit: 'kg', areaUnit: 'hectare' } })
   })
   const onSaved = vi.fn()
-  render(<ResourceRequirementResearchPanel crops={crops} varieties={[]} onSaved={onSaved} />)
+  render(<ResourceRequirementResearchPanel crops={crops} varieties={[]} canVerify={canVerify} onSaved={onSaved} />)
   const resourceSelect = screen.getByRole('combobox', { name: /^Resource/ })
   await waitFor(() => expect(within(resourceSelect).getByRole('option', { name: 'Urea (kg)' })).toBeInTheDocument())
   expect(within(resourceSelect).queryByRole('option', { name: /Retired/ })).not.toBeInTheDocument()
@@ -89,6 +89,16 @@ describe('Resource requirement research panel', () => {
     }))
     expect(await screen.findByText(/Verified requirement saved: Urea 195 kg\/hectare for Chili/)).toBeInTheDocument()
     expect(onSaved).toHaveBeenCalled()
+  })
+
+  it('lets an Agricultural Officer review the cited AI draft without saving it as verified', async () => {
+    const { post, onSaved } = await renderAndResearch(draft(), false)
+
+    expect(await screen.findByText('Suggested requirement: 195 kg / hectare')).toBeInTheDocument()
+    expect(screen.getByText(/An Admin must check the cited source and save it/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Verify & Save' })).not.toBeInTheDocument()
+    expect(post.mock.calls.some(([url]) => url === '/resources/requirement-research/verify')).toBe(false)
+    expect(onSaved).not.toHaveBeenCalled()
   })
 
   it('reject discards the draft without calling the save endpoint', async () => {

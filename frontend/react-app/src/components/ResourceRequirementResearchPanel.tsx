@@ -26,16 +26,23 @@ function safeUrl(value: string) {
 }
 
 /**
- * Member 3 Admin-only Resource Requirement Research. Research returns an unverified, sourced draft; only
- * "Verify & Save" stores a ResourceRequirement rule, which the WeatherResourceAgent then reads from the database.
+ * Member 3 sourced research. AI results are drafts; only an Admin can use "Verify & Save" to create
+ * the ResourceRequirement rule that the WeatherResourceAgent reads from the database.
  */
-export function ResourceRequirementResearchPanel({ crops, varieties, onSaved }: {
+export function ResourceRequirementResearchPanel({ crops, varieties, canVerify = true, initialValues, onSaved }: {
   crops: CropType[]
   varieties: CropVariety[]
+  canVerify?: boolean
+  initialValues?: { cropTypeId?: string; cropVarietyId?: string | null; region?: string | null }
   onSaved?: () => void
 }) {
   const [resources, setResources] = useState<ResourceItem[]>([])
-  const [form, setForm] = useState({ cropTypeId: '', cropVarietyId: '', resourceId: '', region: '' })
+  const [form, setForm] = useState(() => ({
+    cropTypeId: initialValues?.cropTypeId ?? '',
+    cropVarietyId: initialValues?.cropVarietyId ?? '',
+    resourceId: '',
+    region: initialValues?.region ?? '',
+  }))
   const [result, setResult] = useState<ResourceRequirementResearchResponse | null>(null)
   const [confirmed, setConfirmed] = useState<Record<string, boolean>>({})
   const [busy, setBusy] = useState<'research' | 'save' | null>(null)
@@ -177,9 +184,9 @@ export function ResourceRequirementResearchPanel({ crops, varieties, onSaved }: 
                       {' '}I checked this value against the cited source.
                     </label>
                     <div className="crop-reference-submit">
-                      <Button icon={busy === 'save' ? <Loader2 className="spin" size={16} /> : <ShieldCheck size={16} />} disabled={!confirmed[recommendation.id] || busy !== null} onClick={() => void verifyAndSave(result, recommendation)}>
+                      {canVerify ? <Button icon={busy === 'save' ? <Loader2 className="spin" size={16} /> : <ShieldCheck size={16} />} disabled={!confirmed[recommendation.id] || busy !== null} onClick={() => void verifyAndSave(result, recommendation)}>
                         Verify &amp; Save
-                      </Button>
+                      </Button> : <Notice tone="warning">This AI result is an unverified draft. An Admin must check the cited source and save it before retrying scheduling.</Notice>}
                     </div>
                   </>
                 ) : <Notice tone="info">This value cannot be saved: it does not use the inventory unit {result.resourceUnit} or was not verified.</Notice>}

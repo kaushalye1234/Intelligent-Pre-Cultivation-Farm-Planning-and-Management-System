@@ -290,7 +290,7 @@ async def research_resource_requirement(
     # It only returns a draft; an Admin must verify it before the backend stores a ResourceRequirement rule.
     return await _run_crop_finding(
         action="ResourceRequirementResearch",
-        admin_user_id=str(request.admin_user_id),
+        admin_user_id=str(request.actor_user_id),
         crop=request.crop_name,
         variety=request.variety_name,
         settings=settings,

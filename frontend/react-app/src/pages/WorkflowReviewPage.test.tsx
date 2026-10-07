@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -54,7 +54,10 @@ describe('WorkflowReviewPage', () => {
       steps: [{ id: 'scheduling-1', agentName: 'SchedulingValidationAgent', stepName: 'Scheduling',
         sequence: 4, candidateRevision: 2, status: 4, input: {}, output: {
           contractVersion: 2, status: 'CandidateBlocked', warnings: ['Weather risk is High'],
-          constraints: [{ code: 'HIGH_WEATHER_RISK', severity: 'Blocking', message: 'High weather blocks approval.' }],
+          constraints: [
+            { code: 'HIGH_WEATHER_RISK', severity: 'Blocking', message: 'High weather blocks approval.' },
+            { code: 'MISSING_CROP_REFERENCE', severity: 'Blocking', message: 'A matching active verified crop profile with stages is required.' },
+          ],
           candidateTasks: [{ title: 'Review Planting stage', dueAt: '2026-10-10T08:00:00Z',
             reason: 'Verified crop stage timing.', sources: [{ kind: 'CropStage', id: 'stage-1',
               label: 'Verified guide', sourceUrl: 'https://example.test/guide' }] }],
@@ -78,7 +81,48 @@ describe('WorkflowReviewPage', () => {
     expect(await screen.findByText('Scheduling proposal')).toBeInTheDocument()
     expect(screen.getByText('Verified crop stage timing.')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Verified guide' })).toHaveAttribute('href', 'https://example.test/guide')
-    expect(screen.getByText(/new upstream workflow before generating another candidate/i)).toBeInTheDocument()
+    expect(screen.getByText(/Use Retry scheduling after the underlying evidence or date window changes/i)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Crop Planning → Verified crop references/ })).toHaveAttribute('href', '/crop-planning')
+    expect(screen.queryByRole('button', { name: /approve workflow/i })).not.toBeInTheDocument()
+  })
+
+  it('lets an officer correct the date window and retry the blocked workflow', async () => {
+    const blocked: WorkflowReview = {
+      ...review,
+      workflow: { ...review.workflow, status: 12, currentStep: 'CANDIDATE_BLOCKED' },
+    }
+    const retried: WorkflowReview = {
+      ...blocked,
+      workflow: { ...blocked.workflow, status: 11, candidateRevision: 3, version: 8 },
+      preferredEndDate: '2027-02-01',
+    }
+    vi.spyOn(api, 'get').mockImplementation(async (url) => {
+      if (url === '/task-approval/workflows/workflow-1') return { data: blocked } as never
+      if (url === '/crop-plans/plan-1/pre-planting-assessment') return { data: null } as never
+      throw new Error('Unexpected GET ' + url)
+    })
+    const post = vi.spyOn(api, 'post').mockResolvedValue({ data: retried } as never)
+
+    render(
+      <MemoryRouter initialEntries={['/task-approval/workflows/workflow-1']}>
+        <AuthContext.Provider value={{ user: officer, token: 'token', isAuthenticated: true, isLoading: false, passwordChangeUser: null, hasPasswordChangeSession: false, login: vi.fn(), changeTemporaryPassword: vi.fn(), logout: vi.fn() }}>
+          <Routes><Route path="/task-approval/workflows/:id" element={<WorkflowReviewPage />} /></Routes>
+        </AuthContext.Provider>
+      </MemoryRouter>,
+    )
+
+    await screen.findByRole('heading', { name: 'Resolve the blocker and retry' })
+    fireEvent.change(screen.getByLabelText(/Preferred end date/), { target: { value: '2027-02-01' } })
+    await userEvent.type(screen.getByLabelText(/Reason for retry/), 'Admin verified the crop stage reference.')
+    await userEvent.click(screen.getByRole('button', { name: 'Retry scheduling' }))
+
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/task-approval/workflows/workflow-1/retry-scheduling', {
+      expectedWorkflowVersion: 7,
+      reason: 'Admin verified the crop stage reference.',
+      preferredStartDate: '2026-10-01',
+      preferredEndDate: '2027-02-01',
+    }))
+    expect(await screen.findByText(/Evidence refresh and retry completed/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /approve workflow/i })).not.toBeInTheDocument()
   })
 
