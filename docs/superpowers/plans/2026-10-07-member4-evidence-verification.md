@@ -1,5 +1,7 @@
 # Member 4 Evidence Verification Implementation Plan
 
+**Status:** Approved for implementation by the project owner on 2026-10-07. This approval is not Agricultural Officer verification of any crop profile or field water regime.
+
 > **For agentic workers:** Execute this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Use the approved spec and AGENTS.md; no delegated agents are required.
 
 **Goal:** Let an Agricultural Officer verify a complete crop reference and let an Admin start a replacement workflow on the same plan, with Member 3 and Member 4 pinned to that verified profile.

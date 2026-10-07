@@ -1,8 +1,8 @@
 # Member 4 evidence verification and recovery
 
 Date: 2026-10-07
-Status: Design for review
-Base: `codex/member4-approval-guide` at `61ffbfe`; PR #87 remains separate and open.
+Status: Approved for implementation by the project owner on 2026-10-07; agronomic evidence remains unverified.
+Base: `codex/member4-approval-guide` at `19d7cc8`; PR #87 remains separate and open.
 
 ## Purpose and success
 
