@@ -594,6 +594,8 @@ class FarmerApprovedPlan {
     required this.approvedIrrigationSchedules,
     required this.cropHealth,
     required this.finalGuide,
+    required this.finalGuideStatus,
+    required this.finalGuideGeneratedAt,
   });
   final int contractVersion;
   final String cropPlanRequestId;
@@ -611,6 +613,8 @@ class FarmerApprovedPlan {
   final List<FarmerApprovedIrrigation> approvedIrrigationSchedules;
   final FarmerApprovedCropHealth? cropHealth;
   final FinalCultivationGuide? finalGuide;
+  final String finalGuideStatus;
+  final String? finalGuideGeneratedAt;
 
   factory FarmerApprovedPlan.fromJson(Map<String, dynamic> json) =>
       FarmerApprovedPlan(
@@ -649,6 +653,9 @@ class FarmerApprovedPlan {
                 json['finalGuide'] as Map<String, dynamic>,
               )
             : null,
+        finalGuideStatus: json['finalGuideStatus'] as String? ??
+            (json['finalGuide'] is Map<String, dynamic> ? 'Ready' : 'Unavailable'),
+        finalGuideGeneratedAt: json['finalGuideGeneratedAt'] as String?,
       );
 }
 
