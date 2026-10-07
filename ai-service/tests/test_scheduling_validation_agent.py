@@ -157,6 +157,19 @@ async def test_missing_verified_evidence_cannot_use_generic_fallback():
 
 
 @pytest.mark.asyncio
+async def test_pinned_rules_only_profile_explains_missing_stages():
+    value = sourced_request()
+    value.evidence.stages = []
+
+    result = await SchedulingValidationAgent().run(value)
+
+    assert result.status == "MissingDependency"
+    assert result.candidate_tasks == []
+    assert any("pinned" in warning.lower() and "stages" in warning.lower()
+               for warning in result.warnings)
+
+
+@pytest.mark.asyncio
 async def test_crop_stage_outside_window_blocks_without_extending_dates():
     value = sourced_request()
     value.preferred_end_date = value.preferred_start_date + timedelta(days=2)

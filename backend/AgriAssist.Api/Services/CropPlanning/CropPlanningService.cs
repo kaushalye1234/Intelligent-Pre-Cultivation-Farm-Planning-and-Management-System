@@ -1636,11 +1636,10 @@ public sealed class CropPlanningService(
         var finalGuideStep = workflow.Steps
             .Where(item => !item.IsDeleted
                 && item.AgentName == "FinalCultivationGuideAgent"
-                && item.CandidateRevision == workflow.CandidateRevision
-                && item.Status == AgentStepStatus.Completed)
+                && item.CandidateRevision == workflow.CandidateRevision)
             .OrderByDescending(item => item.Sequence)
             .FirstOrDefault();
-        if (finalGuideStep is not null)
+        if (finalGuideStep?.Status == AgentStepStatus.Completed)
         {
             try
             {
@@ -1654,6 +1653,10 @@ public sealed class CropPlanningService(
                 finalGuide = null;
             }
         }
+        var finalGuideStatus = finalGuide is not null ? "Ready"
+            : finalGuideStep?.Status is AgentStepStatus.Running or AgentStepStatus.Pending ? "Pending"
+            : "Unavailable";
+        var finalGuideGeneratedAt = finalGuide is not null ? finalGuideStep?.CompletedAt : null;
 
         return new FarmerApprovedPlanResponse(
             Member2CropHealthContractVersions.FarmerApprovedPlan,
@@ -1671,7 +1674,9 @@ public sealed class CropPlanningService(
             tasks,
             irrigation,
             cropHealth,
-            finalGuide);
+            finalGuide,
+            finalGuideStatus,
+            finalGuideGeneratedAt);
     }
 
     public async Task<Member3HandoffResponse> GetMember3HandoffAsync(Guid requestId, CancellationToken cancellationToken)
