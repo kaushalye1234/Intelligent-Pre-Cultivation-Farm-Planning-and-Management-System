@@ -1,3 +1,4 @@
+using System.Text.Json;
 using AgriAssist.Api.Models.CropPlanning;
 using AgriAssist.Api.Services.TaskApproval;
 using Microsoft.EntityFrameworkCore;
@@ -34,6 +35,49 @@ public sealed class SchedulingEvidenceBuilderTests
         var second = await SchedulingEvidenceBuilder.BuildAsync(db, workflow, plan, CancellationToken.None);
         Assert.Equal(district.Id, second.ProfileId);
         Assert.Equal("Planting", Assert.Single(second.Stages).StageName);
+    }
+
+    [Fact]
+    public async Task Unpinned_scheduling_skips_a_rule_only_profile_when_a_verified_profile_has_stages()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedAsync(db, ruleJson: null, farmLocation: "Dambulla", farmDistrict: "Badulla");
+        var plan = await db.CropPlanRequests.Include(item => item.Farm).SingleAsync(item => item.Id == data.RequestId);
+        var staged = Profile(data.CropTypeId, null, "Sri Lanka", DateTime.UtcNow.AddDays(-2));
+        staged.Stages.Add(Stage("Planting"));
+        var rulesOnly = Profile(data.CropTypeId, null, "Badulla", DateTime.UtcNow.AddDays(-1), SampleUreaRule);
+        db.AddRange(staged, rulesOnly);
+        await db.SaveChangesAsync();
+
+        var workflow = await db.AgentWorkflows.Include(item => item.Steps).SingleAsync(item => item.Id == data.WorkflowId);
+        var evidence = await SchedulingEvidenceBuilder.BuildAsync(db, workflow, plan, CancellationToken.None);
+
+        Assert.Equal(staged.Id, evidence.ProfileId);
+        Assert.Equal("Planting", Assert.Single(evidence.Stages).StageName);
+    }
+
+    [Fact]
+    public async Task Pinned_rule_only_profile_does_not_fall_back_to_another_source()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedAsync(db, ruleJson: null);
+        var plan = await db.CropPlanRequests.Include(item => item.Farm).SingleAsync(item => item.Id == data.RequestId);
+        var staged = Profile(data.CropTypeId, null, null, DateTime.UtcNow.AddDays(-2));
+        staged.Stages.Add(Stage("Planting"));
+        var rulesOnly = Profile(data.CropTypeId, null, null, DateTime.UtcNow.AddDays(-1), SampleUreaRule);
+        db.AddRange(staged, rulesOnly);
+        await db.SaveChangesAsync();
+
+        var workflow = await db.AgentWorkflows.Include(item => item.Steps).SingleAsync(item => item.Id == data.WorkflowId);
+        workflow.Steps.Single(item => item.AgentName == "WeatherResourceAgent").Status = AgriAssist.Api.Models.Shared.AgentStepStatus.Completed;
+        workflow.Steps.Single(item => item.AgentName == "WeatherResourceAgent").OutputJson =
+            JsonSerializer.Serialize(new { requirementSource = new { cropReferenceProfileId = rulesOnly.Id } });
+        await db.SaveChangesAsync();
+
+        var evidence = await SchedulingEvidenceBuilder.BuildAsync(db, workflow, plan, CancellationToken.None);
+
+        Assert.Null(evidence.ProfileId);
+        Assert.Empty(evidence.Stages);
     }
 
     private static CropStageReference Stage(string name) => new()
