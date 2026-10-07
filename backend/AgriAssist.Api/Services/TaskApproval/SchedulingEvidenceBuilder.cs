@@ -40,6 +40,7 @@ public static class SchedulingEvidenceBuilder
             .ToListAsync(cancellationToken);
         var profile = profiles
             .Where(item => !pinnedProfileId.HasValue || item.Id == pinnedProfileId.Value)
+            .Where(item => item.Stages.Any(stage => !stage.IsDeleted))
             .Where(item => item.VarietyName is null || string.Equals(item.VarietyName, varietyName, StringComparison.OrdinalIgnoreCase))
             .Where(item => CropReferenceRegionMatcher.Rank(item.Region, plan.Farm) >= 0)
             .OrderByDescending(item => item.VarietyName is not null)
