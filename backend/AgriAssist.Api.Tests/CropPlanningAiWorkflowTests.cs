@@ -845,6 +845,35 @@ public sealed class CropPlanningAiWorkflowTests
         Assert.Null(result.FinalGuideGeneratedAt);
     }
 
+    [Fact]
+    public async Task Farmer_approved_plan_tolerates_field_analysis_without_condition_summary()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.Approved);
+        var workflow = ApprovedWorkflow(data, new SchedulingValidationOutput(
+            Guid.Empty, 1, "CandidateReady", true, true, [], [], [], [], null, [], 1));
+        workflow.Steps.Single().OutputJson = JsonSerializer.Serialize(
+            JsonSerializer.Deserialize<SchedulingValidationOutput>(workflow.Steps.Single().OutputJson)! with { WorkflowId = workflow.Id });
+        workflow.Steps.Add(new AgentStep
+        {
+            AgentWorkflow = workflow,
+            AgentName = "CropFieldAnalysisAgent",
+            StepName = "FieldAnalysis",
+            Sequence = 2,
+            Status = AgentStepStatus.Completed,
+            OutputJson = JsonSerializer.Serialize(new { workflowId = workflow.Id, status = "Analyzed", warnings = new[] { "Synthetic evidence only." } })
+        });
+        db.Add(workflow);
+        await db.SaveChangesAsync();
+
+        var result = await NewService(db, data.Farmer.Id, new PlannedAiClient())
+            .GetApprovedPlanAsync(data.Request.Id, CancellationToken.None);
+
+        Assert.Null(result.FieldSummary);
+        Assert.Contains("Synthetic evidence only.", result.Warnings);
+        Assert.Equal("Unavailable", result.FinalGuideStatus);
+    }
+
     [Theory]
     [InlineData(AgentStepStatus.Pending, "Pending")]
     [InlineData(AgentStepStatus.Running, "Pending")]

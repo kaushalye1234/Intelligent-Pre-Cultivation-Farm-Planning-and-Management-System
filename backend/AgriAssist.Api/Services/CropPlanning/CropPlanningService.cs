@@ -1667,7 +1667,7 @@ public sealed class CropPlanningService(
             request.PreferredStartDate,
             request.PreferredEndDate,
             workflow.CompletedAt ?? workflow.UpdatedAt,
-            fieldAnalysis?.FieldCondition.Summary,
+            fieldAnalysis?.FieldCondition?.Summary,
             weather?.WeatherSummary,
             warnings,
             weather?.Recommendations ?? [],
