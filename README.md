@@ -1,5 +1,4 @@
 # AgriAssist AI - Basic Foundation
-
 AgriAssist is an ASP.NET Core, React, and Flutter foundation for farm operations. This repository contains:
 
 - ASP.NET Core 8 Web API backend with EF Core 8 and PostgreSQL/Supabase support
