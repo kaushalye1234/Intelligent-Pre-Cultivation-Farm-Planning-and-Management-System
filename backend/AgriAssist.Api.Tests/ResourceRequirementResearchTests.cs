@@ -160,7 +160,7 @@ public sealed class ResourceRequirementResearchTests
     }
 
     [Fact]
-    public async Task Verify_and_save_creates_a_rule_that_the_weather_resource_requirement_tool_reads()
+    public async Task Admin_research_saves_an_inactive_draft_that_member_3_does_not_consume()
     {
         await using var db = NewDbContext();
         var data = await SeedAsync(db, ruleJson: null, fieldArea: 0.5m);
@@ -168,36 +168,41 @@ public sealed class ResourceRequirementResearchTests
         var saved = await Service(db).VerifyAndSaveAsync(Verify(data, 80m), CancellationToken.None);
 
         Assert.True(saved.CreatedReferenceProfile);
+        Assert.Equal(CropReferenceVerificationState.Draft, saved.VerificationState);
+        Assert.Null(saved.VerifiedAt);
+        var profile = await db.CropReferenceProfiles.SingleAsync();
+        Assert.False(profile.IsActive);
+        Assert.Null(profile.VerifiedAt);
         var rule = await db.CropRuleReferences.SingleAsync();
         Assert.Equal(("ResourceRequirement", "urea", SourceUrl), (rule.RuleType, rule.RuleKey, rule.SourceUrl));
-        Assert.Contains("AdminVerifiedWebResearch", rule.StructuredValueJson);
-        // The existing Member 3 tool (unchanged) now calculates the requirement from the verified rule.
+        Assert.Contains("AdminReviewedWebResearchDraft", rule.StructuredValueJson);
         var requirements = await new CropResourceRequirementService(db, TestConfiguration()).GetRequirementsAsync(data.RequestId, CancellationToken.None);
-        var requirement = Assert.Single(requirements.Requirements);
-        Assert.Equal("Available", requirements.Status);
-        Assert.Equal((RequirementCalculationStatus.Calculated, ResourceMatchStatus.Matched, data.ResourceId, 40m),
-            (requirement.Status, requirement.ResourceMatch, requirement.ResourceId, requirement.RequiredQuantity));
-        Assert.Equal("80 kg/acre x 0.5 acre = 40 kg", requirement.Basis);
+        Assert.Equal("Unavailable", requirements.Status);
     }
 
     [Fact]
-    public async Task Verify_and_save_appends_to_the_existing_profile_and_replaces_the_previous_rule_for_that_resource()
+    public async Task Admin_research_preserves_the_active_profile_and_copies_its_stages_into_a_new_draft()
     {
         await using var db = NewDbContext();
-        var data = await SeedAsync(db, fieldArea: 0.5m); // seeds one generic profile with the sample 100 kg/acre Urea rule
+        var data = await SeedAsync(db, fieldArea: 0.5m);
         var profile = await db.CropReferenceProfiles.Include(item => item.Rules).SingleAsync();
-        db.CropStageReferences.Add(new CropStageReference { CropReferenceProfileId = profile.Id, StageName = "Flowering", Sequence = 1, SourceName = "SAMPLE stage source" });
+        db.CropStageReferences.Add(new CropStageReference { CropReferenceProfileId = profile.Id, StageName = "Flowering", Sequence = 1, SourceName = "SAMPLE stage source", SourceUrl = SourceUrl });
         await db.SaveChangesAsync();
         var previousRuleId = profile.Rules.Single().Id;
 
         var saved = await Service(db).VerifyAndSaveAsync(Verify(data, 80m), CancellationToken.None);
 
-        Assert.Equal((profile.Id, false, true), (saved.CropReferenceProfileId, saved.CreatedReferenceProfile, saved.ReplacedPreviousRule));
-        Assert.Single(db.CropReferenceProfiles);
-        Assert.Equal("SAMPLE stage source", (await db.CropStageReferences.SingleAsync()).SourceName);
-        Assert.True((await db.CropRuleReferences.SingleAsync(rule => rule.Id == previousRuleId)).IsDeleted);
+        Assert.NotEqual(profile.Id, saved.CropReferenceProfileId);
+        Assert.True(profile.IsActive);
+        Assert.False((await db.CropRuleReferences.SingleAsync(rule => rule.Id == previousRuleId)).IsDeleted);
+        var draft = await db.CropReferenceProfiles.Include(item => item.Stages).Include(item => item.Rules)
+            .SingleAsync(item => item.Id == saved.CropReferenceProfileId);
+        Assert.False(draft.IsActive);
+        Assert.Equal("SAMPLE stage source", Assert.Single(draft.Stages).SourceName);
+        Assert.Equal(80m, Assert.Single(draft.Rules.Where(rule => rule.RuleType == "ResourceRequirement")) is { } rule
+            && CropResourceRequirementRule.TryParse(rule.StructuredValueJson, out var parsed, out _) ? parsed!.QuantityPerArea : 0m);
         var requirement = Assert.Single((await new CropResourceRequirementService(db, TestConfiguration()).GetRequirementsAsync(data.RequestId, CancellationToken.None)).Requirements);
-        Assert.Equal((saved.RuleId, 40m), (requirement.RuleId, requirement.RequiredQuantity));
+        Assert.Equal(50m, requirement.RequiredQuantity);
     }
 
     [Fact]
@@ -301,22 +306,12 @@ public sealed class ResourceRequirementResearchTests
     private static ResourceRequirementResearchService Service(AppDbContext db, IResourceRequirementResearchAIClient? ai = null, ApplicationRole role = ApplicationRole.Admin)
     {
         var user = new StubCurrentUser(role);
-        var cropPlanning = new CropPlanningService(
-            db,
-            user,
-            new FarmRequestValidator(),
-            new FieldRequestValidator(),
-            new CropTypeRequestValidator(),
-            new CropCycleRequestValidator(),
-            new CropPlanRequestCreateValidator(),
-            new CropPlanRequestUpdateValidator());
         return new ResourceRequirementResearchService(
             db,
             user,
             new ResourceRequirementResearchRequestValidator(),
             new VerifyResourceRequirementRequestValidator(),
             ai ?? new StubAiClient(_ => throw new InvalidOperationException("Research is not used by this test.")),
-            cropPlanning,
             NullLogger<ResourceRequirementResearchService>.Instance);
     }
 

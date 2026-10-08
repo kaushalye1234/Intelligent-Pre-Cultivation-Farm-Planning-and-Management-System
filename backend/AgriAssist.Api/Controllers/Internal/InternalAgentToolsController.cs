@@ -152,6 +152,22 @@ public sealed class InternalAgentToolsController(
             new { cropTypeId, cropReferenceProfileId, varietyName, region, workflowId, agentStepId },
             async () =>
             {
+                var pinnedWorkflow = workflowId.HasValue
+                    ? await dbContext.AgentWorkflows.AsNoTracking()
+                        .Include(item => item.CropPlanRequest)!.ThenInclude(item => item!.Farm)
+                        .Include(item => item.CropPlanRequest)!.ThenInclude(item => item!.Field)
+                        .Include(item => item.CropPlanRequest)!.ThenInclude(item => item!.CropVariety)
+                        .SingleOrDefaultAsync(item => item.Id == workflowId.Value, cancellationToken)
+                    : null;
+                if (pinnedWorkflow?.RequiredCropReferenceProfileId is { } requiredId)
+                {
+                    if (cropReferenceProfileId.HasValue && cropReferenceProfileId != requiredId)
+                        throw Safe(HttpStatusCode.Conflict, "This workflow requires its officer-verified reference profile.");
+                    cropReferenceProfileId = requiredId;
+                    genericOnly = false;
+                    varietyName = null;
+                    region = null;
+                }
                 if (!cropTypeId.HasValue && !cropReferenceProfileId.HasValue && workflowId.HasValue)
                 {
                     cropTypeId = await dbContext.AgentWorkflows.AsNoTracking()
@@ -167,6 +183,7 @@ public sealed class InternalAgentToolsController(
                 var profiles = dbContext.CropReferenceProfiles.AsNoTracking()
                     .Include(item => item.Stages)
                     .Include(item => item.Rules)
+                    .Include(item => item.FieldWaterRegimeVerification)
                     .Where(item => item.IsActive && !item.IsDeleted);
 
                 if (cropReferenceProfileId.HasValue) profiles = profiles.Where(item => item.Id == cropReferenceProfileId.Value);
@@ -178,6 +195,10 @@ public sealed class InternalAgentToolsController(
 
                 var profile = await profiles.OrderByDescending(item => item.VerifiedAt).FirstOrDefaultAsync(cancellationToken);
 
+                if (profile is not null && pinnedWorkflow?.RequiredCropReferenceProfileId.HasValue == true
+                    && (pinnedWorkflow.CropPlanRequest is null || !AgriAssist.Api.Services.Resources.CropReferenceCompatibility.IsVerifiedForPlan(
+                        profile, pinnedWorkflow.CropPlanRequest, pinnedWorkflow.RequiredCropReferenceVersion)))
+                    profile = null;
                 if (profile is null)
                 {
                     return new AgentCropReferenceProfileResponse(
@@ -190,7 +211,7 @@ public sealed class InternalAgentToolsController(
 
                 return new AgentCropReferenceProfileResponse(
                     "Available",
-                    new CropReferenceProfileSummary(profile.Id, profile.CropTypeId, profile.VarietyName, profile.Region, profile.SourceName, profile.SourceUrl, profile.SourceVersion, profile.VerifiedAt, profile.IsActive),
+                    new CropReferenceProfileSummary(profile.Id, profile.CropTypeId, profile.VarietyName, profile.Region, profile.SourceName, profile.SourceUrl, profile.SourceVersion, profile.VerifiedAt!.Value, profile.IsActive),
                     profile.Stages.OrderBy(stage => stage.Sequence).Select(stage => new CropStageReferenceSummary(stage.Id, stage.StageName, stage.Sequence, stage.TypicalMinDays, stage.TypicalMaxDays, stage.Notes, stage.SourceName, stage.SourceUrl)).ToArray(),
                     profile.Rules.OrderBy(rule => rule.RuleType).ThenBy(rule => rule.RuleKey).Select(rule => new CropRuleReferenceSummary(rule.Id, rule.RuleType, rule.RuleKey, rule.StructuredValueJson, rule.SourceName, rule.SourceUrl, rule.VerifiedAt)).ToArray(),
                     []);
@@ -351,7 +372,13 @@ public sealed class InternalAgentToolsController(
             async () =>
             {
                 await RequireWorkflowScopeAsync(workflowId, cropPlanRequestId, cancellationToken);
-                return await AsToolErrorAsync(() => requirementService.GetRequirementsAsync(cropPlanRequestId, cancellationToken));
+                var workflow = await dbContext.AgentWorkflows.AsNoTracking()
+                    .SingleAsync(item => item.Id == workflowId, cancellationToken);
+                var requiredId = workflow.RequiredCropReferenceProfileId;
+                if (requiredId.HasValue && !await dbContext.CropReferenceProfiles.AsNoTracking()
+                    .AnyAsync(item => item.Id == requiredId.Value && item.DraftVersion == workflow.RequiredCropReferenceVersion, cancellationToken))
+                    requiredId = Guid.Empty;
+                return await AsToolErrorAsync(() => requirementService.GetRequirementsAsync(cropPlanRequestId, requiredId, cancellationToken));
             },
             cancellationToken);
 

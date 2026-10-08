@@ -28,6 +28,11 @@ public sealed class TaskApprovalController(
     public async Task<ActionResult<WorkflowReviewResponse>> GetWorkflow(Guid id, CancellationToken cancellationToken) =>
         Ok(await workflowApprovalService.GetAsync(id, cancellationToken));
 
+    [HttpGet("workflows/{id:guid}/evidence-resolution")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
+    public async Task<ActionResult<WorkflowEvidenceResolutionResponse>> GetEvidenceResolution(Guid id, CancellationToken cancellationToken) =>
+        Ok(await workflowApprovalService.GetEvidenceResolutionAsync(id, cancellationToken));
+
     [HttpGet("workflows/{id:guid}/history")]
     [Authorize(Roles = $"{nameof(ApplicationRole.FieldOfficer)},{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
     public async Task<ActionResult<WorkflowHistoryResponse>> GetWorkflowHistory(Guid id, CancellationToken cancellationToken) =>

@@ -75,19 +75,19 @@ describe('Resource requirement research panel', () => {
     expect(await screen.findByText('Pending verification')).toBeInTheDocument()
     expect(screen.getByText('Suggested requirement: 195 kg / hectare')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Open source/ })).toHaveAttribute('href', 'https://doa.gov.lk/fcrdi-crops/')
-    const verify = screen.getByRole('button', { name: 'Verify & Save' })
+    const verify = screen.getByRole('button', { name: 'Save draft for officer review' })
     expect(verify).toBeDisabled()
 
     fireEvent.click(screen.getByRole('checkbox', { name: /I checked this value/ }))
     fireEvent.click(verify)
 
-    await waitFor(() => expect(post).toHaveBeenCalledWith('/resources/requirement-research/verify', {
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/resources/requirement-research/draft', {
       cropTypeId: 'crop-1', resourceId: 'res-1', cropVarietyId: null, region: null,
       quantityPerArea: 195, resourceUnit: 'kg', areaUnit: 'hectare',
       sourceName: 'Department of Agriculture – Crop guide', sourceUrl: 'https://doa.gov.lk/fcrdi-crops/',
       evidence: 'Urea (kg/ha) 195', researchRequestId: 'request-1',
     }))
-    expect(await screen.findByText(/Verified requirement saved: Urea 195 kg\/hectare for Chili/)).toBeInTheDocument()
+    expect(await screen.findByText(/Inactive draft saved for officer review: Urea 195 kg\/hectare for Chili/)).toBeInTheDocument()
     expect(onSaved).toHaveBeenCalled()
   })
 
@@ -99,7 +99,7 @@ describe('Resource requirement research panel', () => {
 
     expect(screen.getByText('Research result rejected. Nothing was saved.')).toBeInTheDocument()
     expect(screen.queryByText('Suggested requirement: 195 kg / hectare')).not.toBeInTheDocument()
-    expect(post.mock.calls.some(([url]) => url === '/resources/requirement-research/verify')).toBe(false)
+    expect(post.mock.calls.some(([url]) => url === '/resources/requirement-research/draft')).toBe(false)
     expect(onSaved).not.toHaveBeenCalled()
   })
 
@@ -113,7 +113,7 @@ describe('Resource requirement research panel', () => {
     expect(screen.getByText(/No value is preselected/)).toBeInTheDocument()
     expect(screen.getByText('Suggested requirement: 195 kg / hectare')).toBeInTheDocument()
     expect(screen.getByText('Suggested requirement: 150 kg / hectare')).toBeInTheDocument()
-    screen.getAllByRole('button', { name: 'Verify & Save' }).forEach((button) => expect(button).toBeDisabled())
+    screen.getAllByRole('button', { name: 'Save draft for officer review' }).forEach((button) => expect(button).toBeDisabled())
   })
 
   it('does not offer saving when no verified value or no inventory unit match exists', async () => {
@@ -124,7 +124,7 @@ describe('Resource requirement research panel', () => {
     }))
 
     expect(await screen.findByText('No verified recommendation found')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Verify & Save' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Save draft for officer review' })).not.toBeInTheDocument()
     expect(screen.getByText(/Rejected claims \(1\)/)).toBeInTheDocument()
   })
 

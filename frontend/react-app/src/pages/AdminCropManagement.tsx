@@ -17,8 +17,8 @@ import './AdminCropManagement.css'
 type AdminTab = 'crops' | 'varieties' | 'references'
 type StatusFilter = 'all' | 'active' | 'inactive'
 type DeleteTarget = { kind: 'crop' | 'variety'; id: string; name: string } | null
-type StageForm = { stageName: string; sequence: number; typicalMinDays: string; typicalMaxDays: string; notes: string }
-type RuleForm = { ruleType: string; ruleKey: string; structuredValueJson: string }
+type StageForm = { stageName: string; sequence: number; typicalMinDays: string; typicalMaxDays: string; notes: string; sourceName?: string; sourceUrl?: string }
+type RuleForm = { ruleType: string; ruleKey: string; structuredValueJson: string; sourceName?: string; sourceUrl?: string }
 type FindingAction = 'crops' | 'varieties' | 'references' | null
 type PendingPartial =
   | { kind: 'crop'; id: string; edit: boolean }
@@ -39,7 +39,7 @@ type ReferenceDetailsState = {
 
 const emptyCropForm = () => ({ id: '', name: '', description: '', isActive: true })
 const emptyVarietyForm = () => ({ id: '', cropTypeId: '', name: '', isActive: true })
-const emptyReferenceForm = () => ({ cropTypeId: '', cropVarietyId: '', region: '', sourceName: '', sourceUrl: '', sourceVersion: '', verifiedAt: '' })
+const emptyReferenceForm = () => ({ cropTypeId: '', cropVarietyId: '', region: '', sourceName: '', sourceUrl: '', sourceVersion: '' })
 const emptyStage = (): StageForm => ({ stageName: '', sequence: 1, typicalMinDays: '', typicalMaxDays: '', notes: '' })
 const emptyRule = (): RuleForm => ({ ruleType: '', ruleKey: '', structuredValueJson: '' })
 
@@ -75,6 +75,7 @@ export function AdminCropManagement({ referenceOnly = false }: { referenceOnly?:
   const [cropForm, setCropForm] = useState(emptyCropForm)
   const [varietyForm, setVarietyForm] = useState(emptyVarietyForm)
   const [referenceForm, setReferenceForm] = useState(emptyReferenceForm)
+  const [editingDraft, setEditingDraft] = useState<{ id: string; version: number } | null>(null)
   const [stages, setStages] = useState<StageForm[]>([emptyStage()])
   const [rules, setRules] = useState<RuleForm[]>([])
   const [cropSearch, setCropSearch] = useState('')
@@ -432,31 +433,57 @@ export function AdminCropManagement({ referenceOnly = false }: { referenceOnly?:
     setPendingPartial(null)
   }
 
+  function prepareReferenceDraft(details: CropReferenceProfileDetails) {
+    setActiveTab('references')
+    setReferenceForm({
+      cropTypeId: details.cropTypeId,
+      cropVarietyId: varieties.find((item) => item.cropTypeId === details.cropTypeId && item.name === details.varietyName)?.id ?? '',
+      region: details.region ?? '', sourceName: details.sourceName, sourceUrl: details.sourceUrl ?? '',
+      sourceVersion: details.sourceVersion,
+    })
+    setStages(details.stages.map((stage) => ({ stageName: stage.stageName, sequence: stage.sequence,
+      typicalMinDays: stage.typicalMinDays == null ? '' : String(stage.typicalMinDays),
+      typicalMaxDays: stage.typicalMaxDays == null ? '' : String(stage.typicalMaxDays), notes: stage.notes ?? '', sourceName: stage.sourceName ?? '', sourceUrl: stage.sourceUrl ?? '' })))
+    setRules(details.rules.map((rule) => ({ ruleType: rule.ruleType, ruleKey: rule.ruleKey, structuredValueJson: rule.structuredValueJson, sourceName: rule.sourceName ?? '', sourceUrl: rule.sourceUrl ?? '' })))
+    setEditingDraft(details.verificationState === 1 ? { id: details.id, version: details.draftVersion ?? 1 } : null)
+    setReferenceDetails(null)
+    setSuccess('Reference evidence loaded into the draft form. Review the source values before saving.')
+  }
+
   async function saveReference(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const includedStages = stages.filter((stage) => stage.stageName.trim())
     const includedRules = rules.filter((rule) => rule.ruleType.trim() || rule.ruleKey.trim() || rule.structuredValueJson.trim())
     if (!includedStages.length && !includedRules.length) {
-      setError('Add at least one verified stage or rule.')
+      setError('Add at least one sourced stage or rule.')
       return
     }
     await run(async () => {
-      await api.post('/crop-planning/crop-reference-profiles', {
+      const payload = {
         cropTypeId: referenceForm.cropTypeId,
         cropVarietyId: referenceForm.cropVarietyId || null,
         region: referenceForm.region.trim() || null,
         sourceName: referenceForm.sourceName.trim(),
         sourceUrl: referenceForm.sourceUrl.trim() || null,
         sourceVersion: referenceForm.sourceVersion.trim(),
-        verifiedAt: new Date(referenceForm.verifiedAt).toISOString(),
+        verifiedAt: null,
         stages: includedStages.map((stage) => ({
           stageName: stage.stageName.trim(), sequence: stage.sequence,
           typicalMinDays: stage.typicalMinDays ? Number(stage.typicalMinDays) : null,
           typicalMaxDays: stage.typicalMaxDays ? Number(stage.typicalMaxDays) : null,
           notes: stage.notes.trim() || null,
+          sourceName: stage.sourceName?.trim() || null, sourceUrl: stage.sourceUrl?.trim() || null,
         })),
-        rules: includedRules.map((rule) => ({ ruleType: rule.ruleType.trim(), ruleKey: rule.ruleKey.trim(), structuredValueJson: rule.structuredValueJson.trim() })),
-      })
+        rules: includedRules.map((rule) => ({ ruleType: rule.ruleType.trim(), ruleKey: rule.ruleKey.trim(), structuredValueJson: rule.structuredValueJson.trim(), sourceName: rule.sourceName?.trim() || null, sourceUrl: rule.sourceUrl?.trim() || null })),
+      }
+      if (editingDraft) {
+        await api.put('/crop-planning/crop-reference-profiles/' + editingDraft.id + '/draft', {
+          expectedDraftVersion: editingDraft.version, profile: payload,
+        })
+      } else {
+        await api.post('/crop-planning/crop-reference-profiles', payload)
+      }
+      setEditingDraft(null)
       setReferenceForm(emptyReferenceForm())
       setStages([emptyStage()])
       setRules([])
@@ -464,7 +491,7 @@ export function AdminCropManagement({ referenceOnly = false }: { referenceOnly?:
       setReferenceReview({})
       setPrimarySourceId('')
       setReferenceSnapshot(null)
-    }, 'Verified reference version created.')
+    }, 'Inactive reference draft saved. Agricultural Officer verification is required before activation.')
   }
 
   const activeCropOptions = useMemo(() => crops.filter((crop) => crop.isActive).map((crop) => ({ value: crop.id, label: crop.name })), [crops])
@@ -497,7 +524,7 @@ export function AdminCropManagement({ referenceOnly = false }: { referenceOnly?:
       <div className="crop-admin-heading">
         <div>
           <span className="crop-admin-eyebrow">{referenceOnly ? 'Reference management' : 'Crop catalog'}</span>
-          <h2>{referenceOnly ? 'Verified crop references' : 'Crop master and verified references'}</h2>
+          <h2>{referenceOnly ? 'Crop reference versions' : 'Crop master and reference versions'}</h2>
           <p>{referenceOnly ? 'Create and maintain sourced planning evidence used by the scheduling workflow.' : 'Manage the catalog farmers can select and keep sourced planning evidence current.'}</p>
         </div>
       </div>
@@ -564,18 +591,18 @@ export function AdminCropManagement({ referenceOnly = false }: { referenceOnly?:
       ) : null}
 
       {activeTab === 'references' ? (
-        <section className="work-section crop-admin-panel" aria-label="Verified references management">
-          <div className="crop-admin-panel-header"><div><h3>Verified references</h3><p>Create sourced versions without changing prior evidence.</p></div></div>
-          <DataTable rows={profiles} emptyTitle="No verified references" emptyMessage="The coordinator will request human review until verified evidence is added." getRowKey={(profile) => profile.id} columns={[
+        <section className="work-section crop-admin-panel" aria-label="Crop reference management">
+          <div className="crop-admin-panel-header"><div><h3>Crop reference versions</h3><p>Create sourced versions without changing prior evidence.</p></div></div>
+          <DataTable rows={profiles} emptyTitle="No reference versions" emptyMessage="The coordinator will request human review until verified evidence is added." getRowKey={(profile) => profile.id} columns={[
             { header: 'Crop / variety', render: (profile) => <PrimaryCell title={cropName(profile.cropTypeId)} detail={profile.varietyName || 'All varieties'} /> },
             { header: 'Source', render: (profile) => `${profile.sourceName} · ${profile.sourceVersion}` },
-            { header: 'Verified', render: (profile) => formatDate(profile.verifiedAt) },
+            { header: 'Verification', render: (profile) => profile.verificationState === 2 ? 'Verified ' + formatDate(profile.verifiedAt) : profile.verificationState === 1 ? 'Draft' : 'Legacy review required' },
             { header: 'Evidence', render: (profile) => `${profile.stageCount} stages · ${profile.ruleCount} rules${profile.ruleCount > 0 && profile.stageCount === 0 ? ' · Cannot support final approval' : ''}` },
             { header: 'State', render: (profile) => <StatusPill label={profile.isActive ? 'Active' : 'Inactive'} tone={profile.isActive ? 'good' : 'bad'} /> },
-            { header: 'Actions', className: 'crop-admin-actions-column', render: (profile) => <div className="crop-admin-actions"><Button variant="secondary" icon={<Eye size={15} />} onClick={() => void openReferenceDetails(profile)}>View details</Button><Button variant="ghost" disabled={busy} onClick={() => void run(async () => { await api.put(`/crop-planning/crop-reference-profiles/${profile.id}/active`, !profile.isActive, { headers: { 'Content-Type': 'application/json' } }) }, 'Reference state updated.')}>{profile.isActive ? 'Deactivate' : 'Activate'}</Button></div> },
+            { header: 'Actions', className: 'crop-admin-actions-column', render: (profile) => <div className="crop-admin-actions"><Button variant="secondary" icon={<Eye size={15} />} onClick={() => void openReferenceDetails(profile)}>View details</Button><Button variant="ghost" disabled={busy || (!profile.isActive && profile.verificationState !== 2)} onClick={() => void run(async () => { await api.put(`/crop-planning/crop-reference-profiles/${profile.id}/active`, !profile.isActive, { headers: { 'Content-Type': 'application/json' } }) }, 'Reference state updated.')}>{profile.isActive ? 'Deactivate' : 'Activate'}</Button></div> },
           ]} />
           <form className="crop-reference-form" onSubmit={(event) => void saveReference(event)}>
-            <div className="crop-reference-form-heading"><h3>Create verified version</h3><p>Add a traceable source and at least one growth stage or structured rule.</p></div>
+            <div className="crop-reference-form-heading"><h3>{editingDraft ? 'Edit reference draft' : 'Create reference draft'}</h3><p>Drafts stay inactive until an Agricultural Officer verifies field evidence, growth stages and applicable resource rules.</p></div>
             {!referenceOnly ? <section className="crop-finding-panel" aria-label="AI reference discovery">
               <div className="crop-finding-panel-heading">
                 <div><span className="crop-finding-label">AI Generated Draft · Needs Admin Review</span><h3>Find references with AI</h3><p>Choose the crop below first. Review one primary source at a time; accepted items only prefill this existing form.</p></div>
@@ -593,11 +620,11 @@ export function AdminCropManagement({ referenceOnly = false }: { referenceOnly?:
                 <TextInput label="Source name" value={referenceForm.sourceName} required onChange={(sourceName) => setReferenceForm({ ...referenceForm, sourceName })} />
                 <TextInput label="Source URL" value={referenceForm.sourceUrl} type="url" onChange={(sourceUrl) => setReferenceForm({ ...referenceForm, sourceUrl })} />
                 <TextInput label="Source version" value={referenceForm.sourceVersion} required onChange={(sourceVersion) => setReferenceForm({ ...referenceForm, sourceVersion })} />
-                <TextInput label="Verified at" value={referenceForm.verifiedAt} type="datetime-local" required onChange={(verifiedAt) => setReferenceForm({ ...referenceForm, verifiedAt })} />
               </div>
             </fieldset>
             <fieldset className="crop-reference-section">
               <legend>Growth stages</legend>
+              <p>Enter the duration of each successive stage. A maturity age measured from planting is a milestone, not a stage duration; do not substitute it for a verified stage timetable.</p>
               <div className="crop-reference-stack">
                 {stages.map((stage, index) => <div className="crop-reference-item" key={index}>
                   <div className="crop-reference-item-heading"><strong>Stage {index + 1}</strong><Button variant="ghost" type="button" onClick={() => setStages(stages.filter((_, position) => position !== index))}>Remove</Button></div>
@@ -605,6 +632,8 @@ export function AdminCropManagement({ referenceOnly = false }: { referenceOnly?:
                     <TextInput label="Stage name" value={stage.stageName} onChange={(stageName) => setStages(stages.map((item, position) => position === index ? { ...item, stageName } : item))} />
                     <TextInput label="Minimum days" value={stage.typicalMinDays} type="number" min="0" onChange={(typicalMinDays) => setStages(stages.map((item, position) => position === index ? { ...item, typicalMinDays } : item))} />
                     <TextInput label="Maximum days" value={stage.typicalMaxDays} type="number" min="0" onChange={(typicalMaxDays) => setStages(stages.map((item, position) => position === index ? { ...item, typicalMaxDays } : item))} />
+                    <TextInput label="Stage source name" value={stage.sourceName ?? ''} placeholder="Uses the profile source if empty" onChange={(sourceName) => setStages(stages.map((item, position) => position === index ? { ...item, sourceName } : item))} />
+                    <TextInput label="Stage source URL" value={stage.sourceUrl ?? ''} placeholder="Uses the profile URL if empty" onChange={(sourceUrl) => setStages(stages.map((item, position) => position === index ? { ...item, sourceUrl } : item))} />
                     <TextInput label="Evidence notes" value={stage.notes} onChange={(notes) => setStages(stages.map((item, position) => position === index ? { ...item, notes } : item))} />
                   </div>
                 </div>)}
@@ -619,13 +648,15 @@ export function AdminCropManagement({ referenceOnly = false }: { referenceOnly?:
                   <div className="form-grid">
                     <TextInput label="Rule type" value={rule.ruleType} onChange={(ruleType) => setRules(rules.map((item, position) => position === index ? { ...item, ruleType } : item))} />
                     <TextInput label="Rule key" value={rule.ruleKey} onChange={(ruleKey) => setRules(rules.map((item, position) => position === index ? { ...item, ruleKey } : item))} />
-                    <TextAreaInput label="Verified value (JSON)" value={rule.structuredValueJson} rows={3} onChange={(structuredValueJson) => setRules(rules.map((item, position) => position === index ? { ...item, structuredValueJson } : item))} />
+                    <TextInput label="Rule source name" value={rule.sourceName ?? ''} placeholder="Uses the profile source if empty" onChange={(sourceName) => setRules(rules.map((item, position) => position === index ? { ...item, sourceName } : item))} />
+                    <TextInput label="Rule source URL" value={rule.sourceUrl ?? ''} placeholder="Uses the profile URL if empty" onChange={(sourceUrl) => setRules(rules.map((item, position) => position === index ? { ...item, sourceUrl } : item))} />
+                    <TextAreaInput label="Rule value (JSON)" value={rule.structuredValueJson} rows={3} onChange={(structuredValueJson) => setRules(rules.map((item, position) => position === index ? { ...item, structuredValueJson } : item))} />
                   </div>
                 </div>)}
               </div>
               <Button variant="secondary" type="button" icon={<Plus size={15} />} onClick={() => setRules([...rules, emptyRule()])}>Add rule</Button>
             </fieldset>
-            <div className="crop-reference-submit"><Button type="submit" disabled={busy}>Create verified version</Button></div>
+            <div className="crop-reference-submit"><Button type="submit" disabled={busy}>{editingDraft ? 'Save draft changes' : 'Create reference draft'}</Button>{editingDraft ? <Button type="button" variant="secondary" onClick={() => { setEditingDraft(null); setReferenceForm(emptyReferenceForm()); setStages([emptyStage()]); setRules([]) }}>Cancel draft edit</Button> : null}</div>
           </form>
           <ResourceRequirementResearchPanel crops={crops} varieties={varieties} onSaved={() => void load().catch((cause) => setError(getErrorMessage(cause)))} />
         </section>
@@ -634,9 +665,9 @@ export function AdminCropManagement({ referenceOnly = false }: { referenceOnly?:
       <CropDialog open={cropDialogOpen} form={cropForm} error={dialogError} busy={busy} onChange={setCropForm} onClose={() => setCropDialogOpen(false)} onSubmit={saveCrop} />
       <VarietyDialog open={varietyDialogOpen} form={varietyForm} cropOptions={varietyCropOptions} error={dialogError} busy={busy} onChange={setVarietyForm} onClose={() => setVarietyDialogOpen(false)} onSubmit={saveVariety} />
       <DeleteDialog target={deleteTarget} error={dialogError} busy={busy} onCancel={() => setDeleteTarget(null)} onConfirm={confirmDelete} />
-      <ReferenceDetailsDialog state={referenceDetails} onClose={() => setReferenceDetails(null)} onRetry={(profile) => void openReferenceDetails(profile)} />
+      <ReferenceDetailsDialog state={referenceDetails} onClose={() => setReferenceDetails(null)} onRetry={(profile) => void openReferenceDetails(profile)} onPrepareDraft={prepareReferenceDraft} />
       <Modal open={Boolean(pendingPartial)} title="Use partially supported value?" description="The source does not fully support the exact crop, variety, region, or value." onClose={() => setPendingPartial(null)} footer={<><Button variant="secondary" onClick={() => setPendingPartial(null)}>Cancel</Button><Button onClick={confirmPartialUse}>Use with warning</Button></>}>
-        <Notice tone="warning">Check the original evidence before continuing. The warning remains in this review session, and the value is not verified until you submit the existing Admin form.</Notice>
+        <Notice tone="warning">Check the original evidence before continuing. The warning remains in this review session, and saving creates an inactive draft for Agricultural Officer verification.</Notice>
       </Modal>
     </div>
   )
@@ -653,16 +684,16 @@ function PrimaryCell({ title, detail }: { title: string; detail: string }) {
   return <div className="crop-admin-primary-cell"><strong>{title}</strong><span>{detail}</span></div>
 }
 
-function ReferenceDetailsDialog({ state, onClose, onRetry }: { state: ReferenceDetailsState | null; onClose: () => void; onRetry: (profile: CropReferenceProfile) => void }) {
+function ReferenceDetailsDialog({ state, onClose, onRetry, onPrepareDraft }: { state: ReferenceDetailsState | null; onClose: () => void; onRetry: (profile: CropReferenceProfile) => void; onPrepareDraft: (details: CropReferenceProfileDetails) => void }) {
   const details = state?.details
-  const title = details ? `${details.cropName} reference` : 'Verified reference details'
+  const title = details ? `${details.cropName} reference` : 'Reference details'
 
   return <Modal
     open={Boolean(state)}
     title={title}
-    description="Read-only persisted evidence from this verified reference."
+    description="Persisted evidence and officer verification state for this reference."
     onClose={onClose}
-    footer={<Button variant="secondary" onClick={onClose}>Close</Button>}
+    footer={<>{details ? <Button onClick={() => onPrepareDraft(details)}>{details.verificationState === 1 ? 'Edit draft' : 'Create new draft'}</Button> : null}<Button variant="secondary" onClick={onClose}>Close</Button></>}
   >
     {state?.loading ? <LoadingState label="Loading reference details" /> : null}
     {state?.error ? <div className="crop-reference-details-error"><ErrorState message={state.error} /><Button variant="secondary" onClick={() => onRetry(state.profile)}>Retry</Button></div> : null}

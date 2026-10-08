@@ -8,7 +8,7 @@ namespace AgriAssist.Api.Controllers.Resources;
 
 /// <summary>
 /// Member 3 Admin-only Resource Requirement Research. Research returns an unverified, sourced draft and never saves;
-/// verify stores the Admin-checked value as a ResourceRequirement rule for the WeatherResourceAgent to read.
+/// saving creates an inactive draft for Agricultural Officer review before agent use.
 /// </summary>
 [ApiController]
 [Route("api/resources/requirement-research")]
@@ -21,7 +21,9 @@ public sealed class ResourceRequirementResearchController(IResourceRequirementRe
         CancellationToken cancellationToken) =>
         Ok(await researchService.ResearchAsync(request, cancellationToken));
 
-    [HttpPost("verify")]
+    [HttpPost("draft")]
+    [HttpPost("verify")] // Compatibility alias; this endpoint creates an inactive draft.
+
     public async Task<ActionResult<VerifiedResourceRequirementResponse>> Verify(
         VerifyResourceRequirementRequest request,
         CancellationToken cancellationToken) =>

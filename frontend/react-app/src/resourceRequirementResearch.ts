@@ -26,7 +26,7 @@ export type ResourceRequirementRecommendation = {
   warnings: string[]
 }
 
-/** Unverified draft from POST /resources/requirement-research. Nothing is saved until Verify & Save. */
+/** Unverified draft from POST /resources/requirement-research. Saving creates an inactive draft for officer verification. */
 export type ResourceRequirementResearchResponse = {
   requestId: string
   status: ResourceRequirementResearchStatus
@@ -66,7 +66,7 @@ export type VerifiedResourceRequirement = {
   areaUnit: 'acre' | 'hectare'
   sourceName: string
   sourceUrl: string
-  verifiedAt: string
+  verifiedAt: string | null
   createdReferenceProfile: boolean
   replacedPreviousRule: boolean
 }

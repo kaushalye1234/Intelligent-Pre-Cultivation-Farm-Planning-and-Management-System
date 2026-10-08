@@ -26,7 +26,10 @@ public static class SchedulingEvidenceBuilder
         var coordinator = Step("CropPlanningCoordinatorAgent");
         var fieldAnalysis = Step("CropFieldAnalysisAgent");
         var weatherResource = Step("WeatherResourceAgent");
-        var pinnedProfileId = ReadRequirementProfileId(weatherResource?.OutputJson);
+        var upstreamProfileId = ReadRequirementProfileId(weatherResource?.OutputJson);
+        var pinnedProfileId = workflow.RequiredCropReferenceProfileId ?? upstreamProfileId;
+        var mismatchedPin = workflow.RequiredCropReferenceProfileId.HasValue
+            && upstreamProfileId != workflow.RequiredCropReferenceProfileId;
         var varietyName = plan.CropVarietyId.HasValue
             ? await dbContext.CropVarieties.AsNoTracking()
                 .Where(item => item.Id == plan.CropVarietyId.Value && !item.IsDeleted)
@@ -36,9 +39,13 @@ public static class SchedulingEvidenceBuilder
         var profiles = await dbContext.CropReferenceProfiles.AsNoTracking()
             .Include(item => item.Stages)
             .Include(item => item.Rules)
+            .Include(item => item.FieldWaterRegimeVerification)
             .Where(item => item.CropTypeId == plan.CropTypeId && item.IsActive && !item.IsDeleted && item.VerifiedAt <= DateTime.UtcNow)
             .ToListAsync(cancellationToken);
         var compatibleProfiles = profiles
+            .Where(item => !mismatchedPin)
+            .Where(item => !workflow.RequiredCropReferenceProfileId.HasValue
+                || CropReferenceCompatibility.IsVerifiedForPlan(item, plan, workflow.RequiredCropReferenceVersion))
             .Where(item => item.VarietyName is null || string.Equals(item.VarietyName, varietyName, StringComparison.OrdinalIgnoreCase))
             .Where(item => CropReferenceRegionMatcher.Rank(item.Region, plan.Farm) >= 0)
             .ToArray();
@@ -84,7 +91,7 @@ public static class SchedulingEvidenceBuilder
                 .Select(item => item.Id).ToArray() ?? []);
     }
 
-    private static Guid? ReadRequirementProfileId(string? outputJson)
+    internal static Guid? ReadRequirementProfileId(string? outputJson)
     {
         if (string.IsNullOrWhiteSpace(outputJson)) return null;
         try

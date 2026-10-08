@@ -74,7 +74,7 @@ public sealed class CropReferenceProfileRequestValidator : IRequestValidator<Cro
         if (string.IsNullOrWhiteSpace(request.SourceName) || request.SourceName.Length > 180) errors.Add("Source name is required and must be 180 characters or fewer.");
         if (request.SourceUrl?.Length > 1000) errors.Add("Source URL must be 1000 characters or fewer.");
         if (string.IsNullOrWhiteSpace(request.SourceVersion) || request.SourceVersion.Length > 120) errors.Add("Source version is required and must be 120 characters or fewer.");
-        if (request.VerifiedAt == default || request.VerifiedAt > DateTime.UtcNow) errors.Add("Verification date must be in the past.");
+        if (request.VerifiedAt.HasValue && request.VerifiedAt.Value != default) errors.Add("Verification time is recorded by the server after officer review.");
         if (request.Stages is null || request.Rules is null || request.Stages.Count + request.Rules.Count == 0) errors.Add("At least one reference stage or rule is required.");
         foreach (var stage in request.Stages ?? [])
         {
@@ -82,10 +82,14 @@ public sealed class CropReferenceProfileRequestValidator : IRequestValidator<Cro
             if (stage.Sequence < 1) errors.Add("Stage sequence must be positive.");
             if (stage.TypicalMinDays < 0 || stage.TypicalMaxDays < 0 ||
                 (stage.TypicalMinDays.HasValue && stage.TypicalMaxDays.HasValue && stage.TypicalMaxDays < stage.TypicalMinDays)) errors.Add("Stage duration range is invalid.");
+            if (stage.SourceName is not null && (string.IsNullOrWhiteSpace(stage.SourceName) || stage.SourceName.Length > 180)) errors.Add("Stage source name must contain text and be 180 characters or fewer.");
+            if (stage.SourceUrl is not null && (stage.SourceUrl.Length > 1000 || !Uri.TryCreate(stage.SourceUrl, UriKind.Absolute, out var stageUri) || stageUri.Scheme is not ("http" or "https"))) errors.Add("Stage source URL must be an HTTP or HTTPS URL of 1000 characters or fewer.");
             if (stage.Notes?.Length > 1000) errors.Add("Stage notes must be 1000 characters or fewer.");
         }
         foreach (var rule in request.Rules ?? [])
         {
+            if (rule.SourceName is not null && (string.IsNullOrWhiteSpace(rule.SourceName) || rule.SourceName.Length > 180)) errors.Add("Rule source name must contain text and be 180 characters or fewer.");
+            if (rule.SourceUrl is not null && (rule.SourceUrl.Length > 1000 || !Uri.TryCreate(rule.SourceUrl, UriKind.Absolute, out var ruleUri) || ruleUri.Scheme is not ("http" or "https"))) errors.Add("Rule source URL must be an HTTP or HTTPS URL of 1000 characters or fewer.");
             if (string.IsNullOrWhiteSpace(rule.RuleType) || rule.RuleType.Length > 120) errors.Add("Rule type is required and must be 120 characters or fewer.");
             if (string.IsNullOrWhiteSpace(rule.RuleKey) || rule.RuleKey.Length > 160) errors.Add("Rule key is required and must be 160 characters or fewer.");
             if (string.IsNullOrWhiteSpace(rule.StructuredValueJson))
@@ -290,5 +294,47 @@ public static class PrePlantingAssessmentRules
     private static void RequireText(string? value, string name, List<string> errors)
     {
         if (string.IsNullOrWhiteSpace(value)) errors.Add($"{name} is required before submission.");
+    }
+}
+
+
+public sealed class StartReplacementRequestValidator : IRequestValidator<StartReplacementRequest>
+{
+    public IReadOnlyList<string> Validate(StartReplacementRequest request)
+    {
+        var errors = new List<string>();
+        if (request is null) return ["Replacement details are required."];
+        if (request.BlockedWorkflowId == Guid.Empty) errors.Add("A blocked workflow is required.");
+        if (request.VerifiedProfileId == Guid.Empty) errors.Add("A verified profile is required.");
+        if (request.IdempotencyKey == Guid.Empty) errors.Add("An idempotency key is required.");
+        return errors;
+    }
+}
+
+
+public sealed class VerifyReferenceRequestValidator : IRequestValidator<VerifyReferenceRequest>
+{
+    public IReadOnlyList<string> Validate(VerifyReferenceRequest request)
+    {
+        var errors = new List<string>();
+        if (request is null) return ["Verification details are required."];
+        if (!request.Confirmed) errors.Add("Confirm the officer review before verification.");
+        if (request.FieldId == Guid.Empty) errors.Add("An observed field is required.");
+        if (!Enum.IsDefined(request.WaterRegime)) errors.Add("Choose Irrigated or Rainfed.");
+        if (request.ExpectedDraftVersion < 1) errors.Add("A draft version is required.");
+        if (string.IsNullOrWhiteSpace(request.Observation) || request.Observation.Length > 2000)
+            errors.Add("An officer observation of 2000 characters or fewer is required.");
+        return errors;
+    }
+}
+
+public sealed class CropReferenceDraftUpdateRequestValidator : IRequestValidator<CropReferenceDraftUpdateRequest>
+{
+    public IReadOnlyList<string> Validate(CropReferenceDraftUpdateRequest request)
+    {
+        if (request is null || request.Profile is null) return ["A reference draft is required."];
+        var errors = new List<string>(new CropReferenceProfileRequestValidator().Validate(request.Profile));
+        if (request.ExpectedDraftVersion < 1) errors.Add("The expected draft version is required.");
+        return errors;
     }
 }

@@ -1,4 +1,4 @@
-﻿using AgriAssist.Api.Dtos.CropPlanning;
+using AgriAssist.Api.Dtos.CropPlanning;
 using AgriAssist.Api.Dtos.Shared;
 
 namespace AgriAssist.Api.Services.CropPlanning;
@@ -28,6 +28,7 @@ public interface ICropPlanningService
     Task<PagedResult<CropReferenceProfileResponse>> SearchReferenceProfilesAsync(PagedQuery query, Guid? cropTypeId, CancellationToken cancellationToken);
     Task<CropReferenceProfileDetailsResponse> GetReferenceProfileAsync(Guid id, CancellationToken cancellationToken);
     Task<CropReferenceProfileResponse> CreateReferenceProfileAsync(CropReferenceProfileRequest request, CancellationToken cancellationToken);
+    Task<CropReferenceProfileDetailsResponse> UpdateReferenceDraftAsync(Guid id, CropReferenceDraftUpdateRequest request, CancellationToken cancellationToken);
     Task<CropReferenceProfileResponse> SetReferenceProfileActiveAsync(Guid id, bool isActive, CancellationToken cancellationToken);
 
     Task<PagedResult<CropCycleResponse>> SearchCropCyclesAsync(PagedQuery query, Guid? fieldId, CancellationToken cancellationToken);
@@ -42,6 +43,7 @@ public interface ICropPlanningService
     Task<CropPlanRequestResponse> GeneratePreliminaryRequestAsync(CropPlanRequestCreate request, CancellationToken cancellationToken);
     Task<IReadOnlyList<CropPlanHistoryResponse>> GetCropPlanHistoryAsync(Guid requestId, CancellationToken cancellationToken);
     Task<CropPlanningWorkflowStartResponse> StartAiWorkflowAsync(Guid requestId, CancellationToken cancellationToken);
+    Task<CropPlanningWorkflowStartResponse> StartReplacementWorkflowAsync(Guid requestId, StartReplacementRequest request, CancellationToken cancellationToken);
     Task<PrePlantingAssessmentResponse?> GetPrePlantingAssessmentAsync(Guid requestId, CancellationToken cancellationToken);
     Task<PrePlantingContextResponse> GetPrePlantingContextAsync(Guid requestId, CancellationToken cancellationToken);
     Task<InspectionNoteAssistanceResponse> GenerateInspectionNoteSuggestionsAsync(Guid requestId, InspectionNoteAssistanceRequest request, CancellationToken cancellationToken);

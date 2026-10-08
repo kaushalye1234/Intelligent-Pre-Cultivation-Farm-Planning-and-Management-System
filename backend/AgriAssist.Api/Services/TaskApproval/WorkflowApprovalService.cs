@@ -62,6 +62,56 @@ public sealed class WorkflowApprovalService(
         return await MapReviewAsync(workflow, cancellationToken);
     }
 
+    public async Task<WorkflowEvidenceResolutionResponse> GetEvidenceResolutionAsync(Guid workflowId, CancellationToken cancellationToken)
+    {
+        RequireSchedulingOperator();
+        var workflow = await LoadForReviewAsync(workflowId, false, cancellationToken);
+        var plan = workflow.CropPlanRequest ?? throw NotFound("Crop plan request");
+        var review = await MapReviewAsync(workflow, cancellationToken);
+        var profiles = await dbContext.CropReferenceProfiles.AsNoTracking().Include(item => item.Stages)
+            .Include(item => item.Rules).Include(item => item.FieldWaterRegimeVerification)
+            .Where(item => item.CropTypeId == plan.CropTypeId && !item.IsDeleted)
+            .OrderByDescending(item => item.CreatedAt).ToListAsync(cancellationToken);
+        var compatible = profiles.Where(item => CropReferenceCompatibility.IsVerifiedForPlan(item, plan)
+            && item.Stages.Any(stage => !stage.IsDeleted)
+            && item.Rules.Any(rule => !rule.IsDeleted && rule.RuleType == CropResourceRequirementRule.RuleType))
+            .Select(item => item.Id).ToArray();
+        var successor = await dbContext.AgentWorkflows.AsNoTracking()
+            .Where(item => item.SupersedesWorkflowId == workflowId).Select(item => new { item.Id, item.CurrentStep })
+            .SingleOrDefaultAsync(cancellationToken);
+        var latestId = await dbContext.AgentWorkflows.AsNoTracking()
+            .Where(item => item.CropPlanRequestId == plan.Id && !item.IsDeleted)
+            .OrderByDescending(item => item.CreatedAt).ThenByDescending(item => item.Id)
+            .Select(item => item.Id).FirstOrDefaultAsync(cancellationToken);
+        var eligible = successor is null && latestId == workflow.Id
+            && workflow.Status is AgentWorkflowStatus.MissingDependency or AgentWorkflowStatus.CandidateBlocked
+            && plan.Status is CropPlanRequestStatus.Submitted or CropPlanRequestStatus.PreliminaryGenerated
+            && plan.PreferredStartDate > DateOnly.FromDateTime(DateTime.UtcNow)
+            && plan.PreferredEndDate > plan.PreferredStartDate;
+        var next = successor is not null ? successor.CurrentStep switch
+        {
+            "Completed" => "Farmer",
+            "CropFieldAnalysisAgent" => "FieldOfficer",
+            "WeatherResourceAgent" => "ResourceOfficer",
+            "SchedulingValidationAgent" or "HumanApproval" => "AgriculturalOfficer",
+            _ => "Admin"
+        } : compatible.Length == 0 ? "AgriculturalOfficer" : "Admin";
+        var blocked = review.Validations.SelectMany(item => item.Errors.Concat(item.Warnings))
+            .Concat(review.Steps.Where(item => item.ErrorMessageSafe is not null).Select(item => item.ErrorMessageSafe!))
+            .Distinct().ToArray();
+        var member3 = workflow.Steps.Where(item => item.AgentName == "WeatherResourceAgent" && item.Status == AgentStepStatus.Completed)
+            .OrderByDescending(item => item.CompletedAt).FirstOrDefault();
+        return new WorkflowEvidenceResolutionResponse(workflow.Id, plan.Id, plan.CropTypeId,
+            plan.CropType?.Name ?? "", plan.CropVarietyId, plan.CropVariety?.Name, plan.FieldId, plan.Field?.Name,
+            plan.Farm?.District ?? plan.Farm?.Location, workflow.Status, plan.PreferredStartDate, plan.PreferredEndDate,
+            workflow.RequiredCropReferenceProfileId ?? SchedulingEvidenceBuilder.ReadRequirementProfileId(member3?.OutputJson),
+            blocked, profiles.Select(item => new CropReferenceProfileResponse(item.Id, item.CropTypeId, item.VarietyName,
+                item.Region, item.SourceName, item.SourceUrl, item.SourceVersion, item.VerifiedAt, item.IsActive,
+                item.Stages.Count(stage => !stage.IsDeleted), item.Rules.Count(rule => !rule.IsDeleted),
+                item.VerificationState, item.DraftVersion)).ToArray(), compatible, successor?.Id,
+            next, eligible && compatible.Length > 0 && currentUser.Role == ApplicationRole.Admin);
+    }
+
     public async Task<WorkflowHistoryResponse> GetHistoryAsync(Guid workflowId, CancellationToken cancellationToken)
     {
         var review = await GetAsync(workflowId, cancellationToken);
@@ -706,6 +756,8 @@ public sealed class WorkflowApprovalService(
                 errors.Add("Rejected crop-health guidance requires a bounded staff-only reason.");
         }
 
+        if (workflow.RequiredCropReferenceProfileId.HasValue && output.ContractVersion < 2)
+            errors.Add("Replacement workflows require source-attributed scheduling contract version 2.");
         if (output.ContractVersion >= 2)
             errors.AddRange(await ValidateVersionTwoAsync(workflow, output, cancellationToken));
 
@@ -1014,12 +1066,18 @@ public sealed class WorkflowApprovalService(
     {
         IQueryable<AgentWorkflow> query = dbContext.AgentWorkflows
             .Include(item => item.CropPlanRequest)!.ThenInclude(item => item!.Farm)
+            .Include(item => item.CropPlanRequest)!.ThenInclude(item => item!.Field)
+            .Include(item => item.CropPlanRequest)!.ThenInclude(item => item!.CropVariety)
+            .Include(item => item.CropPlanRequest)!.ThenInclude(item => item!.CropType)
             .Include(item => item.Steps)
             .Include(item => item.ValidationResults)
             .Where(item => !item.IsDeleted);
         if (!asTracking) query = query.AsNoTracking();
-        return await ApplyAccess(query).SingleOrDefaultAsync(item => item.Id == workflowId, cancellationToken)
+        var workflow = await ApplyAccess(query).SingleOrDefaultAsync(item => item.Id == workflowId, cancellationToken)
             ?? throw NotFound("AI workflow");
+        if (asTracking && await dbContext.AgentWorkflows.AsNoTracking().AnyAsync(item => item.SupersedesWorkflowId == workflowId, cancellationToken))
+            throw Conflict("WORKFLOW_SUPERSEDED", "This blocked workflow is preserved as history; continue its replacement.");
+        return workflow;
     }
 
     private IQueryable<AgentWorkflow> ApplyAccess(IQueryable<AgentWorkflow> query)

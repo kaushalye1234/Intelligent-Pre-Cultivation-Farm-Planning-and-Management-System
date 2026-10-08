@@ -1,4 +1,4 @@
-﻿using AgriAssist.Api.Models.CropPlanning;
+using AgriAssist.Api.Models.CropPlanning;
 using AgriAssist.Api.Models.Inspections;
 using AgriAssist.Api.Models.Resources;
 using AgriAssist.Api.Models.Shared;
@@ -18,6 +18,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<CropPlanRequest> CropPlanRequests => Set<CropPlanRequest>();
     public DbSet<CropPlanRequestHistory> CropPlanRequestHistories => Set<CropPlanRequestHistory>();
     public DbSet<CropReferenceProfile> CropReferenceProfiles => Set<CropReferenceProfile>();
+    public DbSet<FieldWaterRegimeVerification> FieldWaterRegimeVerifications => Set<FieldWaterRegimeVerification>();
     public DbSet<CropStageReference> CropStageReferences => Set<CropStageReference>();
     public DbSet<CropRuleReference> CropRuleReferences => Set<CropRuleReference>();
     public DbSet<FieldInspection> FieldInspections => Set<FieldInspection>();
@@ -146,9 +147,23 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.Property(profile => profile.SourceName).IsRequired().HasMaxLength(180);
             entity.Property(profile => profile.SourceUrl).HasMaxLength(1000);
             entity.Property(profile => profile.SourceVersion).IsRequired().HasMaxLength(120);
+            entity.Property(profile => profile.VerificationState).HasConversion<string>().HasMaxLength(32).HasDefaultValue(CropReferenceVerificationState.LegacyReviewRequired);
+            entity.Property(profile => profile.DraftVersion).IsConcurrencyToken().HasDefaultValue(1);
+            entity.Property(profile => profile.WaterRegime).HasConversion<string>().HasMaxLength(20);
+            entity.HasOne<AppUser>().WithMany().HasForeignKey(profile => profile.VerifiedByUserId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(profile => profile.FieldWaterRegimeVerification).WithMany().HasForeignKey(profile => profile.FieldWaterRegimeVerificationId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(profile => profile.CropType).WithMany().HasForeignKey(profile => profile.CropTypeId).OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(profile => new { profile.CropTypeId, profile.VarietyName, profile.Region, profile.IsActive });
             entity.HasIndex(profile => profile.VerifiedAt);
+        });
+
+        modelBuilder.Entity<FieldWaterRegimeVerification>(entity =>
+        {
+            entity.Property(item => item.WaterRegime).HasConversion<string>().HasMaxLength(20);
+            entity.Property(item => item.Observation).IsRequired().HasMaxLength(2000);
+            entity.HasOne(item => item.Field).WithMany().HasForeignKey(item => item.FieldId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<AppUser>().WithMany().HasForeignKey(item => item.VerifiedByUserId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(item => new { item.FieldId, item.VerifiedAt });
         });
 
         modelBuilder.Entity<CropStageReference>(entity =>
@@ -373,6 +388,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.HasOne(workflow => workflow.CropPlanRequest).WithMany().HasForeignKey(workflow => workflow.CropPlanRequestId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(workflow => workflow.InitiatedByUser).WithMany().HasForeignKey(workflow => workflow.InitiatedByUserId).OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(workflow => workflow.CropPlanRequestId);
+            entity.HasOne<CropReferenceProfile>().WithMany().HasForeignKey(workflow => workflow.RequiredCropReferenceProfileId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<AgentWorkflow>().WithMany().HasForeignKey(workflow => workflow.SupersedesWorkflowId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(workflow => workflow.SupersedesWorkflowId).IsUnique();
+            entity.HasIndex(workflow => new { workflow.CropPlanRequestId, workflow.ReplacementIdempotencyKey }).IsUnique();
             entity.HasIndex(workflow => workflow.Status);
         });
 

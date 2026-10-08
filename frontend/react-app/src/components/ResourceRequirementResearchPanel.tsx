@@ -27,7 +27,7 @@ function safeUrl(value: string) {
 
 /**
  * Member 3 Admin-only Resource Requirement Research. Research returns an unverified, sourced draft; only
- * "Verify & Save" stores a ResourceRequirement rule, which the WeatherResourceAgent then reads from the database.
+ * "Save draft for officer review" creates an inactive reference; agents require subsequent officer verification.
  */
 export function ResourceRequirementResearchPanel({ crops, varieties, onSaved }: {
   crops: CropType[]
@@ -86,12 +86,12 @@ export function ResourceRequirementResearchPanel({ crops, varieties, onSaved }: 
     setMessage('Research result rejected. Nothing was saved.')
   }
 
-  async function verifyAndSave(draft: ResourceRequirementResearchResponse, recommendation: ResourceRequirementRecommendation) {
+  async function saveDraft(draft: ResourceRequirementResearchResponse, recommendation: ResourceRequirementRecommendation) {
     setBusy('save')
     setError('')
     try {
       const source = recommendation.source
-      const response = await api.post<VerifiedResourceRequirement>('/resources/requirement-research/verify', {
+      const response = await api.post<VerifiedResourceRequirement>('/resources/requirement-research/draft', {
         cropTypeId: draft.cropTypeId,
         resourceId: draft.resourceId,
         cropVarietyId: draft.cropVarietyId || null,
@@ -107,7 +107,7 @@ export function ResourceRequirementResearchPanel({ crops, varieties, onSaved }: 
       const saved = response.data
       setResult(null)
       setConfirmed({})
-      setMessage(`Verified requirement saved: ${saved.resourceName} ${saved.quantityPerArea} ${saved.resourceUnit}/${saved.areaUnit} for ${draft.cropName}.`)
+      setMessage(`Inactive draft saved for officer review: ${saved.resourceName} ${saved.quantityPerArea} ${saved.resourceUnit}/${saved.areaUnit} for ${draft.cropName}.`)
       onSaved?.()
     } catch (cause) {
       setError(`${getErrorMessage(cause)} No rule was saved.`)
@@ -122,7 +122,7 @@ export function ResourceRequirementResearchPanel({ crops, varieties, onSaved }: 
         <div>
           <span className="crop-finding-label">AI Research Draft · Needs Admin Verification</span>
           <h3>Resource requirement research</h3>
-          <p>Research how much of one inventory resource a crop needs, from approved agricultural sources only. Nothing is saved until you choose Verify &amp; Save.</p>
+          <p>Research how much of one inventory resource a crop needs, from approved agricultural sources only. Nothing is saved until you choose Save draft for officer review.</p>
         </div>
       </div>
       <div className="form-grid">
@@ -177,12 +177,12 @@ export function ResourceRequirementResearchPanel({ crops, varieties, onSaved }: 
                       {' '}I checked this value against the cited source.
                     </label>
                     <div className="crop-reference-submit">
-                      <Button icon={busy === 'save' ? <Loader2 className="spin" size={16} /> : <ShieldCheck size={16} />} disabled={!confirmed[recommendation.id] || busy !== null} onClick={() => void verifyAndSave(result, recommendation)}>
-                        Verify &amp; Save
+                      <Button icon={busy === 'save' ? <Loader2 className="spin" size={16} /> : <ShieldCheck size={16} />} disabled={!confirmed[recommendation.id] || busy !== null} onClick={() => void saveDraft(result, recommendation)}>
+                        Save draft for officer review
                       </Button>
                     </div>
                   </>
-                ) : <Notice tone="info">This value cannot be saved: it does not use the inventory unit {result.resourceUnit} or was not verified.</Notice>}
+                ) : <Notice tone="info">This value cannot be saved: it does not use the inventory unit {result.resourceUnit} or has unsupported evidence.</Notice>}
               </article>
             )
           })}

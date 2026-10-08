@@ -186,3 +186,13 @@ public sealed record WorkflowHistoryResponse(
     IReadOnlyList<WorkflowStepReviewResponse> Steps,
     IReadOnlyList<WorkflowValidationResponse> Validations,
     IReadOnlyList<ApprovalDecisionResponse> Decisions);
+
+
+public sealed record WorkflowEvidenceResolutionResponse(
+    Guid WorkflowId, Guid CropPlanRequestId, Guid CropTypeId, string CropName, Guid? CropVarietyId,
+    string? VarietyName, Guid? FieldId, string? FieldName, string? Region,
+    AgentWorkflowStatus Status, DateOnly PreferredStartDate, DateOnly PreferredEndDate,
+    Guid? PinnedProfileId, IReadOnlyList<string> BlockingReasons,
+    IReadOnlyList<AgriAssist.Api.Dtos.CropPlanning.CropReferenceProfileResponse> Profiles,
+    IReadOnlyList<Guid> CompatibleVerifiedProfileIds, Guid? SuccessorWorkflowId,
+    string NextResponsibleRole, bool CanStartReplacement);

@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Text.Json;
 using System.Data;
 using AgriAssist.Api.Data;
@@ -13,6 +13,7 @@ using AgriAssist.Api.Models.Shared;
 using AgriAssist.Api.Models.TaskApproval;
 using AgriAssist.Api.Services.Shared;
 using AgriAssist.Api.Services.Inspections;
+using AgriAssist.Api.Services.Resources;
 using AgriAssist.Api.Dtos.TaskApproval;
 using AgriAssist.Api.Dtos.Resources;
 using AgriAssist.Api.Validators.CropPlanning;
@@ -436,7 +437,7 @@ public sealed class CropPlanningService(
         var items = await profiles.Skip((query.Page - 1) * query.PageSize).Take(query.PageSize)
             .Select(item => new CropReferenceProfileResponse(item.Id, item.CropTypeId, item.VarietyName, item.Region,
                 item.SourceName, item.SourceUrl, item.SourceVersion, item.VerifiedAt, item.IsActive,
-                item.Stages.Count, item.Rules.Count)).ToListAsync(cancellationToken);
+                item.Stages.Count, item.Rules.Count, item.VerificationState, item.DraftVersion)).ToListAsync(cancellationToken);
         return new PagedResult<CropReferenceProfileResponse>(items, query.Page, query.PageSize, total);
     }
 
@@ -464,12 +465,13 @@ public sealed class CropPlanningService(
             profile.IsActive,
             profile.Stages.OrderBy(item => item.Sequence)
                 .Select(item => new CropReferenceStageResponse(
-                    item.Id, item.StageName, item.Sequence, item.TypicalMinDays, item.TypicalMaxDays, item.Notes))
+                    item.Id, item.StageName, item.Sequence, item.TypicalMinDays, item.TypicalMaxDays, item.Notes, item.SourceName, item.SourceUrl))
                 .ToArray(),
             profile.Rules.OrderBy(item => item.RuleType).ThenBy(item => item.RuleKey)
                 .Select(item => new CropReferenceRuleResponse(
-                    item.Id, item.RuleType, item.RuleKey, item.StructuredValueJson))
-                .ToArray());
+                    item.Id, item.RuleType, item.RuleKey, item.StructuredValueJson, item.SourceName, item.SourceUrl))
+                .ToArray(), profile.VerificationState, profile.VerifiedByUserId, profile.DraftVersion,
+            profile.WaterRegime, profile.FieldWaterRegimeVerificationId);
     }
 
     public async Task<CropReferenceProfileResponse> CreateReferenceProfileAsync(CropReferenceProfileRequest request, CancellationToken cancellationToken)
@@ -485,23 +487,23 @@ public sealed class CropPlanningService(
                 .Select(item => item.Name).SingleOrDefaultAsync(cancellationToken)
                 ?? throw new ApiException(HttpStatusCode.BadRequest, "INVALID_CROP_VARIETY", "Selected variety is not active for this crop.");
         }
-        var verifiedAt = request.VerifiedAt.ToUniversalTime();
         var profile = new CropReferenceProfile
         {
             CropTypeId = request.CropTypeId, VarietyName = varietyName, Region = request.Region?.Trim(),
             SourceName = request.SourceName.Trim(), SourceUrl = request.SourceUrl?.Trim(),
-            SourceVersion = request.SourceVersion.Trim(), VerifiedAt = verifiedAt,
+            SourceVersion = request.SourceVersion.Trim(), VerifiedAt = null, IsActive = false,
+            VerificationState = CropReferenceVerificationState.Draft, DraftVersion = 1,
             CreatedByUserId = currentUser.UserId,
             Stages = request.Stages.Select(item => new CropStageReference
             {
                 StageName = item.StageName.Trim(), Sequence = item.Sequence, TypicalMinDays = item.TypicalMinDays,
-                TypicalMaxDays = item.TypicalMaxDays, Notes = item.Notes?.Trim(), SourceName = request.SourceName.Trim(),
-                SourceUrl = request.SourceUrl?.Trim(), CreatedByUserId = currentUser.UserId
+                TypicalMaxDays = item.TypicalMaxDays, Notes = item.Notes?.Trim(), SourceName = item.SourceName?.Trim() ?? request.SourceName.Trim(),
+                SourceUrl = item.SourceUrl?.Trim() ?? request.SourceUrl?.Trim(), CreatedByUserId = currentUser.UserId
             }).ToList(),
             Rules = request.Rules.Select(item => new CropRuleReference
             {
                 RuleType = item.RuleType.Trim(), RuleKey = item.RuleKey.Trim(), StructuredValueJson = item.StructuredValueJson,
-                SourceName = request.SourceName.Trim(), SourceUrl = request.SourceUrl?.Trim(), VerifiedAt = verifiedAt,
+                SourceName = item.SourceName?.Trim() ?? request.SourceName.Trim(), SourceUrl = item.SourceUrl?.Trim() ?? request.SourceUrl?.Trim(), VerifiedAt = default,
                 CreatedByUserId = currentUser.UserId
             }).ToList()
         };
@@ -510,11 +512,65 @@ public sealed class CropPlanningService(
         return MapReferenceProfile(profile);
     }
 
+    public async Task<CropReferenceProfileDetailsResponse> UpdateReferenceDraftAsync(Guid id, CropReferenceDraftUpdateRequest request, CancellationToken cancellationToken)
+    {
+        RequireReferenceManager();
+        Validate(new CropReferenceDraftUpdateRequestValidator().Validate(request));
+        var profile = await dbContext.CropReferenceProfiles.Include(item => item.Stages).Include(item => item.Rules)
+            .SingleOrDefaultAsync(item => item.Id == id && !item.IsDeleted, cancellationToken) ?? throw NotFound("Crop reference profile");
+        if (profile.VerificationState != CropReferenceVerificationState.Draft || profile.IsActive)
+            throw new ApiException(HttpStatusCode.Conflict, "REFERENCE_NOT_DRAFT", "Only an inactive draft can be edited.");
+        if (profile.DraftVersion != request.ExpectedDraftVersion)
+            throw new ApiException(HttpStatusCode.Conflict, "REFERENCE_DRAFT_STALE", "The reference changed; reload it before editing.");
+        if (profile.CropTypeId != request.Profile.CropTypeId)
+            throw new ApiException(HttpStatusCode.BadRequest, "CROP_TYPE_CHANGE", "Create a new draft to change the crop type.");
+        string? varietyName = null;
+        if (request.Profile.CropVarietyId is { } varietyId)
+            varietyName = await dbContext.CropVarieties.AsNoTracking()
+                .Where(item => item.Id == varietyId && item.CropTypeId == profile.CropTypeId && item.IsActive && !item.IsDeleted)
+                .Select(item => item.Name).SingleOrDefaultAsync(cancellationToken)
+                ?? throw new ApiException(HttpStatusCode.BadRequest, "INVALID_CROP_VARIETY", "Selected variety is not active for this crop.");
+        var now = DateTime.UtcNow;
+        dbContext.CropStageReferences.RemoveRange(profile.Stages);
+        dbContext.CropRuleReferences.RemoveRange(profile.Rules);
+        profile.Stages = request.Profile.Stages.Select(item => new CropStageReference
+        {
+            StageName = item.StageName.Trim(), Sequence = item.Sequence, TypicalMinDays = item.TypicalMinDays,
+            TypicalMaxDays = item.TypicalMaxDays, Notes = item.Notes?.Trim(),
+            SourceName = item.SourceName?.Trim() ?? request.Profile.SourceName.Trim(), SourceUrl = item.SourceUrl?.Trim() ?? request.Profile.SourceUrl?.Trim(),
+            CreatedByUserId = currentUser.UserId
+        }).ToList();
+        profile.Rules = request.Profile.Rules.Select(item => new CropRuleReference
+        {
+            RuleType = item.RuleType.Trim(), RuleKey = item.RuleKey.Trim(), StructuredValueJson = item.StructuredValueJson,
+            SourceName = item.SourceName?.Trim() ?? request.Profile.SourceName.Trim(), SourceUrl = item.SourceUrl?.Trim() ?? request.Profile.SourceUrl?.Trim(),
+            VerifiedAt = default, CreatedByUserId = currentUser.UserId
+        }).ToList();
+        dbContext.CropStageReferences.AddRange(profile.Stages);
+        dbContext.CropRuleReferences.AddRange(profile.Rules);
+        profile.VarietyName = varietyName;
+        profile.Region = request.Profile.Region?.Trim();
+        profile.SourceName = request.Profile.SourceName.Trim();
+        profile.SourceUrl = request.Profile.SourceUrl?.Trim();
+        profile.SourceVersion = request.Profile.SourceVersion.Trim();
+        profile.DraftVersion++;
+        profile.UpdatedAt = now;
+        profile.UpdatedByUserId = currentUser.UserId;
+        try { await dbContext.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new ApiException(HttpStatusCode.Conflict, "REFERENCE_DRAFT_STALE", "The reference changed; reload it before editing.");
+        }
+        return await GetReferenceProfileAsync(id, cancellationToken);
+    }
+
     public async Task<CropReferenceProfileResponse> SetReferenceProfileActiveAsync(Guid id, bool isActive, CancellationToken cancellationToken)
     {
         RequireReferenceManager();
         var profile = await dbContext.CropReferenceProfiles.Include(item => item.Stages).Include(item => item.Rules)
             .SingleOrDefaultAsync(item => item.Id == id && !item.IsDeleted, cancellationToken) ?? throw NotFound("Crop reference profile");
+        if (isActive && profile.VerificationState != CropReferenceVerificationState.Verified)
+            throw new ApiException(HttpStatusCode.Conflict, "REFERENCE_NOT_VERIFIED", "An Agricultural Officer must verify the complete draft before activation.");
         profile.IsActive = isActive;
         profile.UpdatedAt = DateTime.UtcNow;
         profile.UpdatedByUserId = currentUser.UserId;
@@ -744,7 +800,18 @@ public sealed class CropPlanningService(
     }
 
 
-    public async Task<CropPlanningWorkflowStartResponse> StartAiWorkflowAsync(Guid requestId, CancellationToken cancellationToken)
+    public Task<CropPlanningWorkflowStartResponse> StartAiWorkflowAsync(Guid requestId, CancellationToken cancellationToken) =>
+        StartWorkflowAsync(requestId, null, cancellationToken);
+
+    public Task<CropPlanningWorkflowStartResponse> StartReplacementWorkflowAsync(Guid requestId, StartReplacementRequest request, CancellationToken cancellationToken)
+    {
+        if (currentUser.Role != ApplicationRole.Admin)
+            throw new ApiException(HttpStatusCode.Forbidden, "ADMIN_REQUIRED", "An Admin must start a replacement workflow.");
+        Validate(new StartReplacementRequestValidator().Validate(request));
+        return StartWorkflowAsync(requestId, request, cancellationToken);
+    }
+
+    private async Task<CropPlanningWorkflowStartResponse> StartWorkflowAsync(Guid requestId, StartReplacementRequest? replacement, CancellationToken cancellationToken)
     {
         await using var startTransaction = UsesPostgreSql
             ? await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken)
@@ -762,27 +829,61 @@ public sealed class CropPlanningService(
             .SingleOrDefaultAsync(item => item.Id == requestId, cancellationToken)
             ?? throw NotFound("Crop plan request");
 
-        if (request.Status == CropPlanRequestStatus.PreliminaryGenerated)
+        CropReferenceProfile? requiredProfile = null;
+        if (replacement is null)
         {
-            throw new ApiException(HttpStatusCode.Conflict, "AI_WORKFLOW_ALREADY_COMPLETED", "Member 1 AI planning has already completed for this crop plan request.");
-        }
-        if (request.Status != CropPlanRequestStatus.Submitted)
-        {
-            throw new ApiException(HttpStatusCode.BadRequest, "CROP_PLAN_STATE_NOT_ALLOWED", "Only a submitted crop plan request can start or retry AI planning.");
-        }
+            if (request.Status == CropPlanRequestStatus.PreliminaryGenerated)
+            {
+                throw new ApiException(HttpStatusCode.Conflict, "AI_WORKFLOW_ALREADY_COMPLETED", "Member 1 AI planning has already completed for this crop plan request.");
+            }
+            if (request.Status != CropPlanRequestStatus.Submitted)
+            {
+                throw new ApiException(HttpStatusCode.BadRequest, "CROP_PLAN_STATE_NOT_ALLOWED", "Only a submitted crop plan request can start or retry AI planning.");
+            }
 
-        var latestWorkflow = await LatestWorkflowQuery(requestId)
-            .AsNoTracking()
-            .Include(item => item.Steps)
-            .SingleOrDefaultAsync(cancellationToken);
-        var lifecycle = CropPlanLifecycleProjector.Project(request.Status, latestWorkflow);
-        if (lifecycle.StatusCode == CropPlanLifecycleProjector.AiPlanning)
-        {
-            throw new ApiException(HttpStatusCode.Conflict, "AI_WORKFLOW_ALREADY_ACTIVE", "Member 1 AI planning is already active for this crop plan request.");
+            var latestWorkflow = await LatestWorkflowQuery(requestId)
+                .AsNoTracking()
+                .Include(item => item.Steps)
+                .SingleOrDefaultAsync(cancellationToken);
+            var lifecycle = CropPlanLifecycleProjector.Project(request.Status, latestWorkflow);
+            if (lifecycle.StatusCode == CropPlanLifecycleProjector.AiPlanning)
+            {
+                throw new ApiException(HttpStatusCode.Conflict, "AI_WORKFLOW_ALREADY_ACTIVE", "Member 1 AI planning is already active for this crop plan request.");
+            }
+            if (lifecycle.StatusCode is not (CropPlanLifecycleProjector.Pending or CropPlanLifecycleProjector.AiPlanningFailed))
+            {
+                throw new ApiException(HttpStatusCode.Conflict, "CROP_PLAN_STATE_NOT_ALLOWED", "The latest crop plan workflow state cannot start or retry Member 1 AI planning.");
+            }
         }
-        if (lifecycle.StatusCode is not (CropPlanLifecycleProjector.Pending or CropPlanLifecycleProjector.AiPlanningFailed))
+        else
         {
-            throw new ApiException(HttpStatusCode.Conflict, "CROP_PLAN_STATE_NOT_ALLOWED", "The latest crop plan workflow state cannot start or retry Member 1 AI planning.");
+            var existing = await dbContext.AgentWorkflows.AsNoTracking().Include(item => item.Steps)
+                .SingleOrDefaultAsync(item => item.SupersedesWorkflowId == replacement.BlockedWorkflowId, cancellationToken);
+            if (existing is not null)
+            {
+                if (existing.CropPlanRequestId != requestId || existing.ReplacementIdempotencyKey != replacement.IdempotencyKey
+                    || existing.RequiredCropReferenceProfileId != replacement.VerifiedProfileId)
+                    throw new ApiException(HttpStatusCode.Conflict, "REPLACEMENT_ALREADY_EXISTS", "A replacement already exists; open that workflow.");
+                return new CropPlanningWorkflowStartResponse(existing.Id, requestId,
+                    existing.Steps.Single(item => item.AgentName == CoordinatorAgentName).Id,
+                    existing.Status.ToString(), true, []);
+            }
+            var latest = await LatestWorkflowQuery(requestId).AsNoTracking().SingleOrDefaultAsync(cancellationToken);
+            if (latest is null || latest.Id != replacement.BlockedWorkflowId
+                || latest.Status is not (AgentWorkflowStatus.MissingDependency or AgentWorkflowStatus.CandidateBlocked))
+                throw new ApiException(HttpStatusCode.Conflict, "BLOCKED_WORKFLOW_MISMATCH", "Only the latest blocked workflow can be replaced.");
+            if (request.Status is not (CropPlanRequestStatus.Submitted or CropPlanRequestStatus.PreliminaryGenerated))
+                throw new ApiException(HttpStatusCode.Conflict, "CROP_PLAN_STATE_NOT_ALLOWED", "This plan cannot start a replacement workflow.");
+            if (request.PreferredStartDate <= DateOnly.FromDateTime(DateTime.UtcNow)
+                || request.PreferredEndDate <= request.PreferredStartDate)
+                throw new ApiException(HttpStatusCode.Conflict, "PLANNING_WINDOW_STALE", "The planning window must be in the future; prepare a new crop plan request.");
+            requiredProfile = await dbContext.CropReferenceProfiles.AsNoTracking()
+                .Include(item => item.Stages).Include(item => item.Rules).Include(item => item.FieldWaterRegimeVerification)
+                .SingleOrDefaultAsync(item => item.Id == replacement.VerifiedProfileId, cancellationToken);
+            if (requiredProfile is null || !CropReferenceCompatibility.IsVerifiedForPlan(requiredProfile, request)
+                || !requiredProfile.Stages.Any(item => !item.IsDeleted)
+                || !requiredProfile.Rules.Any(item => !item.IsDeleted && item.RuleType == CropResourceRequirementRule.RuleType))
+                throw new ApiException(HttpStatusCode.Conflict, "REFERENCE_NOT_COMPATIBLE", "Select a complete, active officer-verified reference for this field, crop and variety.");
         }
 
         await EnsureCropTypeAsync(request.CropTypeId, cancellationToken);
@@ -806,6 +907,10 @@ public sealed class CropPlanningService(
             CropPlanRequestId = request.Id,
             InitiatedByUserId = userId,
             Objective = request.Objective,
+            RequiredCropReferenceProfileId = requiredProfile?.Id,
+            RequiredCropReferenceVersion = requiredProfile?.DraftVersion,
+            SupersedesWorkflowId = replacement?.BlockedWorkflowId,
+            ReplacementIdempotencyKey = replacement?.IdempotencyKey,
             Status = AgentWorkflowStatus.Running,
             CurrentStep = CoordinatorAgentName,
             CreatedByUserId = userId
@@ -1350,7 +1455,7 @@ public sealed class CropPlanningService(
             .Select(cycle => (Guid?)cycle.Id)
             .FirstOrDefaultAsync(cancellationToken);
 
-        var cropReferenceProfileId = await dbContext.CropReferenceProfiles.AsNoTracking()
+        var cropReferenceProfileId = workflow.RequiredCropReferenceProfileId ?? await dbContext.CropReferenceProfiles.AsNoTracking()
             .Where(profile => profile.CropTypeId == planRequest.CropTypeId && profile.IsActive && !profile.IsDeleted)
             .OrderByDescending(profile => profile.VerifiedAt)
             .Select(profile => (Guid?)profile.Id)
@@ -2534,7 +2639,8 @@ public sealed class CropPlanningService(
     private static CropVarietyResponse MapVariety(CropVariety variety) => new(variety.Id, variety.CropTypeId, variety.Name, variety.IsActive);
     private static CropReferenceProfileResponse MapReferenceProfile(CropReferenceProfile profile) =>
         new(profile.Id, profile.CropTypeId, profile.VarietyName, profile.Region, profile.SourceName, profile.SourceUrl,
-            profile.SourceVersion, profile.VerifiedAt, profile.IsActive, profile.Stages.Count, profile.Rules.Count);
+            profile.SourceVersion, profile.VerifiedAt, profile.IsActive, profile.Stages.Count, profile.Rules.Count,
+            profile.VerificationState, profile.DraftVersion);
     private static CropCycleResponse MapCycle(CropCycle cycle) => new(cycle.Id, cycle.FieldId, cycle.CropTypeId, cycle.PlannedStartDate, cycle.PlannedEndDate, cycle.Status);
     private async Task<IReadOnlyDictionary<Guid, AgentWorkflow>> LoadLatestWorkflowsAsync(
         IEnumerable<Guid> requestIds,
