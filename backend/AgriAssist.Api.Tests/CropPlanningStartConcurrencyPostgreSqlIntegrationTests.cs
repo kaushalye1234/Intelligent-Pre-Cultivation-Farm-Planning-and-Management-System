@@ -92,6 +92,77 @@ public sealed class CropPlanningStartConcurrencyPostgreSqlIntegrationTests
         Assert.Equal("Cancelled", workflow.CurrentStep);
     }
 
+    [PostgreSqlFact]
+    public async Task Concurrent_admin_replacements_create_one_pinned_run_and_preserve_blocked_history()
+    {
+        var connectionString = RequiredConnectionString();
+        var data = await SeedAsync(connectionString);
+        Guid blockedId;
+        Guid referenceId;
+        await using (var db = NewDbContext(connectionString))
+        {
+            var plan = await db.CropPlanRequests.Include(item => item.Field).SingleAsync(item => item.Id == data.RequestId);
+            plan.Status = CropPlanRequestStatus.PreliminaryGenerated;
+            plan.PreferredStartDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(30);
+            plan.PreferredEndDate = plan.PreferredStartDate.AddDays(120);
+            var officer = new AppUser { FullName = "Synthetic Verification Officer", Email = "ao-" + Guid.NewGuid().ToString("N") + "@example.test",
+                PasswordHash = "hash", Role = ApplicationRole.AgriculturalOfficer };
+            var reference = new CropReferenceProfile {
+                CropTypeId = plan.CropTypeId, SourceName = "SYNTHETIC TEST SOURCE", SourceUrl = "https://example.test/source", SourceVersion = "test",
+                VerificationState = CropReferenceVerificationState.Verified, VerifiedAt = DateTime.UtcNow, VerifiedByUserId = officer.Id,
+                WaterRegime = WaterRegime.Irrigated, DraftVersion = 2,
+                FieldWaterRegimeVerification = new FieldWaterRegimeVerification { FieldId = plan.FieldId!.Value, WaterRegime = WaterRegime.Irrigated,
+                    Observation = "Synthetic field observation", VerifiedByUserId = officer.Id, VerifiedAt = DateTime.UtcNow },
+                Stages = [new CropStageReference { StageName = "Maturity", Sequence = 1, TypicalMinDays = 98, TypicalMaxDays = 102,
+                    SourceName = "SYNTHETIC TEST SOURCE", SourceUrl = "https://example.test/source" }],
+                Rules = [new CropRuleReference { RuleType = "ResourceRequirement", RuleKey = "Urea", StructuredValueJson = WeatherResourceTestData.SampleUreaRule,
+                    SourceName = "SYNTHETIC TEST SOURCE", SourceUrl = "https://example.test/source", VerifiedAt = DateTime.UtcNow }]
+            };
+            var blocked = new AgentWorkflow { CropPlanRequestId = plan.Id, InitiatedByUserId = data.AdminId,
+                Status = AgentWorkflowStatus.MissingDependency, CurrentStep = "SchedulingValidationAgent", Version = 7 };
+            db.AddRange(officer, reference, blocked);
+            await db.SaveChangesAsync();
+            blockedId = blocked.Id;
+            referenceId = reference.Id;
+        }
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var client = new BlockingAiClient(entered, release);
+        async Task<(string Result, Guid Key, Guid? Id)> Start()
+        {
+            await gate.Task;
+            var key = Guid.NewGuid();
+            await using var db = NewDbContext(connectionString);
+            try {
+                var result = await NewService(db, data.AdminId, client).StartReplacementWorkflowAsync(data.RequestId,
+                    new StartReplacementRequest(blockedId, referenceId, key), CancellationToken.None);
+                return ("started", key, result.WorkflowId);
+            }
+            catch (ApiException error) { return (error.Code, key, null); }
+        }
+        var attempts = new[] { Task.Run(Start), Task.Run(Start) };
+        gate.SetResult();
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        release.SetResult();
+        var results = await Task.WhenAll(attempts);
+        var winner = Assert.Single(results.Where(item => item.Result == "started"));
+        Assert.Single(results.Where(item => item.Result == "REPLACEMENT_ALREADY_EXISTS"));
+        await using var check = NewDbContext(connectionString);
+        var old = await check.AgentWorkflows.SingleAsync(item => item.Id == blockedId);
+        Assert.Equal(AgentWorkflowStatus.MissingDependency, old.Status);
+        Assert.Equal(7, old.Version);
+        var replacement = Assert.Single(await check.AgentWorkflows.Where(item => item.SupersedesWorkflowId == blockedId).ToListAsync());
+        Assert.Equal(referenceId, replacement.RequiredCropReferenceProfileId);
+        Assert.Equal(2, replacement.RequiredCropReferenceVersion);
+        var replay = await NewService(check, data.AdminId, client).StartReplacementWorkflowAsync(data.RequestId,
+            new StartReplacementRequest(blockedId, referenceId, winner.Key), CancellationToken.None);
+        Assert.Equal(winner.Id, replay.WorkflowId);
+        Assert.False(await check.FarmTasks.AnyAsync(item => item.GeneratedByWorkflowId == replacement.Id));
+        Assert.False(await check.IrrigationSchedules.AnyAsync(item => item.GeneratedByWorkflowId == replacement.Id));
+        Assert.False(await check.ResourceReservations.AnyAsync(item => item.GeneratedByWorkflowId == replacement.Id));
+    }
+
     private static CropPlanningService NewService(AppDbContext db, Guid adminId, IAgenticAIClient client) =>
         new(
             db,

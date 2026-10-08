@@ -3,6 +3,7 @@ using System;
 using AgriAssist.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace AgriAssist.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261007113120_AddCropReferenceVerification")]
+    partial class AddCropReferenceVerification
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1648,15 +1651,6 @@ namespace AgriAssist.Api.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
-                    b.Property<Guid?>("ReplacementIdempotencyKey")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("RequiredCropReferenceProfileId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int?>("RequiredCropReferenceVersion")
-                        .HasColumnType("integer");
-
                     b.Property<int>("RevisionCount")
                         .HasColumnType("integer");
 
@@ -1664,9 +1658,6 @@ namespace AgriAssist.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");
-
-                    b.Property<Guid?>("SupersedesWorkflowId")
-                        .HasColumnType("uuid");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -1684,15 +1675,7 @@ namespace AgriAssist.Api.Migrations
 
                     b.HasIndex("InitiatedByUserId");
 
-                    b.HasIndex("RequiredCropReferenceProfileId");
-
                     b.HasIndex("Status");
-
-                    b.HasIndex("SupersedesWorkflowId")
-                        .IsUnique();
-
-                    b.HasIndex("CropPlanRequestId", "ReplacementIdempotencyKey")
-                        .IsUnique();
 
                     b.ToTable("AgentWorkflows");
                 });
@@ -2381,16 +2364,6 @@ namespace AgriAssist.Api.Migrations
                         .HasForeignKey("InitiatedByUserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.HasOne("AgriAssist.Api.Models.CropPlanning.CropReferenceProfile", null)
-                        .WithMany()
-                        .HasForeignKey("RequiredCropReferenceProfileId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("AgriAssist.Api.Models.Shared.AgentWorkflow", null)
-                        .WithMany()
-                        .HasForeignKey("SupersedesWorkflowId")
-                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("CropPlanRequest");
 

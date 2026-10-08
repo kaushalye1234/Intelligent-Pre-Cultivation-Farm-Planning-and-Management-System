@@ -1,4 +1,4 @@
-﻿using AgriAssist.Api.Dtos.CropPlanning;
+using AgriAssist.Api.Dtos.CropPlanning;
 using AgriAssist.Api.Models.Shared;
 using AgriAssist.Api.Services.CropPlanning;
 using Microsoft.AspNetCore.Authorization;
@@ -18,6 +18,11 @@ public sealed class CropPlansWorkflowController(
     [Authorize(Roles = nameof(ApplicationRole.Admin))]
     public async Task<ActionResult<CropPlanningWorkflowStartResponse>> StartAiWorkflow(Guid id, CancellationToken cancellationToken) =>
         Ok(await cropPlanningService.StartAiWorkflowAsync(id, cancellationToken));
+
+    [HttpPost("{id:guid}/replace-blocked-workflow")]
+    [Authorize(Roles = nameof(ApplicationRole.Admin))]
+    public async Task<ActionResult<CropPlanningWorkflowStartResponse>> StartReplacementWorkflow(Guid id, StartReplacementRequest request, CancellationToken cancellationToken) =>
+        Ok(await cropPlanningService.StartReplacementWorkflowAsync(id, request, cancellationToken));
 
     [HttpGet("{id:guid}/pre-planting-assessment")]
     [Authorize(Roles = $"{nameof(ApplicationRole.FieldOfficer)},{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]

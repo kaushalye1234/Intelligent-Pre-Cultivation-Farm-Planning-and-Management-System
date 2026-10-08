@@ -1,4 +1,4 @@
-﻿using AgriAssist.Api.Data;
+using AgriAssist.Api.Data;
 using AgriAssist.Api.Dtos.CropPlanning;
 using AgriAssist.Api.Dtos.FinalCultivationGuide;
 using System.Text.Json;
@@ -153,7 +153,7 @@ public sealed class CropPlanningAiWorkflowTests
         Assert.Equal("ADMIN_REQUIRED", forbidden.Code);
 
         var profile = await admin.CreateReferenceProfileAsync(new CropReferenceProfileRequest(
-            cropId, active.Id, "Sri Lanka", "Verified source", "https://example.test/rice", "1", DateTime.UtcNow.AddDays(-1),
+            cropId, active.Id, "Sri Lanka", "Verified source", "https://example.test/rice", "1", null,
             [new CropReferenceStageRequest("Establishment", 1, 1, 30, "Source verified")],
             [new CropReferenceRuleRequest("Season", "planting-window", "{\"season\":\"Maha\"}")]), CancellationToken.None);
         Assert.Equal("Bg 352", profile.VarietyName);
@@ -1042,6 +1042,82 @@ public sealed class CropPlanningAiWorkflowTests
         });
         return workflow;
     }
+
+    [Fact]
+    public async Task Replacement_workflow_preserves_blocked_history_and_pins_one_verified_profile()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.PreliminaryGenerated);
+        data.Request.PreferredStartDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(30);
+        data.Request.PreferredEndDate = data.Request.PreferredStartDate.AddDays(120);
+        var old = new AgentWorkflow { CropPlanRequestId = data.Request.Id, InitiatedByUserId = data.Farmer.Id,
+            Status = AgentWorkflowStatus.MissingDependency, CurrentStep = "SchedulingValidationAgent", Version = 7 };
+        var reference = SyntheticVerifiedReference(data);
+        db.AddRange(old, reference);
+        await db.SaveChangesAsync();
+        var service = NewService(db, data.Farmer.Id, new PlannedAiClient(), ApplicationRole.Admin);
+        var request = new StartReplacementRequest(old.Id, reference.Id, Guid.NewGuid());
+
+        var created = await service.StartReplacementWorkflowAsync(data.Request.Id, request, CancellationToken.None);
+        var replay = await service.StartReplacementWorkflowAsync(data.Request.Id, request, CancellationToken.None);
+
+        Assert.Equal(created.WorkflowId, replay.WorkflowId);
+        Assert.Equal(2, await db.AgentWorkflows.CountAsync());
+        Assert.Equal(AgentWorkflowStatus.MissingDependency, old.Status);
+        Assert.Equal(7, old.Version);
+        var replacement = await db.AgentWorkflows.SingleAsync(item => item.Id == created.WorkflowId);
+        Assert.Equal(old.Id, replacement.SupersedesWorkflowId);
+        Assert.Equal(reference.Id, replacement.RequiredCropReferenceProfileId);
+        Assert.Equal(reference.DraftVersion, replacement.RequiredCropReferenceVersion);
+        var conflict = await Assert.ThrowsAsync<ApiException>(() => service.StartReplacementWorkflowAsync(data.Request.Id,
+            request with { IdempotencyKey = Guid.NewGuid() }, CancellationToken.None));
+        Assert.Equal("REPLACEMENT_ALREADY_EXISTS", conflict.Code);
+        Assert.Empty(await db.FarmTasks.ToListAsync());
+        Assert.Empty(await db.IrrigationSchedules.ToListAsync());
+        Assert.Empty(await db.ResourceReservations.ToListAsync());
+    }
+
+    [Theory]
+    [InlineData("stale-window", "PLANNING_WINDOW_STALE")]
+    [InlineData("inactive-profile", "REFERENCE_NOT_COMPATIBLE")]
+    [InlineData("legacy-profile", "REFERENCE_NOT_COMPATIBLE")]
+    [InlineData("wrong-workflow", "BLOCKED_WORKFLOW_MISMATCH")]
+    [InlineData("wrong-role", "ADMIN_REQUIRED")]
+    public async Task Replacement_workflow_requires_eligible_plan_profile_and_admin(string defect, string code)
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.PreliminaryGenerated);
+        data.Request.PreferredStartDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(30);
+        data.Request.PreferredEndDate = data.Request.PreferredStartDate.AddDays(120);
+        var old = new AgentWorkflow { CropPlanRequestId = data.Request.Id, InitiatedByUserId = data.Farmer.Id,
+            Status = AgentWorkflowStatus.CandidateBlocked, CurrentStep = "SchedulingValidationAgent" };
+        var reference = SyntheticVerifiedReference(data);
+        if (defect == "stale-window") data.Request.PreferredStartDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-1);
+        if (defect == "inactive-profile") reference.IsActive = false;
+        if (defect == "legacy-profile") reference.VerificationState = CropReferenceVerificationState.LegacyReviewRequired;
+        db.AddRange(old, reference);
+        await db.SaveChangesAsync();
+        var service = NewService(db, data.Farmer.Id, new PlannedAiClient(),
+            defect == "wrong-role" ? ApplicationRole.AgriculturalOfficer : ApplicationRole.Admin);
+        var error = await Assert.ThrowsAsync<ApiException>(() => service.StartReplacementWorkflowAsync(data.Request.Id,
+            new StartReplacementRequest(defect == "wrong-workflow" ? Guid.NewGuid() : old.Id, reference.Id, Guid.NewGuid()), CancellationToken.None));
+        Assert.Equal(code, error.Code);
+        Assert.Single(await db.AgentWorkflows.ToListAsync());
+    }
+
+    private static CropReferenceProfile SyntheticVerifiedReference(SeededPlan data) => new()
+    {
+        CropTypeId = data.Request.CropTypeId, SourceName = "SYNTHETIC TEST SOURCE", SourceUrl = "https://example.test/source",
+        SourceVersion = "test", VerificationState = CropReferenceVerificationState.Verified, VerifiedAt = DateTime.UtcNow,
+        VerifiedByUserId = data.Farmer.Id, WaterRegime = WaterRegime.Irrigated, DraftVersion = 2,
+        FieldWaterRegimeVerification = new FieldWaterRegimeVerification { FieldId = data.Field.Id, WaterRegime = WaterRegime.Irrigated,
+            Observation = "Synthetic officer observation", VerifiedByUserId = data.Farmer.Id, VerifiedAt = DateTime.UtcNow },
+        Stages = [new CropStageReference { StageName = "Maturity", Sequence = 1, TypicalMinDays = 98, TypicalMaxDays = 102,
+            SourceName = "SYNTHETIC TEST SOURCE", SourceUrl = "https://example.test/source" }],
+        Rules = [new CropRuleReference { RuleType = "ResourceRequirement", RuleKey = "Urea",
+            StructuredValueJson = WeatherResourceTestData.SampleUreaRule, SourceName = "SYNTHETIC TEST SOURCE",
+            SourceUrl = "https://example.test/source", VerifiedAt = DateTime.UtcNow }]
+    };
 
     private static AppDbContext NewDbContext() =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);

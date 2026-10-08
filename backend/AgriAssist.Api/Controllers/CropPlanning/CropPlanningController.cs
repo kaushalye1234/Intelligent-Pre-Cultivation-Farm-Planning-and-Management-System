@@ -1,4 +1,4 @@
-using AgriAssist.Api.Dtos.CropPlanning;
+﻿using AgriAssist.Api.Dtos.CropPlanning;
 using AgriAssist.Api.Dtos.Shared;
 using AgriAssist.Api.Models.Shared;
 using AgriAssist.Api.Services.CropPlanning;
@@ -10,7 +10,7 @@ namespace AgriAssist.Api.Controllers.CropPlanning;
 [ApiController]
 [Route("api/crop-planning")]
 [Authorize]
-public sealed class CropPlanningController(ICropPlanningService cropPlanningService) : ControllerBase
+public sealed class CropPlanningController(ICropPlanningService cropPlanningService, CropReferenceVerificationService referenceVerificationService) : ControllerBase
 {
     [HttpGet("farms")]
     public async Task<ActionResult<PagedResult<FarmResponse>>> SearchFarms([FromQuery] PagedQuery query, CancellationToken cancellationToken) =>
@@ -114,6 +114,15 @@ public sealed class CropPlanningController(ICropPlanningService cropPlanningServ
     public async Task<ActionResult<CropReferenceProfileResponse>> CreateReferenceProfile(CropReferenceProfileRequest request, CancellationToken cancellationToken) =>
         Ok(await cropPlanningService.CreateReferenceProfileAsync(request, cancellationToken));
 
+    [HttpPut("crop-reference-profiles/{id:guid}/draft")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
+    public async Task<ActionResult<CropReferenceProfileDetailsResponse>> UpdateReferenceDraft(Guid id, CropReferenceDraftUpdateRequest request, CancellationToken cancellationToken) =>
+        Ok(await cropPlanningService.UpdateReferenceDraftAsync(id, request, cancellationToken));
+
+    [HttpPost("crop-reference-profiles/{id:guid}/verify")]
+    [Authorize(Roles = nameof(ApplicationRole.AgriculturalOfficer))]
+    public async Task<ActionResult<CropReferenceProfileDetailsResponse>> VerifyReferenceProfile(Guid id, VerifyReferenceRequest request, CancellationToken cancellationToken) =>
+        Ok(await referenceVerificationService.VerifyAsync(id, request, cancellationToken));
     [HttpPut("crop-reference-profiles/{id:guid}/active")]
     [Authorize(Roles = $"{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
     public async Task<ActionResult<CropReferenceProfileResponse>> SetReferenceProfileActive(Guid id, [FromBody] bool isActive, CancellationToken cancellationToken) =>

@@ -101,6 +101,7 @@ builder.Services.AddScoped<IRequestValidator<CropPlanRequestCreate>, CropPlanReq
 builder.Services.AddScoped<IRequestValidator<CropPlanRequestUpdate>, CropPlanRequestUpdateValidator>();
 builder.Services.AddScoped<IRequestValidator<PrePlantingAssessmentRequest>, PrePlantingAssessmentRequestValidator>();
 builder.Services.AddScoped<ICropPlanningService, CropPlanningService>();
+builder.Services.AddScoped<CropReferenceVerificationService>();
 builder.Services.AddScoped<IRequestValidator<SuggestCropsRequest>, SuggestCropsRequestValidator>();
 builder.Services.AddScoped<IRequestValidator<SuggestVarietiesRequest>, SuggestVarietiesRequestValidator>();
 builder.Services.AddScoped<IRequestValidator<DiscoverReferencesRequest>, DiscoverReferencesRequestValidator>();

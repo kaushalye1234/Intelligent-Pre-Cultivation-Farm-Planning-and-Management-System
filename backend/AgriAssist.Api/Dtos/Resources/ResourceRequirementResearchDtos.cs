@@ -93,6 +93,7 @@ public sealed record VerifiedResourceRequirementResponse(
     string AreaUnit,
     string SourceName,
     string SourceUrl,
-    DateTime VerifiedAt,
+    DateTime? VerifiedAt,
     bool CreatedReferenceProfile,
-    bool ReplacedPreviousRule);
+    bool ReplacedPreviousRule,
+    AgriAssist.Api.Models.CropPlanning.CropReferenceVerificationState VerificationState = AgriAssist.Api.Models.CropPlanning.CropReferenceVerificationState.Draft);
