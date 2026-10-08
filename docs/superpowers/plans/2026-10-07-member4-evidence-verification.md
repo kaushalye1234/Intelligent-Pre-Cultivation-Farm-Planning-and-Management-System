@@ -1,6 +1,6 @@
 # Member 4 Evidence Verification Implementation Plan
 
-**Status:** Approved for implementation by the project owner on 2026-10-07. This approval is not Agricultural Officer verification of any crop profile or field water regime.
+**Status:** Implemented and locally verified on 2026-10-08; reviewed PR and live officer/source verification remain pending. Approved for implementation by the project owner on 2026-10-07. This approval is not Agricultural Officer verification of any crop profile or field water regime.
 
 > **For agentic workers:** Execute this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Use the approved spec and AGENTS.md; no delegated agents are required.
 
@@ -44,10 +44,10 @@
 - `VerifyReferenceRequest(Guid FieldId, WaterRegime WaterRegime, string Observation, int ExpectedDraftVersion, bool Confirmed)`; `POST /api/crop-planning/crop-reference-profiles/{id}/verify` returns updated details.
 - Existing profile POST creates an inactive Draft and ignores no claimed verification: a supplied `VerifiedAt` is rejected. Draft edit uses `PUT /crop-reference-profiles/{id}/draft` with expected version. Existing `/active` rejects activation unless Verified, except it may deactivate any active legacy row.
 
-- [ ] Write failing tests: draft has null verification actor/time and inactive state; supplied `VerifiedAt` cannot verify; same officer can verify; wrong role cannot; missing stage/rule/source/regime/resource match fails; concurrent edit/verify conflicts; legacy migration preserves data without asserting review.
+- [x] Write failing tests: draft has null verification actor/time and inactive state; supplied `VerifiedAt` cannot verify; same officer can verify; wrong role cannot; missing stage/rule/source/regime/resource match fails; concurrent edit/verify conflicts; legacy migration preserves data without asserting review.
 - [ ] Run targeted xUnit tests and confirm the new assertions fail.
-- [ ] Implement models, mapping, migration, DTOs, validation and service/controller actions. Verified content is immutable; edits create a new draft version. Expose stage/rule source URLs in detail response.
-- [ ] Run targeted xUnit and isolated PostgreSQL migration/concurrency tests; expect pass. Run `git diff --check` and commit Task 1.
+- [x] Implement models, mapping, migration, DTOs, validation and service/controller actions. Verified content is immutable; edits create a new draft version. Expose stage/rule source URLs in detail response.
+- [x] Run targeted xUnit and isolated PostgreSQL migration/concurrency tests; expect pass. Run `git diff --check` and commit Task 1.
 
 ### Task 2: Pin Member 3 and Member 4 to the verified source
 
@@ -60,10 +60,10 @@
 - `ICropResourceRequirementService.GetRequirementsAsync(Guid cropPlanRequestId, Guid? requiredProfileId, CancellationToken)` returns `Unavailable` when a required profile is missing, inactive, unverified, wrong crop/variety/region, or wrong field water regime; null preserves legacy selection.
 - Internal Member 3 tool resolves the workflow's required ID server-side, never from a caller-provided query string. Member 4 evidence builder selects that same ID and rejects differing `requirementSource.cropReferenceProfileId`.
 
-- [ ] Write failing tests for matching pin, mismatched pin, deactivation, changed verification version, and null-pin legacy behavior.
+- [x] Write failing tests for matching pin, mismatched pin, deactivation, changed verification version, and null-pin legacy behavior.
 - [ ] Run targeted tests to confirm failure.
-- [ ] Implement server-side pin resolution and selection in Member 3 and Member 4; keep existing JSON contracts unless a typed field is needed by the AI service.
-- [ ] Run targeted backend and Python scheduler tests; expect pass. Commit Task 2.
+- [x] Implement server-side pin resolution and selection in Member 3 and Member 4; keep existing JSON contracts unless a typed field is needed by the AI service.
+- [x] Run targeted backend and Python scheduler tests; expect pass. Commit Task 2.
 
 ### Task 3: Guarded replacement workflow
 
@@ -77,10 +77,10 @@
 - `IWorkflowApprovalService.GetEvidenceResolutionAsync(Guid workflowId, CancellationToken)` powers AO/Admin `GET /api/task-approval/workflows/{id}/evidence-resolution`: crop/variety/field, pinned ID, persisted blocking reasons, profile/source details, successor workflow ID, and next responsible role.
 - Service starts a new AgentWorkflow on the existing CropPlanRequest using the existing future planning window. The latest workflow must be `MissingDependency` or `CandidateBlocked`, with no terminal plan state or active replacement. Same key and payload returns the existing replacement; different key conflicts. Old workflow rows remain unchanged.
 
-- [ ] Write failing role, stale window, wrong plan/profile, old-row-preservation, resolution-read, idempotency and concurrent-start PostgreSQL tests.
+- [x] Write failing role, stale window, wrong plan/profile, old-row-preservation, resolution-read, idempotency and concurrent-start PostgreSQL tests.
 - [ ] Run them and confirm failure.
-- [ ] Extract shared coordinator-start logic from `StartAiWorkflowAsync`; add the guarded replacement entry point, resolution-read DTO, transactional row locking, unique idempotency index, and supersession link.
-- [ ] Run targeted backend and PostgreSQL tests; expect pass. Commit Task 3.
+- [x] Extract shared coordinator-start logic from `StartAiWorkflowAsync`; add the guarded replacement entry point, resolution-read DTO, transactional row locking, unique idempotency index, and supersession link.
+- [x] Run targeted backend and PostgreSQL tests; expect pass. Commit Task 3.
 
 ### Task 4: Officer resolution page and guide retry
 
@@ -92,10 +92,10 @@
 - Route `/task-approval/workflows/:id/resolve-evidence` for Agricultural Officer and Admin. Backend returns blocking evidence, draft/verification state, pinned profile, source details, and next responsible role using typed DTOs; React does not infer authority from button visibility.
 - `Verify and activate` is AO-only; `Start replacement workflow` is Admin-only; existing approval and guide retry endpoint are AO/Admin-only. Each action refreshes the persisted workflow/progress response.
 
-- [ ] Write failing Vitest cases for blocked details, draft errors, same-officer verification, Admin handoff, replacement link, wrong-role controls, unavailable guide and retry feedback.
+- [x] Write failing Vitest cases for blocked details, draft errors, same-officer verification, Admin handoff, replacement link, wrong-role controls, unavailable guide and retry feedback.
 - [ ] Run targeted Vitest to confirm failure.
-- [ ] Add the page, route, typed API calls and status/role views; preserve old workflow as read-only history and link its replacement.
-- [ ] Run targeted Vitest, React lint/build, then browser-check desktop and mobile viewport against disposable local data. Commit Task 4.
+- [x] Add the page, route, typed API calls and status/role views; preserve old workflow as read-only history and link its replacement.
+- [x] Run targeted Vitest, React lint/build, then browser-check desktop and mobile viewport against disposable local data. Commit Task 4.
 
 ### Task 5: Integrated proof and rollout preparation
 
@@ -105,7 +105,10 @@
 **Interfaces:**
 - Local proof uses a disposable PostgreSQL database and synthetic users. Live proof requires the officer's genuine field/source decision, reviewed PR merge, migration backup, and exact deployed commit checks.
 
-- [ ] Run backend restore/build/test, isolated PostgreSQL migration/rollback/transaction tests, AI compile/pytest, React lint/build/test, Flutter pub get/analyze/test.
-- [ ] Execute a new local synthetic workflow through Member 1–4 using a verified synthetic profile. Assert Member 3 and Member 4 profile IDs match, old run unchanged, approval creates exactly one final set, guide Ready/Unavailable/retry, and farmer ownership.
-- [ ] Record commands/results and deployment prerequisites in the evidence document; run conflict-marker scan and `git diff --check`; commit.
+- [x] Run backend restore/build/test, isolated PostgreSQL migration/rollback/transaction tests, AI compile/pytest, React lint/build/test, Flutter pub get/analyze/test.
+- [x] Execute a new local synthetic workflow through Member 1–4 using a verified synthetic profile. Assert Member 3 and Member 4 profile IDs match, old run unchanged, approval creates exactly one final set, guide Ready/Unavailable/retry, and farmer ownership.
+- [x] Record commands/results and deployment prerequisites in the evidence document; run conflict-marker scan and `git diff --check`; commit.
 - [ ] Open a reviewed PR stacked on #87. Do not merge or activate a real profile without the corresponding human review and officer decision.
+
+
+Local execution results and the remaining live gates are recorded in `docs/plans/member4-approval-recovery-evidence.md`. Implementation commits group the backend integration and the web handoff into focused changes; the stacked PR retains #87 as its base.

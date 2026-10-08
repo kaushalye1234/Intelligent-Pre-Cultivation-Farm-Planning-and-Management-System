@@ -17,7 +17,7 @@ describe('Admin crop management', () => {
       sourceName: 'Department of Agriculture field guide',
       sourceUrl: 'https://example.test/rice-guide',
       sourceVersion: '2026 edition',
-      verifiedAt: '2026-10-05T08:30:00Z',
+      verifiedAt: '2026-10-05T08:30:00Z', verificationState: 2,
       isActive: false,
       stageCount: 1,
       ruleCount: 0,
@@ -33,7 +33,7 @@ describe('Admin crop management', () => {
 
     render(<AdminCropManagement referenceOnly />)
 
-    expect(await screen.findByRole('heading', { name: 'Verified references' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Crop reference versions', level: 2 })).toBeInTheDocument()
     expect(screen.queryByRole('tab', { name: /Crops/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('tab', { name: /Varieties/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Add crop' })).not.toBeInTheDocument()
@@ -51,9 +51,8 @@ describe('Admin crop management', () => {
     fireEvent.change(screen.getByRole('combobox', { name: /^Crop/ }), { target: { value: 'crop-1' } })
     fireEvent.change(screen.getByRole('textbox', { name: /^Source name/ }), { target: { value: 'Verified rice guide' } })
     fireEvent.change(screen.getByRole('textbox', { name: /^Source version/ }), { target: { value: 'v1' } })
-    fireEvent.change(screen.getByLabelText(/^Verified at/), { target: { value: '2026-10-05T10:30' } })
     fireEvent.change(screen.getByRole('textbox', { name: /^Stage name/ }), { target: { value: 'Land preparation' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Create verified version' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create reference draft' }))
 
     await waitFor(() => expect(post).toHaveBeenCalledWith(
       '/crop-planning/crop-reference-profiles',
@@ -61,6 +60,7 @@ describe('Admin crop management', () => {
         cropTypeId: 'crop-1',
         sourceName: 'Verified rice guide',
         sourceVersion: 'v1',
+        verifiedAt: null,
         stages: [expect.objectContaining({ stageName: 'Land preparation', sequence: 1 })],
       }),
     ))
@@ -246,11 +246,39 @@ describe('Admin crop management', () => {
     expect(put).not.toHaveBeenCalled()
   })
 
+  it('keeps individual citations when loading and saving an existing draft', async () => {
+    const profile = { id: 'draft-1', cropTypeId: 'rice', varietyName: null, region: 'North',
+      sourceName: 'Synthetic overview', sourceUrl: 'https://example.test/overview', sourceVersion: 'test',
+      verifiedAt: null, verificationState: 1, draftVersion: 4, isActive: false, stageCount: 1, ruleCount: 1 }
+    vi.spyOn(api, 'get').mockImplementation(async (url: string) => {
+      if (url.endsWith('/draft-1')) return { data: { ...profile, cropName: 'Rice', stages: [{ id: 'stage-1',
+        stageName: 'Planting', sequence: 1, typicalMinDays: 3, typicalMaxDays: 5, notes: '',
+        sourceName: 'Stage timetable', sourceUrl: 'https://example.test/stages' }], rules: [{ id: 'rule-1',
+        ruleType: 'ResourceRequirement', ruleKey: 'Urea', structuredValueJson: '{}',
+        sourceName: 'Resource rates', sourceUrl: 'https://example.test/rates' }] } }
+      if (url.includes('/crop-types')) return paged([{ id: 'rice', name: 'Rice', isActive: true }])
+      if (url.includes('/crop-reference-profiles')) return paged([profile])
+      return paged([])
+    })
+    const put = vi.spyOn(api, 'put').mockResolvedValue({ data: {} })
+    render(<AdminCropManagement referenceOnly />)
+    fireEvent.click(await screen.findByRole('button', { name: 'View details' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit draft' }))
+    expect(screen.getByLabelText('Stage source URL')).toHaveValue('https://example.test/stages')
+    expect(screen.getByLabelText('Rule source URL')).toHaveValue('https://example.test/rates')
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft changes' }))
+    await waitFor(() => expect(put).toHaveBeenCalledWith('/crop-planning/crop-reference-profiles/draft-1/draft',
+      expect.objectContaining({ expectedDraftVersion: 4, profile: expect.objectContaining({
+        stages: [expect.objectContaining({ sourceName: 'Stage timetable', sourceUrl: 'https://example.test/stages' })],
+        rules: [expect.objectContaining({ sourceName: 'Resource rates', sourceUrl: 'https://example.test/rates' })],
+      }) })))
+  })
+
   it('warns that a rules-only reference cannot support final approval', async () => {
     const profile = {
       id: 'rules-only', cropTypeId: 'rice', varietyName: null, region: null,
       sourceName: 'Officer reviewed source', sourceUrl: null, sourceVersion: 'v1',
-      verifiedAt: '2026-10-05T08:30:00Z', isActive: true, stageCount: 0, ruleCount: 1,
+      verifiedAt: '2026-10-05T08:30:00Z', verificationState: 2, isActive: true, stageCount: 0, ruleCount: 1,
     }
     vi.spyOn(api, 'get').mockImplementation((url: string) => {
       if (url.endsWith('/rules-only')) return Promise.resolve({ data: {
