@@ -570,7 +570,7 @@ export function AdminCropManagement({ referenceOnly = false }: { referenceOnly?:
             { header: 'Crop / variety', render: (profile) => <PrimaryCell title={cropName(profile.cropTypeId)} detail={profile.varietyName || 'All varieties'} /> },
             { header: 'Source', render: (profile) => `${profile.sourceName} · ${profile.sourceVersion}` },
             { header: 'Verified', render: (profile) => formatDate(profile.verifiedAt) },
-            { header: 'Evidence', render: (profile) => `${profile.stageCount} stages · ${profile.ruleCount} rules` },
+            { header: 'Evidence', render: (profile) => `${profile.stageCount} stages · ${profile.ruleCount} rules${profile.ruleCount > 0 && profile.stageCount === 0 ? ' · Cannot support final approval' : ''}` },
             { header: 'State', render: (profile) => <StatusPill label={profile.isActive ? 'Active' : 'Inactive'} tone={profile.isActive ? 'good' : 'bad'} /> },
             { header: 'Actions', className: 'crop-admin-actions-column', render: (profile) => <div className="crop-admin-actions"><Button variant="secondary" icon={<Eye size={15} />} onClick={() => void openReferenceDetails(profile)}>View details</Button><Button variant="ghost" disabled={busy} onClick={() => void run(async () => { await api.put(`/crop-planning/crop-reference-profiles/${profile.id}/active`, !profile.isActive, { headers: { 'Content-Type': 'application/json' } }) }, 'Reference state updated.')}>{profile.isActive ? 'Deactivate' : 'Activate'}</Button></div> },
           ]} />
@@ -667,6 +667,7 @@ function ReferenceDetailsDialog({ state, onClose, onRetry }: { state: ReferenceD
     {state?.loading ? <LoadingState label="Loading reference details" /> : null}
     {state?.error ? <div className="crop-reference-details-error"><ErrorState message={state.error} /><Button variant="secondary" onClick={() => onRetry(state.profile)}>Retry</Button></div> : null}
     {details ? <div className="crop-reference-details">
+      {details.rules.length > 0 && details.stages.length === 0 ? <Notice tone="warning">This rules-only reference has no growth stages. Member 4 cannot prepare a final approval from it; an Agricultural Officer must verify a compatible reference with both stages and resource rules.</Notice> : null}
       <section className="crop-reference-details-grid" aria-label="Reference source details">
         <DetailItem label="Crop" value={details.cropName} />
         <DetailItem label="Variety" value={details.varietyName || 'All varieties'} />

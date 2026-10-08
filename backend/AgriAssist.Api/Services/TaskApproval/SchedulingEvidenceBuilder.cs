@@ -38,16 +38,23 @@ public static class SchedulingEvidenceBuilder
             .Include(item => item.Rules)
             .Where(item => item.CropTypeId == plan.CropTypeId && item.IsActive && !item.IsDeleted && item.VerifiedAt <= DateTime.UtcNow)
             .ToListAsync(cancellationToken);
-        var profile = profiles
-            .Where(item => !pinnedProfileId.HasValue || item.Id == pinnedProfileId.Value)
-            .Where(item => item.Stages.Any(stage => !stage.IsDeleted))
+        var compatibleProfiles = profiles
             .Where(item => item.VarietyName is null || string.Equals(item.VarietyName, varietyName, StringComparison.OrdinalIgnoreCase))
             .Where(item => CropReferenceRegionMatcher.Rank(item.Region, plan.Farm) >= 0)
+            .ToArray();
+        var profile = compatibleProfiles
+            .Where(item => !pinnedProfileId.HasValue || item.Id == pinnedProfileId.Value)
+            .Where(item => item.Stages.Any(stage => !stage.IsDeleted))
             .OrderByDescending(item => item.VarietyName is not null)
             .ThenByDescending(item => CropReferenceRegionMatcher.Rank(item.Region, plan.Farm))
             .ThenByDescending(item => item.VerifiedAt)
             .ThenBy(item => item.Id)
             .FirstOrDefault();
+        // Preserve the pinned profile's identity when its only defect is
+        // missing stages. The scheduler can report that precise dependency
+        // while still refusing to produce an approvable candidate.
+        if (profile is null && pinnedProfileId.HasValue)
+            profile = compatibleProfiles.FirstOrDefault(item => item.Id == pinnedProfileId.Value);
 
         return new SchedulingEvidenceBundle(
             profile?.Id,

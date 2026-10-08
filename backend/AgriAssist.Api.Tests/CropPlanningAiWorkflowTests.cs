@@ -1,5 +1,6 @@
 ﻿using AgriAssist.Api.Data;
 using AgriAssist.Api.Dtos.CropPlanning;
+using AgriAssist.Api.Dtos.FinalCultivationGuide;
 using System.Text.Json;
 using AgriAssist.Api.Dtos.Shared;
 using AgriAssist.Api.Dtos.Inspections;
@@ -840,6 +841,107 @@ public sealed class CropPlanningAiWorkflowTests
         Assert.Equal(Member2CropHealthContractVersions.FarmerApprovedPlan, result.ContractVersion);
         Assert.Null(result.CropHealth);
         Assert.Equal(data.Request.Objective, result.Objective);
+        Assert.Equal("Unavailable", result.FinalGuideStatus);
+        Assert.Null(result.FinalGuideGeneratedAt);
+    }
+
+    [Fact]
+    public async Task Farmer_approved_plan_tolerates_field_analysis_without_condition_summary()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.Approved);
+        var workflow = ApprovedWorkflow(data, new SchedulingValidationOutput(
+            Guid.Empty, 1, "CandidateReady", true, true, [], [], [], [], null, [], 1));
+        workflow.Steps.Single().OutputJson = JsonSerializer.Serialize(
+            JsonSerializer.Deserialize<SchedulingValidationOutput>(workflow.Steps.Single().OutputJson)! with { WorkflowId = workflow.Id });
+        workflow.Steps.Add(new AgentStep
+        {
+            AgentWorkflow = workflow,
+            AgentName = "CropFieldAnalysisAgent",
+            StepName = "FieldAnalysis",
+            Sequence = 2,
+            Status = AgentStepStatus.Completed,
+            OutputJson = JsonSerializer.Serialize(new { workflowId = workflow.Id, status = "Analyzed", warnings = new[] { "Synthetic evidence only." } })
+        });
+        db.Add(workflow);
+        await db.SaveChangesAsync();
+
+        var result = await NewService(db, data.Farmer.Id, new PlannedAiClient())
+            .GetApprovedPlanAsync(data.Request.Id, CancellationToken.None);
+
+        Assert.Null(result.FieldSummary);
+        Assert.Contains("Synthetic evidence only.", result.Warnings);
+        Assert.Equal("Unavailable", result.FinalGuideStatus);
+    }
+
+    [Theory]
+    [InlineData(AgentStepStatus.Pending, "Pending")]
+    [InlineData(AgentStepStatus.Running, "Pending")]
+    [InlineData(AgentStepStatus.Failed, "Unavailable")]
+    public async Task Farmer_approved_plan_reports_current_revision_guide_step_status(
+        AgentStepStatus stepStatus, string expectedStatus)
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.Approved);
+        var workflow = ApprovedWorkflow(data, new SchedulingValidationOutput(
+            Guid.Empty, 1, "CandidateReady", true, true, [], [], [], [], null, [], 1));
+        workflow.Steps.Single().OutputJson = JsonSerializer.Serialize(
+            JsonSerializer.Deserialize<SchedulingValidationOutput>(workflow.Steps.Single().OutputJson)! with { WorkflowId = workflow.Id });
+        workflow.Steps.Add(new AgentStep
+        {
+            AgentWorkflow = workflow,
+            AgentName = "FinalCultivationGuideAgent",
+            StepName = "FarmerGuide",
+            Sequence = 5,
+            CandidateRevision = 1,
+            Status = stepStatus,
+        });
+        db.Add(workflow);
+        await db.SaveChangesAsync();
+
+        var result = await NewService(db, data.Farmer.Id, new PlannedAiClient())
+            .GetApprovedPlanAsync(data.Request.Id, CancellationToken.None);
+
+        Assert.Equal(expectedStatus, result.FinalGuideStatus);
+        Assert.Null(result.FinalGuide);
+        Assert.Null(result.FinalGuideGeneratedAt);
+    }
+
+    [Fact]
+    public async Task Farmer_approved_plan_labels_only_the_current_revision_guide_with_its_generation_time()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.Approved);
+        var workflow = ApprovedWorkflow(data, new SchedulingValidationOutput(
+            Guid.Empty, 2, "CandidateReady", true, true, [], [], [], [], null, [], 1));
+        workflow.CandidateRevision = 2;
+        workflow.Steps.Single().OutputJson = JsonSerializer.Serialize(
+            JsonSerializer.Deserialize<SchedulingValidationOutput>(workflow.Steps.Single().OutputJson)! with { WorkflowId = workflow.Id });
+        var generatedAt = DateTime.UtcNow.AddMinutes(-5);
+        var currentGuide = new FinalCultivationGuideOutputDto(
+            1, workflow.Id, 2, ["Review the approved tasks."], null, [], [], [], "Approved evidence.");
+        workflow.Steps.Add(new AgentStep
+        {
+            AgentWorkflow = workflow, AgentName = "FinalCultivationGuideAgent", StepName = "FarmerGuide",
+            Sequence = 5, CandidateRevision = 1, Status = AgentStepStatus.Completed,
+            OutputJson = JsonSerializer.Serialize(currentGuide with { ApprovedRevision = 1 }),
+            CompletedAt = generatedAt.AddDays(-1),
+        });
+        workflow.Steps.Add(new AgentStep
+        {
+            AgentWorkflow = workflow, AgentName = "FinalCultivationGuideAgent", StepName = "FarmerGuide",
+            Sequence = 6, CandidateRevision = 2, Status = AgentStepStatus.Completed,
+            OutputJson = JsonSerializer.Serialize(currentGuide), CompletedAt = generatedAt,
+        });
+        db.Add(workflow);
+        await db.SaveChangesAsync();
+
+        var result = await NewService(db, data.Farmer.Id, new PlannedAiClient())
+            .GetApprovedPlanAsync(data.Request.Id, CancellationToken.None);
+
+        Assert.Equal("Ready", result.FinalGuideStatus);
+        Assert.Equal(generatedAt, result.FinalGuideGeneratedAt);
+        Assert.Equal(2, result.FinalGuide?.ApprovedRevision);
     }
 
     [Theory]

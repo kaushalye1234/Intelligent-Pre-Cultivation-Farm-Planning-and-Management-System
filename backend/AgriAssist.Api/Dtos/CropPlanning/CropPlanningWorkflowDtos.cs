@@ -363,4 +363,6 @@ public sealed record FarmerApprovedPlanResponse(
     IReadOnlyList<FarmerApprovedTaskResponse> ApprovedTasks,
     IReadOnlyList<FarmerApprovedIrrigationResponse> ApprovedIrrigationSchedules,
     FarmerApprovedCropHealthResponse? CropHealth,
-    AgriAssist.Api.Dtos.FinalCultivationGuide.FinalCultivationGuideOutputDto? FinalGuide);
+    AgriAssist.Api.Dtos.FinalCultivationGuide.FinalCultivationGuideOutputDto? FinalGuide,
+    string? FinalGuideStatus = null,
+    DateTime? FinalGuideGeneratedAt = null);

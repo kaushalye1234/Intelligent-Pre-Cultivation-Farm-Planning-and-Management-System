@@ -245,4 +245,30 @@ describe('Admin crop management', () => {
     expect(post).not.toHaveBeenCalled()
     expect(put).not.toHaveBeenCalled()
   })
+
+  it('warns that a rules-only reference cannot support final approval', async () => {
+    const profile = {
+      id: 'rules-only', cropTypeId: 'rice', varietyName: null, region: null,
+      sourceName: 'Officer reviewed source', sourceUrl: null, sourceVersion: 'v1',
+      verifiedAt: '2026-10-05T08:30:00Z', isActive: true, stageCount: 0, ruleCount: 1,
+    }
+    vi.spyOn(api, 'get').mockImplementation((url: string) => {
+      if (url.endsWith('/rules-only')) return Promise.resolve({ data: {
+        ...profile, cropName: 'Rice', stages: [], rules: [{
+          id: 'rule-1', ruleType: 'ResourceRequirement', ruleKey: 'urea',
+          structuredValueJson: '{}',
+        }],
+      } })
+      if (url.includes('/crop-types')) return Promise.resolve(paged([{ id: 'rice', name: 'Rice', description: '', isActive: true }]))
+      if (url.includes('/crop-reference-profiles')) return Promise.resolve(paged([profile]))
+      return Promise.resolve(paged([]))
+    })
+
+    render(<AdminCropManagement />)
+    fireEvent.click(await screen.findByRole('tab', { name: /Verified References/ }))
+    expect(screen.getByText(/Cannot support final approval/)).toBeVisible()
+    fireEvent.click(await screen.findByRole('button', { name: 'View details' }))
+
+    expect(await screen.findByText(/rules-only reference has no growth stages/i)).toBeVisible()
+  })
 })

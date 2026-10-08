@@ -57,7 +57,7 @@ public sealed class SchedulingEvidenceBuilderTests
     }
 
     [Fact]
-    public async Task Pinned_rule_only_profile_does_not_fall_back_to_another_source()
+    public async Task Pinned_rule_only_profile_keeps_its_identity_and_empty_stages_without_falling_back()
     {
         await using var db = NewDbContext();
         var data = await SeedAsync(db, ruleJson: null);
@@ -76,7 +76,7 @@ public sealed class SchedulingEvidenceBuilderTests
 
         var evidence = await SchedulingEvidenceBuilder.BuildAsync(db, workflow, plan, CancellationToken.None);
 
-        Assert.Null(evidence.ProfileId);
+        Assert.Equal(rulesOnly.Id, evidence.ProfileId);
         Assert.Empty(evidence.Stages);
     }
 
