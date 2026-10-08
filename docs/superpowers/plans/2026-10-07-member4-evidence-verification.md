@@ -108,7 +108,9 @@
 - [x] Run backend restore/build/test, isolated PostgreSQL migration/rollback/transaction tests, AI compile/pytest, React lint/build/test, Flutter pub get/analyze/test.
 - [x] Execute a new local synthetic workflow through Member 1–4 using a verified synthetic profile. Assert Member 3 and Member 4 profile IDs match, old run unchanged, approval creates exactly one final set, guide Ready/Unavailable/retry, and farmer ownership.
 - [x] Record commands/results and deployment prerequisites in the evidence document; run conflict-marker scan and `git diff --check`; commit.
-- [ ] Open a reviewed PR stacked on #87. Do not merge or activate a real profile without the corresponding human review and officer decision.
+- [x] Open a reviewed PR stacked on #87. Do not merge or activate a real profile without the corresponding human review and officer decision.
 
 
 Local execution results and the remaining live gates are recorded in `docs/plans/member4-approval-recovery-evidence.md`. Implementation commits group the backend integration and the web handoff into focused changes; the stacked PR retains #87 as its base.
+
+Review PR: [#88](https://github.com/kaushalye1234/Intelligent-Pre-Cultivation-Farm-Planning-and-Management-System/pull/88), based on #87. Four CI jobs are configured; remote results must be read from the exact PR head. No merge or live activation is authorized by a checked implementation step.
