@@ -1,0 +1,117 @@
+# Group 04 demo stack. The API uses the existing Supabase database.
+# Configure its connection string in Render, never in this file. Startup
+# migrations stay disabled; review and apply schema changes separately.
+# Retain the old Render database resource to avoid deleting it during a sync.
+databases:
+  - name: agriassist-demo-db
+    databaseName: agriassist
+    user: agriassist
+    plan: free
+    region: singapore
+    postgresMajorVersion: "16"
+
+services:
+  - type: web
+    name: agriassist-api
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: dev
+    autoDeployTrigger: checksPass
+    dockerfilePath: ./backend/Dockerfile.render
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: ForwardedHeaders__TrustAllProxies
+        value: "true"
+      - key: ConnectionStrings__DefaultConnection
+        sync: false
+      - key: Database__ApplyMigrationsOnStart
+        value: "false"
+      - key: AdminBootstrap__Enabled
+        value: "false"
+      - key: Weather__BaseUrl
+        value: https://api.openweathermap.org/data/2.5
+      - key: Weather__ApiKey
+        sync: false
+      - key: Cloudinary__CloudName
+        sync: false
+      - key: Cloudinary__ApiKey
+        sync: false
+      - key: Cloudinary__ApiSecret
+        sync: false
+      - key: ApiDocs__Enabled
+        value: "true"
+      - key: Jwt__Secret
+        generateValue: true
+      - key: Jwt__Issuer
+        value: AgriAssist
+      - key: Jwt__Audience
+        value: AgriAssistUsers
+      - key: AI__ServiceUrl
+        fromService:
+          name: agriassist-ai
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: AI__ServiceToken
+        generateValue: true
+      - key: AI__ToolToken
+        generateValue: true
+      - key: App__ReactUrl
+        fromService:
+          name: agriassist-react
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+
+  - type: web
+    name: agriassist-ai
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: dev
+    autoDeployTrigger: checksPass
+    dockerfilePath: ./ai-service/Dockerfile
+    dockerContext: ./ai-service
+    healthCheckPath: /health
+    envVars:
+      - key: AI_SERVICE_TOKEN
+        fromService:
+          name: agriassist-api
+          type: web
+          envVarKey: AI__ServiceToken
+      - key: AI_PROVIDER
+        value: openai
+      - key: AI_MODEL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: BACKEND_TOOL_BASE_URL
+        fromService:
+          name: agriassist-api
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: BACKEND_TOOL_TOKEN
+        fromService:
+          name: agriassist-api
+          type: web
+          envVarKey: AI__ToolToken
+
+  - type: web
+    name: agriassist-react
+    runtime: static
+    branch: dev
+    autoDeployTrigger: checksPass
+    buildCommand: cd frontend/react-app && npm ci && npm run build
+    staticPublishPath: frontend/react-app/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_BASE_URL
+        fromService:
+          name: agriassist-api
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL

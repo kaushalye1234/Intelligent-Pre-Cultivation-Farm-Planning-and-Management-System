@@ -7,23 +7,45 @@ import '../ui/agri_theme.dart';
 import '../ui/journey_date.dart';
 import '../ui/journey_widgets.dart';
 
-class ApprovedCropPlanScreen extends StatelessWidget {
-  const ApprovedCropPlanScreen({
-    super.key,
-    required this.plan,
-    required this.workflowId,
-  });
+class ApprovedCropPlanScreen extends StatefulWidget {
+  const ApprovedCropPlanScreen({super.key, required this.plan});
 
   final CropPlanRecord plan;
-  final String workflowId;
+
+  @override
+  State<ApprovedCropPlanScreen> createState() => _ApprovedCropPlanScreenState();
+}
+
+class _ApprovedCropPlanScreenState extends State<ApprovedCropPlanScreen> {
+  Future<FarmerApprovedPlan>? _detailFuture;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _detailFuture ??= context.read<AppState>().farmerApprovedPlan(widget.plan.id);
+  }
+
+  @override
+  void didUpdateWidget(covariant ApprovedCropPlanScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.plan.id != widget.plan.id) {
+      _detailFuture = context.read<AppState>().farmerApprovedPlan(widget.plan.id);
+    }
+  }
+
+  void _refresh() {
+    setState(() {
+      _detailFuture = context.read<AppState>().farmerApprovedPlan(widget.plan.id);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     return Scaffold(
       appBar: AppBar(title: const Text('Final crop plan')),
-      body: FutureBuilder<ApprovedWorkflowDetail>(
-        future: state.approvedWorkflowDetail(workflowId),
+      body: FutureBuilder<FarmerApprovedPlan>(
+        future: _detailFuture,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
             return ListView(
@@ -32,8 +54,7 @@ class ApprovedCropPlanScreen extends StatelessWidget {
                 const JourneyEmptyState(
                   icon: Icons.cloud_off_outlined,
                   title: 'Could not load this plan',
-                  message:
-                      'Return to Plans, refresh, and try opening the approved plan again.',
+                  message: 'Return to Plans, refresh, and try opening the approved plan again.',
                 ),
               ],
             );
@@ -42,44 +63,41 @@ class ApprovedCropPlanScreen extends StatelessWidget {
             return const Center(child: CircularProgressIndicator());
           }
           final detail = snapshot.data!;
-          if (detail.status != 4 ||
-              detail.approvedAt == null ||
-              detail.workflowId != workflowId) {
+          if (detail.contractVersion != 1 ||
+              detail.approvedAt.isEmpty ||
+              detail.cropPlanRequestId != widget.plan.id) {
             return ListView(
               padding: const EdgeInsets.all(20),
               children: [
                 const JourneyEmptyState(
                   icon: Icons.lock_clock_outlined,
                   title: 'Final details are not available yet',
-                  message:
-                      'Approved plan details will appear here when the workflow reports them.',
+                  message: 'Approved plan details will appear here when the workflow reports them.',
                 ),
               ],
             );
           }
 
           final crop = state.cropTypes
-              .where((item) => item.id == plan.cropTypeId)
+              .where((item) => item.id == widget.plan.cropTypeId)
               .firstOrNull;
           final variety = state.cropVarieties
-              .where((item) => item.id == plan.cropVarietyId)
+              .where((item) => item.id == widget.plan.cropVarietyId)
               .firstOrNull;
           final field = state.fields
-              .where((item) => item.id == plan.fieldId)
+              .where((item) => item.id == widget.plan.fieldId)
               .firstOrNull;
           final farm = state.farms
-              .where((item) => item.id == plan.farmId)
+              .where((item) => item.id == widget.plan.farmId)
               .firstOrNull;
-          final workflow = state.planWorkflows[plan.id];
-          final tasks = state.tasks
-              .where((item) => item.generatedByWorkflowId == workflowId)
-              .toList();
-          final schedules = state.irrigationSchedules
-              .where((item) => item.generatedByWorkflowId == workflowId)
-              .toList();
+          final tasks = detail.approvedTasks;
+          final schedules = detail.approvedIrrigationSchedules;
           final title = [
-            crop?.name ?? 'Crop',
-            if (variety != null) variety.name,
+            detail.cropName.isNotEmpty ? detail.cropName : crop?.name ?? 'Crop',
+            if (detail.varietyName != null)
+              detail.varietyName!
+            else if (variety != null)
+              variety.name,
           ].join(' - ');
 
           return ListView(
@@ -113,7 +131,7 @@ class ApprovedCropPlanScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 3),
                           Text(
-                            'Approved ${journeyDate(detail.approvedAt!)}',
+                            'Approved ${journeyDate(detail.approvedAt)}',
                             style: Theme.of(context).textTheme.bodyMedium,
                           ),
                         ],
@@ -126,6 +144,97 @@ class ApprovedCropPlanScreen extends StatelessWidget {
                   ],
                 ),
               ),
+              const SizedBox(height: 18),
+              FinalGuideStatusPanel(
+                status: detail.finalGuideStatus,
+                generatedAt: detail.finalGuideGeneratedAt,
+                onRefresh: _refresh,
+              ),
+              if (detail.finalGuide != null) ...[
+                const SizedBox(height: 24),
+                _FinalGuideAdviceSection(
+                  title: 'What to do this week',
+                  advice: detail.finalGuide!.weeklyGuidance,
+                  icon: Icons.today_outlined,
+                ),
+                if (detail.finalGuide!.currentStageExplanation != null) ...[
+                  const SizedBox(height: 18),
+                  const JourneySectionHeading(title: 'Current growth stage'),
+                  const SizedBox(height: 10),
+                  JourneyCard(
+                    child: Text(detail.finalGuide!.currentStageExplanation!),
+                  ),
+                ],
+                if (detail.finalGuide!.approvedActivities.isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  const JourneySectionHeading(
+                    title: 'Officer-approved activities',
+                  ),
+                  const SizedBox(height: 10),
+                  for (final activity in detail.finalGuide!.approvedActivities)
+                    JourneyCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            activity.title,
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          if (activity.scheduledAt != null)
+                            Text(journeyDate(activity.scheduledAt!)),
+                          if (activity.quantity != null)
+                            Text(
+                              '${activity.quantity} ${activity.unit ?? ''}'
+                                  .trim(),
+                            ),
+                          if (activity.durationMinutes != null)
+                            Text(
+                              'Duration: ${activity.durationMinutes} minutes',
+                            ),
+                        ],
+                      ),
+                    ),
+                ],
+                if (detail.finalGuide!.monthlyGuidance.isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  const JourneySectionHeading(
+                    title: 'Monthly cultivation guide',
+                  ),
+                  const SizedBox(height: 10),
+                  for (final month in detail.finalGuide!.monthlyGuidance)
+                    JourneyCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            month.month,
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          Text(month.summary),
+                          for (final advice in [
+                            ...month.fieldAdvice,
+                            ...month.weatherAdvice,
+                          ])
+                            Text('• $advice'),
+                        ],
+                      ),
+                    ),
+                ],
+                if (detail.finalGuide!.risks.isNotEmpty)
+                  _FinalGuideAdviceSection(
+                    title: 'Risks to watch',
+                    advice: detail.finalGuide!.risks,
+                    icon: Icons.warning_amber_rounded,
+                  ),
+                if (detail.finalGuide!.harvestPreparation.isNotEmpty)
+                  _FinalGuideAdviceSection(
+                    title: 'Harvest preparation',
+                    advice: detail.finalGuide!.harvestPreparation,
+                    icon: Icons.agriculture_outlined,
+                  ),
+                const JourneySectionHeading(title: 'Why this plan'),
+                JourneyCard(child: Text(detail.finalGuide!.whyThisPlan)),
+              ],
               const SizedBox(height: 24),
               const JourneySectionHeading(title: 'Plan Overview'),
               const SizedBox(height: 12),
@@ -145,7 +254,7 @@ class ApprovedCropPlanScreen extends StatelessWidget {
                     ),
                     JourneyInfoRow(
                       label: 'Season',
-                      value: switch (plan.cultivationSeason) {
+                      value: switch (widget.plan.cultivationSeason) {
                         1 => 'Maha',
                         2 => 'Yala',
                         3 => 'Other / Off-season',
@@ -155,20 +264,20 @@ class ApprovedCropPlanScreen extends StatelessWidget {
                     ),
                     JourneyInfoRow(
                       label: 'Planting',
-                      value: journeyDate(plan.preferredStartDate),
+                      value: journeyDate(widget.plan.preferredStartDate),
                       icon: Icons.event_outlined,
                     ),
                     JourneyInfoRow(
                       label: 'Expected end',
-                      value: journeyDate(plan.preferredEndDate),
+                      value: journeyDate(widget.plan.preferredEndDate),
                       icon: Icons.event_available_outlined,
                     ),
                     JourneyInfoRow(
                       label: 'Budget',
-                      value: 'LKR ${plan.budget}',
+                      value: 'LKR ${widget.plan.budget}',
                       icon: Icons.payments_outlined,
                     ),
-                    if (plan.objective.isNotEmpty) ...[
+                    if (widget.plan.objective.isNotEmpty) ...[
                       const Divider(height: 26),
                       Text(
                         'Objective',
@@ -176,7 +285,7 @@ class ApprovedCropPlanScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        plan.objective,
+                        widget.plan.objective,
                         style: Theme.of(context).textTheme.bodyLarge,
                       ),
                     ],
@@ -197,8 +306,7 @@ class ApprovedCropPlanScreen extends StatelessWidget {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        detail.fieldSummary ??
-                            'No field insight was included in this approved plan.',
+                        detail.fieldSummary ?? 'No field insight was included in this approved plan.',
                         style: Theme.of(context).textTheme.bodyLarge,
                       ),
                     ),
@@ -221,8 +329,7 @@ class ApprovedCropPlanScreen extends StatelessWidget {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        detail.weatherSummary ??
-                            'No weather insight was included in this approved plan.',
+                        detail.weatherSummary ?? 'No weather insight was included in this approved plan.',
                         style: Theme.of(context).textTheme.bodyLarge,
                       ),
                     ),
@@ -245,8 +352,7 @@ class ApprovedCropPlanScreen extends StatelessWidget {
                 const JourneyEmptyState(
                   icon: Icons.lightbulb_outline_rounded,
                   title: 'No recommendations listed',
-                  message:
-                      'This approved plan did not include additional recommendations.',
+                  message: 'This approved plan did not include additional recommendations.',
                 ),
               for (final recommendation in detail.recommendations) ...[
                 JourneyCard(
@@ -269,6 +375,91 @@ class ApprovedCropPlanScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 9),
               ],
+              if (detail.cropHealth != null) ...[
+                const SizedBox(height: 24),
+                const JourneySectionHeading(
+                  title: 'Crop Health Guidance',
+                  subtitle:
+                      'Reviewed by field staff and approved for this plan.',
+                ),
+                const SizedBox(height: 12),
+                JourneyCard(
+                  color: AgriColors.sage,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Crop Health Observation',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(detail.cropHealth!.cropHealthObservation),
+                      const Divider(height: 26),
+                      Text(
+                        'Possible Concern',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(detail.cropHealth!.possibleConcern),
+                      const SizedBox(height: 8),
+                      JourneyNotice(
+                        message: detail.cropHealth!.uncertaintyGuidance,
+                      ),
+                      if (detail
+                          .cropHealth!
+                          .approvedPrePlantingActions
+                          .isNotEmpty) ...[
+                        const Divider(height: 26),
+                        Text(
+                          'Before Planting',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 6),
+                        for (final action
+                            in detail.cropHealth!.approvedPrePlantingActions)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 5),
+                            child: Text('• $action'),
+                          ),
+                      ],
+                      if (detail
+                          .cropHealth!
+                          .approvedMonitoringActions
+                          .isNotEmpty) ...[
+                        const Divider(height: 26),
+                        Text(
+                          'During Early Growth',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 6),
+                        for (final action
+                            in detail.cropHealth!.approvedMonitoringActions)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 5),
+                            child: Text('• $action'),
+                          ),
+                      ],
+                      if (detail.cropHealth!.escalationGuidance?.isNotEmpty ==
+                          true) ...[
+                        const Divider(height: 26),
+                        Text(
+                          'When to Ask for Help',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(detail.cropHealth!.escalationGuidance!),
+                      ],
+                      const Divider(height: 26),
+                      Text(
+                        'Why This Is Recommended',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(detail.cropHealth!.whyThisIsRecommended),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 24),
               const JourneySectionHeading(
                 title: 'Tasks',
@@ -279,8 +470,7 @@ class ApprovedCropPlanScreen extends StatelessWidget {
                 const JourneyEmptyState(
                   icon: Icons.task_alt_outlined,
                   title: 'No linked tasks available',
-                  message:
-                      'Tasks for this workflow will be shown here when available.',
+                  message: 'Tasks for this workflow will be shown here when available.',
                 ),
               for (final task in tasks) ...[
                 JourneyCard(
@@ -296,10 +486,8 @@ class ApprovedCropPlanScreen extends StatelessWidget {
                             ),
                           ),
                           JourneyStatusPill(
-                            task.statusLabel,
-                            tone: task.status == 3 || task.status == 6
-                                ? JourneyTone.success
-                                : JourneyTone.warning,
+                            task.status,
+                            tone: JourneyTone.success,
                           ),
                         ],
                       ),
@@ -330,8 +518,7 @@ class ApprovedCropPlanScreen extends StatelessWidget {
                 const JourneyEmptyState(
                   icon: Icons.water_drop_outlined,
                   title: 'No linked irrigation schedule',
-                  message:
-                      'A schedule for this workflow will be shown here when available.',
+                  message: 'A schedule for this workflow will be shown here when available.',
                 ),
               for (final schedule in schedules) ...[
                 JourneyCard(
@@ -355,10 +542,8 @@ class ApprovedCropPlanScreen extends StatelessWidget {
                             ),
                           ),
                           JourneyStatusPill(
-                            schedule.statusLabel,
-                            tone: schedule.status == 2 || schedule.status == 5
-                                ? JourneyTone.success
-                                : JourneyTone.warning,
+                            schedule.status,
+                            tone: JourneyTone.success,
                           ),
                         ],
                       ),
@@ -380,7 +565,7 @@ class ApprovedCropPlanScreen extends StatelessWidget {
                 const SizedBox(height: 9),
               ],
               const SizedBox(height: 24),
-              const JourneySectionHeading(title: 'Approval / Workflow'),
+              const JourneySectionHeading(title: 'Approval'),
               const SizedBox(height: 12),
               JourneyCard(
                 child: Column(
@@ -392,21 +577,14 @@ class ApprovedCropPlanScreen extends StatelessWidget {
                     ),
                     JourneyInfoRow(
                       label: 'Approved on',
-                      value: journeyDate(detail.approvedAt!),
+                      value: journeyDate(detail.approvedAt),
                       icon: Icons.event_available_outlined,
                     ),
-                    JourneyInfoRow(
-                      label: 'Workflow status',
-                      value: workflow?.status == 4
-                          ? workflow!.statusLabel
-                          : 'Completed',
-                      icon: Icons.account_tree_outlined,
+                    const JourneyInfoRow(
+                      label: 'Plan source',
+                      value: 'Approved farmer plan',
+                      icon: Icons.verified_user_outlined,
                     ),
-                    if (workflow?.currentStep.isNotEmpty == true)
-                      JourneyInfoRow(
-                        label: 'Latest stage',
-                        value: workflow!.currentStep,
-                      ),
                   ],
                 ),
               ),
@@ -414,6 +592,85 @@ class ApprovedCropPlanScreen extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+}
+
+class FinalGuideStatusPanel extends StatelessWidget {
+  const FinalGuideStatusPanel({
+    super.key,
+    required this.status,
+    required this.generatedAt,
+    required this.onRefresh,
+  });
+
+  final String status;
+  final String? generatedAt;
+  final VoidCallback onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    final message = switch (status) {
+      'Ready' => generatedAt == null
+          ? 'Generation date unavailable. Check changing field and weather conditions before acting on this guidance.'
+          : 'Guidance generated ${journeyDate(generatedAt!)} for this approval. Check changing field and weather conditions before acting.',
+      'Pending' => 'Your approved work is available. The cultivation guide is still being generated.',
+      _ => 'Your approved work is available. The cultivation guide is unavailable right now; refresh to check again.',
+    };
+    return JourneyCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Cultivation guide: $status', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 6),
+          Text(message),
+          const SizedBox(height: 8),
+          TextButton.icon(
+            onPressed: onRefresh,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Refresh guide'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FinalGuideAdviceSection extends StatelessWidget {
+  const _FinalGuideAdviceSection({
+    required this.title,
+    required this.advice,
+    required this.icon,
+  });
+
+  final String title;
+  final List<String> advice;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    if (advice.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 18),
+        JourneySectionHeading(title: title),
+        const SizedBox(height: 10),
+        for (final item in advice)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: JourneyCard(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(icon, color: AgriColors.forestLight),
+                  const SizedBox(width: 12),
+                  Expanded(child: Text(item)),
+                ],
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

@@ -239,7 +239,9 @@ public sealed class AdminUsersIntegrationTests
             new RegisterFarmerRequest(
                 "Unauthorized Farmer",
                 "unauthorized.farmer@example.com",
-                "secure farmer phrase"));
+                "secure farmer phrase",
+                "0771234567",
+                "No. 25, Wariyapola Road"));
         var farmerSession = await registration.Content.ReadFromJsonAsync<AuthResponse>();
         client.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", farmerSession!.AccessToken);
@@ -255,6 +257,33 @@ public sealed class AdminUsersIntegrationTests
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         Assert.Equal("ROLE_NOT_AUTHORIZED", await ErrorCodeAsync(response));
+    }
+
+    [Fact]
+    public async Task Generic_admin_user_list_does_not_expose_farmer_contact_details()
+    {
+        await using var factory = CreateFactory();
+        using var publicClient = factory.CreateClient();
+        var registration = await publicClient.PostAsJsonAsync(
+            "/api/auth/register-farmer",
+            new RegisterFarmerRequest(
+                "Private Contact Farmer",
+                "private.contact@example.com",
+                "secure farmer phrase",
+                "077 123 4567",
+                "25 Wariyapola Road, Kurunegala"));
+        Assert.Equal(HttpStatusCode.Created, registration.StatusCode);
+
+        using var adminClient = await CreateAdminClientAsync(factory);
+        var response = await adminClient.GetAsync("/api/users?search=private.contact@example.com");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Private Contact Farmer", body);
+        Assert.DoesNotContain("phoneNumber", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("contactAddress", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("+94771234567", body);
+        Assert.DoesNotContain("25 Wariyapola Road", body);
     }
 
     private static async Task<HttpClient> CreateAdminClientAsync(WebApplicationFactory<Program> factory)

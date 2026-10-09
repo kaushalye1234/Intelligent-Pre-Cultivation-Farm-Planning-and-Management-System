@@ -9,6 +9,18 @@ class InspectionTools:
     def __init__(self, client: BackendToolClient) -> None:
         self._client = client
 
+    async def get_crop_plan_context(
+        self,
+        crop_plan_request_id: UUID,
+        workflow_id: UUID,
+        agent_step_id: UUID | None = None,
+    ) -> dict[str, Any]:
+        return await self._get_dict(
+            f"/api/internal/agent-tools/crop-plan-context/{crop_plan_request_id}",
+            workflow_id,
+            agent_step_id,
+        )
+
     async def get_field_details(self, field_id: UUID, workflow_id: UUID, agent_step_id: UUID | None = None) -> dict[str, Any]:
         return await self._get_dict(f"/api/internal/agent-tools/fields/{field_id}", workflow_id, agent_step_id)
 

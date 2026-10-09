@@ -1,6 +1,6 @@
 ﻿import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { Eye, EyeOff, Leaf, LockKeyhole, Mail, ShieldCheck, Sprout } from 'lucide-react'
 import { getErrorMessage } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
@@ -10,6 +10,11 @@ import { getDashboardPath } from '../routing'
 export function LoginPage() {
   const { isAuthenticated, login, user } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const requestedPath = (location.state as { from?: unknown } | null)?.from
+  const returnTo = typeof requestedPath === 'string' && requestedPath.startsWith('/') && !requestedPath.startsWith('//')
+    ? requestedPath
+    : null
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -17,7 +22,7 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
 
   if (isAuthenticated) {
-    return <Navigate to={getDashboardPath(user?.role)} replace />
+    return <Navigate to={returnTo ?? getDashboardPath(user?.role)} replace />
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -35,7 +40,7 @@ export function LoginPage() {
       navigate(
         result.status === 'passwordChangeRequired'
           ? '/change-temporary-password'
-          : getDashboardPath(result.user.role),
+          : returnTo ?? getDashboardPath(result.user.role),
         { replace: true },
       )
     } catch (err) {

@@ -1,7 +1,9 @@
 import { Moon, Sun } from 'lucide-react'
-import type { ThemeMode } from '../theme'
+import { useThemeMode } from '../theme'
 
-export function ThemeToggle({ theme, onToggle }: { theme: ThemeMode; onToggle: () => void }) {
+/** The single light/dark switch. Every instance drives the same app-wide theme store. */
+export function ThemeToggle({ className = '' }: { className?: string }) {
+  const { theme, toggleTheme } = useThemeMode()
   const isDark = theme === 'dark'
   return (
     <button
@@ -10,8 +12,8 @@ export function ThemeToggle({ theme, onToggle }: { theme: ThemeMode; onToggle: (
       aria-checked={isDark}
       aria-label="Dark mode"
       title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-      className="theme-toggle"
-      onClick={onToggle}
+      className={`theme-toggle ${className}`.trim()}
+      onClick={toggleTheme}
     >
       <span className="theme-toggle-track" aria-hidden="true">
         <Sun size={14} className="theme-toggle-sun" />

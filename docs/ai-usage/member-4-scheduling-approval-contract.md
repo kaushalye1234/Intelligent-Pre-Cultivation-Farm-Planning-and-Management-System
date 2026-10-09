@@ -18,6 +18,41 @@ POST /workflows/crop-planning/scheduling-validation
 
 A ready result has `status: "CandidateReady"`, the current `candidateRevision`, `requiresHumanApproval: true`, candidate tasks and irrigation schedules, warnings, estimated cost when authoritative costs exist, and explicit constraints. Missing or mismatched upstream outputs produce `MissingDependency`, require human review, and contain no candidates.
 
+## Version-2 evidence and proposal
+
+The current request includes `contractVersion: 2` and an `evidence` bundle built by ASP.NET from the same persisted workflow. It carries the pinned active profile ID, source name/version/verification time, completed Member 1-3 step IDs, ordered crop stages, and parsed `IrrigationSchedule` rules. `invalidIrrigationRuleIds` makes malformed persisted rules explicit. If Member 3 names a `requirementSource.cropReferenceProfileId`, the bundle must use that exact profile; the scheduler cannot substitute another profile.
+
+Each candidate task, irrigation entry, and reservation includes `reason` and one to four `sources`. A source has `kind`, stable `id`, `label`, and optional `profileId`, `sourceVersion`, `verifiedAt`, and `sourceUrl`. Allowed kinds are `FieldAnalysis`, `CropStage`, `IrrigationRule`, and `ResourceRequirement`. The backend independently compares these references and the deterministic explanation text with current persisted evidence before a ready result can enter officer approval, and again during approval.
+
+The agent creates preparation review tasks only from Member 2 `fieldPreparationRequirements`, stage review tasks only from the selected verified profile, irrigation only from its parsed rules, and reservations only from Member 3 sufficient requirements and uniquely matched stock rows. A profile with no verified irrigation rule yields `candidateIrrigation: []`; neither duration nor water need is invented. Cost remains `null` without verified prices. All dates remain inside the selected window and timestamps are UTC.
+
+`CandidateBlocked` (`AgentWorkflowStatus` 12) preserves safe proposed items, warnings, constraints, and failed validation for review while setting `requiresHumanApproval: false`. A verified shortage, high weather risk, unsupported rule, ambiguous stock, or impossible date blocks approval. A resource shortage, duplicate, or ambiguous stock mapping produces no reservation proposal; other blockers retain any otherwise valid reservation candidate for review. `Unknown` weather is a warning if other checks pass. Missing upstream/profile/stage evidence produces `MissingDependency` with no candidates. A blocked workflow must run a **new upstream workflow** after stock, weather, or reference data changes; regenerating from the old Member 3 snapshot is not a refresh.
+
+The version-2 result uses the same endpoint and includes `contractVersion: 2`. Older stored results without that property remain readable and use the existing approval revalidation path. Only a version-2 result receives the new reason/source and zero-irrigation checks.
+
+### Crop-health action and guidance path
+
+`reviewedCropIssueActions` remain separate from `fieldPreparationRequirements`. ASP.NET maps each allowlisted action through the deterministic crop-health catalog after Scheduling Validation; the scheduling model cannot author or rewrite those semantics. Each mapped candidate has locked action type, category, title, description, non-chemical meaning, and Member 2 provenance. AO/Admin may include/reject it and change only bounded schedule, assignee/role, priority where supported, and a staff-only scheduling note. Approval reconstructs and validates catalog wording again.
+
+When frozen reviewed evidence exists, ASP.NET also constructs a locked farmer-safe crop-health guidance candidate. Each proposal version uses `PendingDecision`, `Included`, `Rejected`, or `NotApplicable`. A candidate starts Pending and final workflow approval is rejected until AO/Admin explicitly Includes or Rejects it. A new proposal revision resets the decision. Guidance and task decisions remain independent. Neither path may introduce chemical treatment or turn an uncertain concern into a confirmed diagnosis.
+
+The additional decision routes are:
+
+```http
+POST /api/task-approval/workflows/{workflowId}/crop-health-guidance-decision
+PUT  /api/task-approval/workflows/{workflowId}/crop-health-actions/{actionKey}
+```
+
+Authorized Field Officers may read only workflows linked to inspections they own; they receive no decision controls. AO/Admin retain proposal authority. Resource Officers and farmers cannot access Member 2 raw analysis/review history through Task Approval.
+
+After final approval, the owning farmer reads the version-1 server-composed DTO:
+
+```http
+GET /api/crop-planning/requests/{cropPlanRequestId}/approved-plan
+```
+
+It contains approved plan data, approved tasks, approved irrigation, and an optional crop-health section only when the exact proposal guidance was Included. Legacy plans and plans with rejected/no image guidance return the normal approved data with `cropHealth: null`. The endpoint never returns raw workflow JSON, analysis/review IDs, hashes, fingerprints, evidence packets, prompt/model metadata, rejected/stale output, or staff-only notes. Flutter consumes only this projection.
+
 The backend validates identifiers, ownership, revision, dates, conflicts, inventory, reservations, and budget using current database state. Only a valid candidate moves the workflow to `PendingOfficerApproval`. The AI result cannot set its own eligibility.
 
 ## Review and decisions
@@ -48,7 +83,7 @@ Approval revalidates mutable data and commits the decision, approved tasks, appr
 
 ## Review UI
 
-The React queue is available under `/task-approval`; a workflow opens at `/task-approval/workflows/{workflowId}`. It displays all stored step outputs, validation errors and warnings, revision/version values, and decision history. Only AgriculturalOfficer and Admin users receive decision controls.
+The React queue is available under `/task-approval`; a workflow opens at `/task-approval/workflows/{workflowId}`. It displays sourced proposal items and blocking reasons before raw stored output, validation results, revision/version values, and decision history. Only AgriculturalOfficer and Admin users receive decision controls. Source URLs become links only for `http` and `https` schemes. Flutter labels blocked workflows and states that no farm work has been approved.
 
 ## Verification boundary
 

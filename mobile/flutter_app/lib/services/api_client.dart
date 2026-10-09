@@ -66,11 +66,15 @@ class ApiClient {
   Future<AuthenticationSession> registerFarmer({
     required String fullName,
     required String email,
+    required String phoneNumber,
+    required String contactAddress,
     required String password,
   }) async {
     final response = await _postUnauthenticated('/auth/register-farmer', {
       'fullName': fullName,
       'email': email,
+      'phoneNumber': phoneNumber,
+      'contactAddress': contactAddress,
       'password': password,
     });
     final session = AuthenticationSession.fromJson(response);
@@ -103,11 +107,13 @@ class ApiClient {
   Future<FarmOption> createFarm({
     required String name,
     required String location,
+    required String district,
     required num totalArea,
   }) async {
     final response = await _post('/crop-planning/farms', {
       'name': name,
       'location': location,
+      'district': district,
       'totalArea': totalArea,
       'ownerUserId': null,
     });
@@ -160,11 +166,13 @@ class ApiClient {
     return items.map(CropPlanRecord.fromJson).toList();
   }
 
-  Future<ApprovedWorkflowDetail> approvedWorkflowDetail(
-    String workflowId,
+  Future<FarmerApprovedPlan> farmerApprovedPlan(
+    String cropPlanRequestId,
   ) async {
-    final response = await _get('/task-approval/workflows/$workflowId');
-    return ApprovedWorkflowDetail.fromJson(response);
+    final response = await _get(
+      '/crop-planning/requests/$cropPlanRequestId/approved-plan',
+    );
+    return FarmerApprovedPlan.fromJson(response);
   }
 
   Future<List<FarmTaskRecord>> tasks() async {
@@ -211,14 +219,17 @@ class ApiClient {
     return response['id'] as String;
   }
 
-  Future<CropPlanningWorkflowStart> startCropPlanningWorkflow(
-    String cropPlanRequestId,
-  ) async {
+  Future<CropPlanRecord> cropPlanRequest(String cropPlanRequestId) async {
+    final response = await _get('/crop-planning/requests/$cropPlanRequestId');
+    return CropPlanRecord.fromJson(response);
+  }
+
+  Future<CropPlanRecord> cancelCropPlanRequest(String cropPlanRequestId) async {
     final response = await _post(
-      '/crop-plans/$cropPlanRequestId/start-ai-workflow',
-      {},
+      '/crop-planning/requests/$cropPlanRequestId/cancel',
+      <String, dynamic>{},
     );
-    return CropPlanningWorkflowStart.fromJson(response);
+    return CropPlanRecord.fromJson(response);
   }
 
   Future<CropPlanningWorkflowStatus> cropPlanningWorkflowStatus(

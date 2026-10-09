@@ -227,12 +227,14 @@ class FarmOption {
     required this.id,
     required this.name,
     this.location = '',
+    this.district,
     this.totalArea = 0,
   });
 
   final String id;
   final String name;
   final String location;
+  final String? district;
   final num totalArea;
 
   factory FarmOption.fromJson(Map<String, dynamic> json) {
@@ -240,6 +242,7 @@ class FarmOption {
       id: json['id'] as String,
       name: json['name'] as String,
       location: json['location'] as String? ?? '',
+      district: json['district'] as String?,
       totalArea: json['totalArea'] as num? ?? 0,
     );
   }
@@ -321,6 +324,10 @@ class CropPlanRecord {
     required this.preferredEndDate,
     required this.budget,
     required this.createdAt,
+    this.statusCode = 'unknown',
+    this.statusLabel = 'Status unavailable',
+    this.overallStatusCode = 'unknown',
+    this.overallStatusLabel = 'Status unavailable',
     this.fieldId,
     this.cropVarietyId,
     this.cultivationSeason = 0,
@@ -333,6 +340,10 @@ class CropPlanRecord {
   final String? cropVarietyId;
   final String objective;
   final int status;
+  final String statusCode;
+  final String statusLabel;
+  final String overallStatusCode;
+  final String overallStatusLabel;
   final int cultivationSeason;
   final String preferredStartDate;
   final String preferredEndDate;
@@ -347,6 +358,11 @@ class CropPlanRecord {
     cropVarietyId: json['cropVarietyId'] as String?,
     objective: json['objective'] as String? ?? '',
     status: json['status'] as int? ?? 0,
+    statusCode: json['statusCode'] as String? ?? 'unknown',
+    statusLabel: json['statusLabel'] as String? ?? 'Status unavailable',
+    overallStatusCode: json['overallStatusCode'] as String? ?? 'unknown',
+    overallStatusLabel:
+        json['overallStatusLabel'] as String? ?? 'Status unavailable',
     cultivationSeason: json['cultivationSeason'] as int? ?? 0,
     preferredStartDate: json['preferredStartDate'] as String? ?? '',
     preferredEndDate: json['preferredEndDate'] as String? ?? '',
@@ -354,15 +370,20 @@ class CropPlanRecord {
     createdAt: json['createdAt'] as String? ?? '',
   );
 
-  String get statusLabel => switch (status) {
-    1 => 'Draft',
-    2 => 'Submitted',
-    3 => 'Preliminary plan',
-    4 => 'Approved',
-    5 => 'Rejected',
-    6 => 'Cancelled',
-    _ => 'Unknown',
-  };
+  bool get canCancel => status != 4 && status != 5 && status != 6;
+
+  bool get isLifecycleActive => const {
+    'pending',
+    'ai_planning',
+    'field_analysis_running',
+    'weather_resource_analysis_running',
+    'scheduling_validation_running',
+  }.contains(statusCode);
+
+  bool get isLifecycleFinal =>
+      const {'approved', 'rejected', 'cancelled'}.contains(overallStatusCode);
+
+  bool get isLifecycleStable => !isLifecycleActive && !isLifecycleFinal;
 }
 
 class CropPlanningStepStatus {
@@ -378,81 +399,264 @@ class CropPlanningStepStatus {
       );
 }
 
-class ApprovedWorkflowDetail {
-  const ApprovedWorkflowDetail({
-    required this.workflowId,
+class FarmerApprovedTask {
+  const FarmerApprovedTask({
+    required this.id,
+    required this.title,
+    required this.description,
+    required this.dueAt,
     required this.status,
+  });
+  final String id;
+  final String title;
+  final String description;
+  final String dueAt;
+  final String status;
+  factory FarmerApprovedTask.fromJson(Map<String, dynamic> json) =>
+      FarmerApprovedTask(
+        id: json['id'] as String? ?? '',
+        title: json['title'] as String? ?? '',
+        description: json['description'] as String? ?? '',
+        dueAt: json['dueAt'] as String? ?? '',
+        status: json['status'] as String? ?? 'Approved',
+      );
+}
+
+class FarmerApprovedIrrigation {
+  const FarmerApprovedIrrigation({
+    required this.id,
+    required this.scheduledAt,
+    required this.durationMinutes,
+    required this.notes,
+    required this.status,
+  });
+  final String id;
+  final String scheduledAt;
+  final int durationMinutes;
+  final String notes;
+  final String status;
+  factory FarmerApprovedIrrigation.fromJson(Map<String, dynamic> json) =>
+      FarmerApprovedIrrigation(
+        id: json['id'] as String? ?? '',
+        scheduledAt: json['scheduledAt'] as String? ?? '',
+        durationMinutes: json['durationMinutes'] as int? ?? 0,
+        notes: json['notes'] as String? ?? '',
+        status: json['status'] as String? ?? 'Approved',
+      );
+}
+
+class FarmerApprovedCropHealth {
+  const FarmerApprovedCropHealth({
+    required this.cropHealthObservation,
+    required this.possibleConcern,
+    required this.uncertaintyGuidance,
+    required this.approvedPrePlantingActions,
+    required this.approvedMonitoringActions,
+    required this.escalationGuidance,
+    required this.whyThisIsRecommended,
+  });
+  final String cropHealthObservation;
+  final String possibleConcern;
+  final String uncertaintyGuidance;
+  final List<String> approvedPrePlantingActions;
+  final List<String> approvedMonitoringActions;
+  final String? escalationGuidance;
+  final String whyThisIsRecommended;
+  factory FarmerApprovedCropHealth.fromJson(Map<String, dynamic> json) =>
+      FarmerApprovedCropHealth(
+        cropHealthObservation: json['cropHealthObservation'] as String? ?? '',
+        possibleConcern: json['possibleConcern'] as String? ?? '',
+        uncertaintyGuidance: json['uncertaintyGuidance'] as String? ?? '',
+        approvedPrePlantingActions:
+            (json['approvedPrePlantingActions'] as List<dynamic>? ?? const [])
+                .whereType<String>()
+                .toList(),
+        approvedMonitoringActions:
+            (json['approvedMonitoringActions'] as List<dynamic>? ?? const [])
+                .whereType<String>()
+                .toList(),
+        escalationGuidance: json['escalationGuidance'] as String?,
+        whyThisIsRecommended: json['whyThisIsRecommended'] as String? ?? '',
+      );
+}
+
+class FinalGuideMonth {
+  const FinalGuideMonth({
+    required this.month,
+    required this.summary,
+    required this.fieldAdvice,
+    required this.weatherAdvice,
+  });
+
+  final String month;
+  final String summary;
+  final List<String> fieldAdvice;
+  final List<String> weatherAdvice;
+
+  factory FinalGuideMonth.fromJson(Map<String, dynamic> json) =>
+      FinalGuideMonth(
+        month: json['month'] as String? ?? '',
+        summary: json['summary'] as String? ?? '',
+        fieldAdvice: (json['fieldAdvice'] as List<dynamic>? ?? const [])
+            .whereType<String>()
+            .toList(),
+        weatherAdvice: (json['weatherAdvice'] as List<dynamic>? ?? const [])
+            .whereType<String>()
+            .toList(),
+      );
+}
+
+class FinalGuideActivity {
+  const FinalGuideActivity({
+    required this.title,
+    required this.scheduledAt,
+    required this.quantity,
+    required this.unit,
+    required this.durationMinutes,
+  });
+
+  final String title;
+  final String? scheduledAt;
+  final num? quantity;
+  final String? unit;
+  final int? durationMinutes;
+
+  factory FinalGuideActivity.fromJson(Map<String, dynamic> json) =>
+      FinalGuideActivity(
+        title: json['title'] as String? ?? '',
+        scheduledAt: json['scheduledAt'] as String?,
+        quantity: json['quantity'] as num?,
+        unit: json['unit'] as String?,
+        durationMinutes: json['durationMinutes'] as int?,
+      );
+}
+
+class FinalCultivationGuide {
+  const FinalCultivationGuide({
+    required this.weeklyGuidance,
+    required this.currentStageExplanation,
+    required this.monthlyGuidance,
+    required this.risks,
+    required this.harvestPreparation,
+    required this.whyThisPlan,
+    required this.approvedActivities,
+  });
+
+  final List<String> weeklyGuidance;
+  final String? currentStageExplanation;
+  final List<FinalGuideMonth> monthlyGuidance;
+  final List<String> risks;
+  final List<String> harvestPreparation;
+  final String whyThisPlan;
+  final List<FinalGuideActivity> approvedActivities;
+
+  factory FinalCultivationGuide.fromJson(Map<String, dynamic> json) =>
+      FinalCultivationGuide(
+        weeklyGuidance: (json['weeklyGuidance'] as List<dynamic>? ?? const [])
+            .whereType<String>()
+            .toList(),
+        currentStageExplanation: json['currentStageExplanation'] as String?,
+        monthlyGuidance: (json['monthlyGuidance'] as List<dynamic>? ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(FinalGuideMonth.fromJson)
+            .toList(),
+        risks: (json['risks'] as List<dynamic>? ?? const [])
+            .whereType<String>()
+            .toList(),
+        harvestPreparation:
+            (json['harvestPreparation'] as List<dynamic>? ?? const [])
+                .whereType<String>()
+                .toList(),
+        whyThisPlan: json['whyThisPlan'] as String? ?? '',
+        approvedActivities:
+            (json['approvedActivities'] as List<dynamic>? ?? const [])
+                .whereType<Map<String, dynamic>>()
+                .map(FinalGuideActivity.fromJson)
+                .toList(),
+      );
+}
+
+class FarmerApprovedPlan {
+  const FarmerApprovedPlan({
+    required this.contractVersion,
+    required this.cropPlanRequestId,
+    required this.objective,
+    required this.cropName,
+    required this.varietyName,
+    required this.preferredStartDate,
+    required this.preferredEndDate,
     required this.approvedAt,
     required this.fieldSummary,
     required this.weatherSummary,
     required this.warnings,
     required this.recommendations,
+    required this.approvedTasks,
+    required this.approvedIrrigationSchedules,
+    required this.cropHealth,
+    required this.finalGuide,
+    required this.finalGuideStatus,
+    required this.finalGuideGeneratedAt,
   });
-
-  final String workflowId;
-  final int status;
-  final String? approvedAt;
+  final int contractVersion;
+  final String cropPlanRequestId;
+  final String objective;
+  final String cropName;
+  final String? varietyName;
+  final String preferredStartDate;
+  final String preferredEndDate;
+  final String approvedAt;
   final String? fieldSummary;
   final String? weatherSummary;
   final List<String> warnings;
   final List<String> recommendations;
+  final List<FarmerApprovedTask> approvedTasks;
+  final List<FarmerApprovedIrrigation> approvedIrrigationSchedules;
+  final FarmerApprovedCropHealth? cropHealth;
+  final FinalCultivationGuide? finalGuide;
+  final String finalGuideStatus;
+  final String? finalGuideGeneratedAt;
 
-  factory ApprovedWorkflowDetail.fromJson(Map<String, dynamic> json) {
-    final workflow = json['workflow'] as Map<String, dynamic>? ?? const {};
-    final decisions = (json['decisions'] as List<dynamic>? ?? const [])
-        .cast<Map<String, dynamic>>();
-    final steps = (json['steps'] as List<dynamic>? ?? const [])
-        .cast<Map<String, dynamic>>();
-    String? summaryFor(String agentName, String key) {
-      for (final step in steps.reversed) {
-        if (step['agentName'] == agentName && step['status'] == 3) {
-          final output = step['output'];
-          if (output is Map<String, dynamic>) {
-            final value = output[key];
-            if (value is String && value.isNotEmpty) return value;
-            if (value is Map<String, dynamic>) {
-              final summary = value['summary'];
-              if (summary is String && summary.isNotEmpty) return summary;
-            }
-          }
-        }
-      }
-      return null;
-    }
-
-    String? approvedAt;
-    for (final decision in decisions.reversed) {
-      if (decision['decision'] == 1) {
-        approvedAt = decision['createdAt'] as String?;
-        break;
-      }
-    }
-    final warnings = <String>[];
-    final recommendations = <String>[];
-    for (final step in steps) {
-      if (step['status'] != 3) continue;
-      final output = step['output'];
-      if (output is! Map<String, dynamic>) continue;
-      warnings.addAll(
-        (output['warnings'] as List<dynamic>? ?? const []).whereType<String>(),
+  factory FarmerApprovedPlan.fromJson(Map<String, dynamic> json) =>
+      FarmerApprovedPlan(
+        contractVersion: json['contractVersion'] as int? ?? 0,
+        cropPlanRequestId: json['cropPlanRequestId'] as String? ?? '',
+        objective: json['objective'] as String? ?? '',
+        cropName: json['cropName'] as String? ?? 'Crop',
+        varietyName: json['varietyName'] as String?,
+        preferredStartDate: json['preferredStartDate'] as String? ?? '',
+        preferredEndDate: json['preferredEndDate'] as String? ?? '',
+        approvedAt: json['approvedAt'] as String? ?? '',
+        fieldSummary: json['fieldSummary'] as String?,
+        weatherSummary: json['weatherSummary'] as String?,
+        warnings: (json['warnings'] as List<dynamic>? ?? const [])
+            .whereType<String>()
+            .toList(),
+        recommendations: (json['recommendations'] as List<dynamic>? ?? const [])
+            .whereType<String>()
+            .toList(),
+        approvedTasks: (json['approvedTasks'] as List<dynamic>? ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(FarmerApprovedTask.fromJson)
+            .toList(),
+        approvedIrrigationSchedules:
+            (json['approvedIrrigationSchedules'] as List<dynamic>? ?? const [])
+                .whereType<Map<String, dynamic>>()
+                .map(FarmerApprovedIrrigation.fromJson)
+                .toList(),
+        cropHealth: json['cropHealth'] is Map<String, dynamic>
+            ? FarmerApprovedCropHealth.fromJson(
+                json['cropHealth'] as Map<String, dynamic>,
+              )
+            : null,
+        finalGuide: json['finalGuide'] is Map<String, dynamic>
+            ? FinalCultivationGuide.fromJson(
+                json['finalGuide'] as Map<String, dynamic>,
+              )
+            : null,
+        finalGuideStatus: json['finalGuideStatus'] as String? ??
+            (json['finalGuide'] is Map<String, dynamic> ? 'Ready' : 'Unavailable'),
+        finalGuideGeneratedAt: json['finalGuideGeneratedAt'] as String?,
       );
-      if (step['agentName'] == 'WeatherResourceAgent') {
-        recommendations.addAll(
-          (output['recommendations'] as List<dynamic>? ?? const [])
-              .whereType<String>(),
-        );
-      }
-    }
-    return ApprovedWorkflowDetail(
-      workflowId: workflow['id'] as String? ?? '',
-      status: workflow['status'] as int? ?? 0,
-      approvedAt: approvedAt,
-      fieldSummary: summaryFor('CropFieldAnalysisAgent', 'fieldCondition'),
-      weatherSummary: summaryFor('WeatherResourceAgent', 'weatherSummary'),
-      warnings: warnings.toSet().toList(),
-      recommendations: recommendations.toSet().toList(),
-    );
-  }
 }
 
 class CropPlanningDelegatedStep {
@@ -519,6 +723,10 @@ class CropPlanningWorkflowStatus {
     required this.status,
     required this.currentStep,
     required this.warnings,
+    this.statusCode = 'unknown',
+    this.statusLabel = 'Status unavailable',
+    this.overallStatusCode = 'unknown',
+    this.overallStatusLabel = 'Status unavailable',
     this.steps = const [],
   });
 
@@ -526,6 +734,10 @@ class CropPlanningWorkflowStatus {
   final String cropPlanRequestId;
   final int status;
   final String currentStep;
+  final String statusCode;
+  final String statusLabel;
+  final String overallStatusCode;
+  final String overallStatusLabel;
   final List<String> warnings;
   final List<CropPlanningStepStatus> steps;
 
@@ -536,55 +748,16 @@ class CropPlanningWorkflowStatus {
       cropPlanRequestId: json['cropPlanRequestId'] as String? ?? '',
       status: json['status'] as int? ?? 0,
       currentStep: json['currentStep'] as String? ?? '',
+      statusCode: json['statusCode'] as String? ?? 'unknown',
+      statusLabel: json['statusLabel'] as String? ?? 'Status unavailable',
+      overallStatusCode: json['overallStatusCode'] as String? ?? 'unknown',
+      overallStatusLabel:
+          json['overallStatusLabel'] as String? ?? 'Status unavailable',
       warnings: warnings.map((item) => item.toString()).toList(),
       steps: (json['steps'] as List<dynamic>? ?? const [])
           .cast<Map<String, dynamic>>()
           .map(CropPlanningStepStatus.fromJson)
           .toList(),
-    );
-  }
-
-  String get statusLabel {
-    return switch (status) {
-      1 => 'Not started',
-      2 => 'Pending',
-      3 => 'Running',
-      4 => 'Completed',
-      5 => 'Failed',
-      6 => 'Cancelled',
-      7 => 'Candidate ready',
-      8 => 'Awaiting officer approval',
-      9 => 'Rejected',
-      10 => 'Revision requested',
-      11 => 'Waiting for required data',
-      _ => 'Unknown',
-    };
-  }
-}
-
-class CropPlanningWorkflowStart {
-  const CropPlanningWorkflowStart({
-    required this.workflowId,
-    required this.cropPlanRequestId,
-    required this.status,
-    required this.requiresHumanReview,
-    required this.warnings,
-  });
-
-  final String workflowId;
-  final String cropPlanRequestId;
-  final String status;
-  final bool requiresHumanReview;
-  final List<String> warnings;
-
-  factory CropPlanningWorkflowStart.fromJson(Map<String, dynamic> json) {
-    final warnings = json['warnings'] as List<dynamic>? ?? const [];
-    return CropPlanningWorkflowStart(
-      workflowId: json['workflowId'] as String? ?? '',
-      cropPlanRequestId: json['cropPlanRequestId'] as String? ?? '',
-      status: json['status'] as String? ?? 'Unknown',
-      requiresHumanReview: json['requiresHumanReview'] as bool? ?? false,
-      warnings: warnings.map((item) => item.toString()).toList(),
     );
   }
 }
@@ -643,7 +816,8 @@ class StockRecord {
   final num lowStockThreshold;
 
   bool get isOutOfStock => availableQuantity <= 0;
-  bool get isLowStock => !isOutOfStock && availableQuantity <= lowStockThreshold;
+  bool get isLowStock =>
+      !isOutOfStock && availableQuantity <= lowStockThreshold;
 
   factory StockRecord.fromJson(Map<String, dynamic> json) {
     return StockRecord(

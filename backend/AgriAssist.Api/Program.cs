@@ -16,6 +16,7 @@ using AgriAssist.Api.Services.Shared;
 using AgriAssist.Api.Services.CropPlanning;
 using AgriAssist.Api.Services.Inspections;
 using AgriAssist.Api.Services.Resources;
+using AgriAssist.Api.Services.FinalCultivationGuide;
 using AgriAssist.Api.Services.TaskApproval;
 using AgriAssist.Api.ExternalServices.AgenticAI;
 using AgriAssist.Api.Validators.Shared;
@@ -28,6 +29,7 @@ using AgriAssist.Api.ExternalServices.Weather;
 using DotNetEnv;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -62,21 +64,20 @@ builder.Services.AddOptions<SecurityRateLimitOptions>()
         "Security rate-limit values must be positive.")
     .ValidateOnStart();
 builder.Services.AddHttpContextAccessor();
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    if (builder.Configuration.GetValue<bool>("ForwardedHeaders:TrustAllProxies"))
+    {
+        options.KnownNetworks.Clear();
+        options.KnownProxies.Clear();
+    }
+});
 
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-if (builder.Environment.IsEnvironment("Testing") || string.IsNullOrWhiteSpace(connectionString))
-{
-    var inMemoryDatabaseName = builder.Environment.IsEnvironment("Testing")
-        ? $"AgriAssistTesting-{Guid.NewGuid():N}"
-        : "AgriAssistDevelopment";
-    builder.Services.AddDbContext<AppDbContext>(options =>
-        options.UseInMemoryDatabase(inMemoryDatabaseName));
-}
-else
-{
-    builder.Services.AddDbContext<AppDbContext>(options =>
-        options.UseNpgsql(connectionString));
-}
+AppDbContextRegistration.AddAppDbContext(
+    builder.Services,
+    builder.Configuration,
+    builder.Environment.EnvironmentName);
 
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<IRequestValidator<RegisterFarmerRequest>, RegisterFarmerRequestValidator>();
@@ -87,6 +88,7 @@ builder.Services.AddScoped<IRequestValidator<ResetStaffPasswordRequest>, ResetSt
 builder.Services.AddSingleton<ICompromisedPasswordChecker, ConfiguredCompromisedPasswordChecker>();
 builder.Services.AddSingleton<IPasswordPolicyService, PasswordPolicyService>();
 builder.Services.AddScoped<IAdminBootstrapService, AdminBootstrapService>();
+builder.Services.AddScoped<AdminBootstrapOnStartupService>();
 builder.Services.AddScoped<AdminBootstrapCommand>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserService, UserService>();
@@ -99,12 +101,18 @@ builder.Services.AddScoped<IRequestValidator<CropPlanRequestCreate>, CropPlanReq
 builder.Services.AddScoped<IRequestValidator<CropPlanRequestUpdate>, CropPlanRequestUpdateValidator>();
 builder.Services.AddScoped<IRequestValidator<PrePlantingAssessmentRequest>, PrePlantingAssessmentRequestValidator>();
 builder.Services.AddScoped<ICropPlanningService, CropPlanningService>();
+builder.Services.AddScoped<CropReferenceVerificationService>();
+builder.Services.AddScoped<IRequestValidator<SuggestCropsRequest>, SuggestCropsRequestValidator>();
+builder.Services.AddScoped<IRequestValidator<SuggestVarietiesRequest>, SuggestVarietiesRequestValidator>();
+builder.Services.AddScoped<IRequestValidator<DiscoverReferencesRequest>, DiscoverReferencesRequestValidator>();
+builder.Services.AddScoped<ICropFindingService, CropFindingService>();
 builder.Services.AddScoped<IRequestValidator<FieldInspectionRequest>, FieldInspectionRequestValidator>();
 builder.Services.AddScoped<IRequestValidator<ObservationRequest>, ObservationRequestValidator>();
 builder.Services.AddScoped<IRequestValidator<CropIssueRequest>, CropIssueRequestValidator>();
 builder.Services.AddScoped<IRequestValidator<FollowUpRecommendationRequest>, FollowUpRecommendationRequestValidator>();
-builder.Services.AddScoped<ICloudinaryService, CloudinaryService>();
+builder.Services.AddHttpClient<ICloudinaryService, CloudinaryService>();
 builder.Services.AddScoped<IInspectionService, InspectionService>();
+builder.Services.AddScoped<IInspectionImageAnalysisService, InspectionImageAnalysisService>();
 builder.Services.AddScoped<IRequestValidator<ResourceCategoryRequest>, ResourceCategoryRequestValidator>();
 builder.Services.AddScoped<IRequestValidator<SupplierRequest>, SupplierRequestValidator>();
 builder.Services.AddScoped<IRequestValidator<ResourceRequest>, ResourceRequestValidator>();
@@ -120,10 +128,24 @@ builder.Services.AddScoped<ITaskApprovalService, TaskApprovalService>();
 builder.Services.AddHttpClient<IAgenticAIClient, AgenticAIClient>();
 builder.Services.AddHttpClient<IWeatherResourceAIClient, AgenticAIClient>();
 builder.Services.AddHttpClient<ISchedulingValidationAIClient, AgenticAIClient>();
+builder.Services.AddHttpClient<IFinalCultivationGuideAIClient, AgenticAIClient>();
+builder.Services.AddHttpClient<ICropFindingAIClient, AgenticAIClient>(client =>
+    client.Timeout = Timeout.InfiniteTimeSpan);
+builder.Services.AddHttpClient<IInspectionAssistanceAIClient, AgenticAIClient>();
+builder.Services.AddHttpClient<IInspectionImageAnalysisAIClient, AgenticAIClient>();
 // OpenWeatherMap takes the API key as a query parameter, so do not log request URLs for this client.
 builder.Services.AddHttpClient<IWeatherService, WeatherService>().RemoveAllLoggers();
 builder.Services.AddScoped<IWeatherResourceWorkflowService, WeatherResourceWorkflowService>();
+builder.Services.AddScoped<ICropResourceRequirementService, CropResourceRequirementService>();
+builder.Services.AddScoped<IWeatherResourceToolService, WeatherResourceToolService>();
+// Member 3 Admin-only resource requirement research: same long web-search budget as CropFinding.
+builder.Services.AddHttpClient<IResourceRequirementResearchAIClient, AgenticAIClient>(client =>
+    client.Timeout = Timeout.InfiniteTimeSpan);
+builder.Services.AddScoped<IRequestValidator<ResourceRequirementResearchRequest>, ResourceRequirementResearchRequestValidator>();
+builder.Services.AddScoped<IRequestValidator<VerifyResourceRequirementRequest>, VerifyResourceRequirementRequestValidator>();
+builder.Services.AddScoped<IResourceRequirementResearchService, ResourceRequirementResearchService>();
 builder.Services.AddScoped<IWorkflowApprovalService, WorkflowApprovalService>();
+builder.Services.AddScoped<IFinalCultivationGuideService, FinalCultivationGuideService>();
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -216,7 +238,7 @@ builder.Services.AddSwaggerGen(options =>
     {
         Title = "AgriAssist API",
         Version = "v1",
-        Description = "BASIC non-AI foundation for AgriAssist AI."
+        Description = "AgriAssist farm planning, inspections, resources, and human-reviewed AI workflow API."
     });
 
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
@@ -247,6 +269,8 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
+app.UseForwardedHeaders();
+
 if (args.Length == 1 && string.Equals(args[0], "bootstrap-admin", StringComparison.OrdinalIgnoreCase))
 {
     using var bootstrapScope = app.Services.CreateScope();
@@ -257,7 +281,9 @@ if (args.Length == 1 && string.Equals(args[0], "bootstrap-admin", StringComparis
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
-if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing"))
+if (app.Environment.IsDevelopment()
+    || app.Environment.IsEnvironment("Testing")
+    || app.Configuration.GetValue<bool>("ApiDocs:Enabled"))
 {
     app.UseSwagger();
     app.UseSwaggerUI();
@@ -270,8 +296,23 @@ using (var scope = app.Services.CreateScope())
     {
         await dbContext.Database.EnsureCreatedAsync();
     }
+    else if (app.Configuration.GetValue<bool>("Database:ApplyMigrationsOnStart"))
+    {
+        await dbContext.Database.MigrateAsync();
+    }
 
-    await SeedData.SeedAsync(dbContext);
+    var bootstrapResult = await scope.ServiceProvider
+        .GetRequiredService<AdminBootstrapOnStartupService>()
+        .RunIfEnabledAsync(CancellationToken.None);
+    if (bootstrapResult == AdminBootstrapStartupResult.Created)
+    {
+        app.Logger.LogWarning(
+            "Initial Admin account created from AdminBootstrap settings. Remove all AdminBootstrap environment variables after verifying sign-in.");
+    }
+    else if (bootstrapResult == AdminBootstrapStartupResult.AdminAlreadyExists)
+    {
+        app.Logger.LogInformation("Initial Admin bootstrap skipped because an Admin account already exists.");
+    }
 }
 
 // Local development and the documented HTTP profile run on port 5087. Redirect

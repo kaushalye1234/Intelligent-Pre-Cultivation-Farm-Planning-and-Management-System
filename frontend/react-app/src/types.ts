@@ -1,4 +1,4 @@
-﻿export type ApplicationRole = 1 | 2 | 3 | 4 | 5
+export type ApplicationRole = 1 | 2 | 3 | 4 | 5
 
 export type UserProfile = {
   id: string
@@ -50,6 +50,7 @@ export type Farm = {
   id: string
   name: string
   location: string
+  district?: string | null
   totalArea: number
   ownerUserId: string
   createdAt: string
@@ -86,10 +87,55 @@ export type CropReferenceProfile = {
   sourceName: string
   sourceUrl?: string | null
   sourceVersion: string
-  verifiedAt: string
+  verifiedAt?: string | null
   isActive: boolean
   stageCount: number
   ruleCount: number
+  verificationState?: number
+  draftVersion?: number
+  verifiedByUserId?: string | null
+  waterRegime?: number | null
+  fieldWaterRegimeVerificationId?: string | null
+}
+
+export type CropReferenceStage = {
+  id: string
+  stageName: string
+  sequence: number
+  typicalMinDays?: number | null
+  typicalMaxDays?: number | null
+  notes?: string | null
+  sourceName?: string | null
+  sourceUrl?: string | null
+}
+
+export type CropReferenceRule = {
+  id: string
+  ruleType: string
+  ruleKey: string
+  structuredValueJson: string
+  sourceName?: string | null
+  sourceUrl?: string | null
+}
+
+export type CropReferenceProfileDetails = {
+  id: string
+  cropTypeId: string
+  cropName: string
+  varietyName?: string | null
+  region?: string | null
+  sourceName: string
+  sourceUrl?: string | null
+  sourceVersion: string
+  verifiedAt?: string | null
+  isActive: boolean
+  stages: CropReferenceStage[]
+  rules: CropReferenceRule[]
+  verificationState?: number
+  draftVersion?: number
+  verifiedByUserId?: string | null
+  waterRegime?: number | null
+  fieldWaterRegimeVerificationId?: string | null
 }
 
 export type CropPlan = {
@@ -102,6 +148,10 @@ export type CropPlan = {
   budget: number
   objective: string
   status: number
+  statusCode: string
+  statusLabel: string
+  overallStatusCode: string
+  overallStatusLabel: string
   createdAt: string
 }
 
@@ -182,17 +232,69 @@ export type FieldAnalysisResult = {
   fieldCondition: FieldAnalysisFieldCondition
   openIssues: FieldAnalysisOpenIssue[]
   priority: string
+  fieldSuitability?: 'Suitable' | 'SuitableWithConditions' | 'NotSuitable' | 'RequiresFurtherAssessment' | 'Unknown'
+  soilAssessment?: string
+  waterAssessment?: string
+  drainageAssessment?: string
+  fieldPreparationRequirements?: string[]
+  plantingReadiness?: PrePlantingPlantingReadiness | 'Unknown'
+  identifiedRisks?: PrePlantingRisk[]
+  recommendedPrePlantingActions?: string[]
 }
 
+export type PrePlantingSoilType = 'Sandy' | 'Clay' | 'Loamy' | 'Silty' | 'Mixed' | 'Unknown' | 'Other'
+export type PrePlantingSoilCondition = 'Good' | 'Moderate' | 'Poor' | 'Compacted' | 'Eroded' | 'Unknown' | 'Other'
+export type PrePlantingSoilMoisture = 'Dry' | 'Moist' | 'Wet' | 'Waterlogged' | 'Unknown'
+export type PrePlantingWaterAvailability = 'Adequate' | 'Limited' | 'Unavailable' | 'Seasonal' | 'Unknown'
+export type PrePlantingIrrigationAvailability = 'Available' | 'Limited' | 'Unavailable' | 'NotRequired' | 'Unknown'
+export type PrePlantingWaterReliability = 'Reliable' | 'Intermittent' | 'Seasonal' | 'Unreliable' | 'Unknown'
+export type PrePlantingDrainageCondition = 'Good' | 'Moderate' | 'Poor' | 'Unknown'
+export type PrePlantingWaterloggingRisk = 'NoneObserved' | 'Low' | 'Moderate' | 'High' | 'Unknown'
+export type PrePlantingGeneralFieldCondition =
+  | 'ClearAndPrepared'
+  | 'RequiresLandPreparation'
+  | 'UnevenField'
+  | 'Waterlogged'
+  | 'TooDry'
+  | 'ErosionPresent'
+  | 'AccessLimitation'
+  | 'Other'
+export type PrePlantingPlantingReadiness =
+  | 'Ready'
+  | 'ReadyWithMinorPreparation'
+  | 'RequiresPreparation'
+  | 'NotReady'
+  | 'RequiresFurtherAssessment'
+export type PrePlantingRisk =
+  | 'WaterShortageRisk'
+  | 'FloodingRisk'
+  | 'PoorDrainage'
+  | 'SoilSuitabilityConcern'
+  | 'SoilErosion'
+  | 'FieldAccessProblem'
+  | 'LandPreparationRequired'
+  | 'Other'
+
 export type PrePlantingAssessmentInput = {
-  soilCondition: string
-  waterAvailability: string
-  irrigationAvailability: string
-  drainageCondition: string
-  generalFieldCondition: string
-  plantingReadiness: string
-  risksAndConcerns: string
-  officerNotes: string
+  soilType: PrePlantingSoilType | null
+  soilCondition: PrePlantingSoilCondition | null
+  soilMoisture: PrePlantingSoilMoisture | null
+  soilNotes: string | null
+  waterAvailability: PrePlantingWaterAvailability | null
+  mainWaterSource: string | null
+  irrigationAvailability: PrePlantingIrrigationAvailability | null
+  waterReliability: PrePlantingWaterReliability | null
+  waterConcerns: string | null
+  drainageCondition: PrePlantingDrainageCondition | null
+  waterloggingRisk: PrePlantingWaterloggingRisk | null
+  drainageNotes: string | null
+  generalFieldCondition: PrePlantingGeneralFieldCondition | null
+  generalFieldNotes: string | null
+  plantingReadiness: PrePlantingPlantingReadiness | null
+  identifiedRisks: PrePlantingRisk[] | null
+  riskNotes: string | null
+  risksAndConcerns: string | null
+  officerNotes: string | null
 }
 
 export type PrePlantingAssessmentImage = {
@@ -200,16 +302,147 @@ export type PrePlantingAssessmentImage = {
   url: string
   contentType: string
   sizeBytes: number
+  isRepresentativeForAi: boolean
+}
+
+export type InspectionNoteSuggestions = {
+  soilNotes: string | null
+  waterConcerns: string | null
+  drainageNotes: string | null
+  generalFieldNotes: string | null
+  riskNotes: string | null
+  officerNotes: string | null
+}
+
+export type InspectionNoteAssistanceResponse = {
+  contractVersion: number
+  status: 'Available' | 'Unavailable'
+  suggestions: InspectionNoteSuggestions | null
+  contradictionWarnings: string[]
+  missingDataWarnings: string[]
+  failureCategory?: string | null
+}
+
+export type CropHealthActionType =
+  | 'FieldSanitation'
+  | 'RemoveAffectedResidue'
+  | 'SeparateAffectedMaterial'
+  | 'InspectNearbyPlants'
+  | 'MonitorSymptoms'
+  | 'PrePlantingCleanup'
+  | 'RequestFurtherAssessment'
+
+export type ImageAnalysisSourceReference = {
+  sourcePolicyId: string
+  organization: string
+  title: string
+  url: string
+  sourceStage: 'Stage1' | 'Stage2'
+}
+
+export type InspectionImageAnalysisResult = {
+  contractVersion: number
+  visibleFindings: string[]
+  possibleIssueCategory: string
+  possibleIssues: string[]
+  severity: 'Low' | 'Moderate' | 'High' | 'Unknown'
+  uncertainty: string
+  validatedSourceReferences: ImageAnalysisSourceReference[]
+  recommendedNonChemicalActions: CropHealthActionType[]
+  requiresFurtherAssessment: boolean
+  groundingStatus: 'Grounded' | 'Unavailable'
+}
+
+export type ReviewedImageAnalysisProjection = {
+  contractVersion: 1
+  analysisId: string
+  inspectionImageId: string
+  visibleFindings: string[]
+  possibleConcerns: string[]
+  severity: 'Low' | 'Moderate' | 'High' | 'Unknown'
+  uncertainty: string
+  actions: Array<{ actionType: CropHealthActionType; order: number; origin: string; sourcePolicyIds: string[] }>
+  sourceReferences: ImageAnalysisSourceReference[]
+  requiresFurtherAssessment: boolean
+  officerEditedFields: string[]
+}
+
+export type InspectionImageAnalysisReview = {
+  reviewId: string
+  analysisId: string
+  disposition: 'Accepted' | 'Edited' | 'Rejected'
+  projection: ReviewedImageAnalysisProjection | null
+  officerEditedFields: string[]
+  staffNote?: string | null
+  reviewedAt: string
+}
+
+export type InspectionImageAnalysisState = {
+  analysisId?: string | null
+  status: string
+  isCurrent: boolean
+  isReviewable: boolean
+  isFrozen: boolean
+  result: InspectionImageAnalysisResult | null
+  effectiveReview: InspectionImageAnalysisReview | null
+  failureCategory?: string | null
+  message?: string | null
+}
+
+export type InspectionImageAnalysisAuditItem = {
+  analysisId: string
+  inspectionImageId: string
+  status: string
+  isCurrent: boolean
+  isFrozen: boolean
+  isSuperseded: boolean
+  pass1Result?: unknown
+  evidencePacket: unknown[]
+  result: InspectionImageAnalysisResult | null
+  reviews: Array<{
+    reviewId: string
+    disposition: 'Accepted' | 'Edited' | 'Rejected'
+    reviewedAt: string
+    officerEditedFields: string[]
+  }>
+  failureCategory?: string | null
+  failureMessage?: string | null
+  createdAt: string
+  completedAt?: string | null
 }
 
 export type PrePlantingAssessment = PrePlantingAssessmentInput & {
   inspectionId: string
   cropPlanRequestId: string
   fieldId: string
+  inspectorUserId: string
   status: number
   scheduledAt: string
-  completedAt?: string
+  completedAt: string | null
   images: PrePlantingAssessmentImage[]
+}
+
+export type PrePlantingContext = {
+  cropPlanRequestId: string
+  workflowId: string
+  currentStep: string
+  farmerId: string
+  farmerName: string
+  farmerPhoneNumber: string | null
+  farmerContactAddress: string | null
+  farmId: string
+  farmName: string
+  farmLocation: string
+  farmDistrict: string | null
+  fieldId: string
+  fieldName: string
+  cropTypeId: string
+  cropName: string
+  cropVarietyId: string | null
+  cropVarietyName: string | null
+  cultivationSeason: 0 | 1 | 2 | 3
+  preferredStartDate: string
+  preferredEndDate: string
 }
 
 export type ResourceCategory = {
@@ -385,6 +618,10 @@ export type CropPlanningWorkflowStatus = {
   cropPlanRequestId: string
   status: number
   currentStep: string
+  statusCode: string
+  statusLabel: string
+  overallStatusCode: string
+  overallStatusLabel: string
   createdAt: string
   completedAt?: string
   steps: AgentStepStatus[]
@@ -416,4 +653,177 @@ export type CropPlanningWorkflowStart = {
   warnings: string[]
 }
 
+// Resource Officer queue row: a crop plan whose latest workflow is waiting at WeatherResourceAgent.
+export type WeatherResourceWorkItem = {
+  workflowId: string
+  cropPlanRequestId: string
+  weatherResourceStepId: string
+  objective: string | null
+  farmName: string | null
+  farmLocation: string | null
+  fieldId: string | null
+  fieldName: string | null
+  cropName: string | null
+  cropVarietyName: string | null
+  preferredStartDate: string
+  preferredEndDate: string
+  candidateRevision: number
+  workflowVersion: number
+  // AgentStepStatus: 1 Pending, 2 Running, 3 Completed, 4 Failed, 5 Skipped
+  stepStatus: number
+  readyAt: string
+  startedAt: string | null
+  errorCode: string | null
+  errorMessageSafe: string | null
+}
 
+// Safe Member 2 context handed to Member 3; excludes notes, observations, images and evidence IDs.
+export type Member3Handoff = {
+  workflowId: string
+  cropPlanRequestId: string
+  fieldId: string | null
+  cropCycleId: string | null
+  fieldLocationContext: string | null
+  preferredStartDate: string
+  preferredEndDate: string
+  fieldAnalysisSummary: string | null
+  priority: string | null
+  warnings: string[] | null
+  requiresHumanReview: boolean
+  fieldSuitability: string | null
+  soilAssessment: string | null
+  waterAssessment: string | null
+  drainageAssessment: string | null
+  fieldPreparationRequirements: string[] | null
+  plantingReadiness: string | null
+  identifiedRisks: PrePlantingRisk[] | null
+  recommendedPrePlantingActions: string[] | null
+}
+
+export type WeatherRiskLevel = 'Low' | 'Medium' | 'High' | 'Unknown'
+
+export type WeatherResourceRunResult = {
+  workflowId: string
+  cropPlanRequestId: string
+  weatherResourceStepId: string
+  status: 'Analyzed' | 'SafeFailure'
+  weatherRisk: WeatherRiskLevel
+  requiresHumanReview: boolean
+  warnings: string[] | null
+  requirementStatus: string
+}
+
+// One forecast measure compared with the fixed weather-risk thresholds; every figure comes from the forecast.
+export type WeatherRiskFactor = {
+  metric: 'DailyRainfall' | 'TotalRainfall' | 'MaxTemperature' | 'MaxWind'
+  label: string
+  value: number
+  unit: string
+  observedOn: string | null
+  mediumThreshold: number
+  highThreshold: number
+  level: 'Low' | 'Medium' | 'High'
+  detail: string
+}
+
+export type WeatherRiskAction = {
+  action: string
+  timing: string
+  priority: 'Low' | 'Medium' | 'High'
+}
+
+// Explains the rule-based weather risk. generatedBy is OpenAI when the narrative was written by the AI model.
+export type WeatherRiskAssessment = {
+  riskLevel: WeatherRiskLevel
+  headline: string
+  explanation: string
+  contributingFactors: WeatherRiskFactor[] | null
+  potentialImpacts: string[] | null
+  recommendedActions: WeatherRiskAction[] | null
+  monitoringAdvice: string | null
+  generatedBy: 'OpenAI' | 'RuleBased'
+}
+
+export type WeatherResourceRequirement = {
+  ruleId: string | null
+  resourceId: string | null
+  resourceName: string
+  unit: string | null
+  requiredQuantity: number | null
+  availableQuantity: number | null
+  reservedQuantity: number | null
+  shortageQuantity: number | null
+  sufficient: boolean | null
+  requirementStatus: string
+  basis: string | null
+  reason: string | null
+}
+
+// The stored Weather/Resource AI result for one crop plan workflow (read-only).
+export type WeatherResourceResult = {
+  workflowId: string
+  status: 'Analyzed' | 'SafeFailure'
+  requiresHumanReview: boolean
+  warnings: string[] | null
+  weatherRisk: WeatherRiskLevel
+  weatherSummary: string | null
+  recommendations: string[] | null
+  resourceRequirements: WeatherResourceRequirement[] | null
+  requirementStatus: string
+  reason: string | null
+  weatherRiskAssessment?: WeatherRiskAssessment | null
+}
+
+// Resource Officer history row: a crop plan that was analysed, with a summary of its stored AI result.
+export type WeatherResourceHistoryItem = {
+  workflowId: string
+  cropPlanRequestId: string
+  weatherResourceStepId: string
+  objective: string | null
+  farmName: string | null
+  farmLocation: string | null
+  fieldName: string | null
+  cropName: string | null
+  cropVarietyName: string | null
+  preferredStartDate: string
+  preferredEndDate: string
+  // AgentStepStatus: 3 Completed, 4 Failed
+  stepStatus: number
+  analyzedAt: string
+  runByName: string | null
+  status: 'Analyzed' | 'SafeFailure' | null
+  weatherRisk: WeatherRiskLevel | null
+  requirementStatus: string | null
+  requiresHumanReview: boolean
+  headline: string | null
+}
+
+export type WeatherResourceHistoryDetail = {
+  plan: WeatherResourceHistoryItem
+  result: WeatherResourceResult
+}
+
+
+
+
+export type WorkflowEvidenceResolution = {
+  workflowId: string
+  cropPlanRequestId: string
+  cropTypeId: string
+  cropName: string
+  cropVarietyId?: string | null
+  varietyName?: string | null
+  fieldId?: string | null
+  fieldName?: string | null
+  region?: string | null
+  status: number
+  preferredStartDate: string
+  preferredEndDate: string
+  pinnedProfileId?: string | null
+  blockingReasons: string[]
+  profiles: CropReferenceProfile[]
+  compatibleVerifiedProfileIds: string[]
+  successorWorkflowId?: string | null
+  nextResponsibleRole: string
+  canStartReplacement: boolean
+}

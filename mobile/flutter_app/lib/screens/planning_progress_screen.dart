@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -7,29 +9,130 @@ import '../ui/agri_theme.dart';
 import '../ui/journey_date.dart';
 import '../ui/journey_widgets.dart';
 
-class PlanningProgressScreen extends StatelessWidget {
+class PlanningProgressScreen extends StatefulWidget {
   const PlanningProgressScreen({super.key, required this.planId});
 
   final String planId;
 
-  Future<void> _refresh(AppState state) async {
-    await state.refresh();
-    if (state.lastCropPlanRequestId == planId) {
-      await state.refreshLastCropPlanningWorkflow();
+  @override
+  State<PlanningProgressScreen> createState() => _PlanningProgressScreenState();
+}
+
+class _PlanningProgressScreenState extends State<PlanningProgressScreen>
+    with WidgetsBindingObserver {
+  static const _pollInterval = Duration(seconds: 9);
+
+  Timer? _pollTimer;
+  bool _refreshInFlight = false;
+  bool _isCancelling = false;
+  bool _isForeground = true;
+  String? _refreshWarning;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _refreshStatus();
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _isForeground = true;
+      _refreshStatus();
+      return;
     }
+    _isForeground = false;
+    _pollTimer?.cancel();
+    _pollTimer = null;
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refreshStatus() async {
+    if (_refreshInFlight || !mounted) return;
+    setState(() => _refreshInFlight = true);
+    final state = context.read<AppState>();
+    final succeeded = await state.refreshCropPlanProgress(widget.planId);
+    if (!mounted) return;
+    setState(() {
+      _refreshInFlight = false;
+      _refreshWarning = succeeded
+          ? null
+          : 'The latest status could not be loaded. Your last known status is still shown.';
+    });
+    _syncPolling(_planFrom(state));
+  }
+
+  CropPlanRecord? _planFrom(AppState state) =>
+      state.cropPlans.where((item) => item.id == widget.planId).firstOrNull;
+
+  void _syncPolling(CropPlanRecord? plan) {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+    if (!_isForeground || plan?.isLifecycleActive != true) return;
+    _pollTimer = Timer.periodic(_pollInterval, (_) => _refreshStatus());
+  }
+
+  Future<void> _cancelPlan(CropPlanRecord plan) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Cancel this crop plan?'),
+        content: const Text(
+          'Your planning history, evidence, and decisions will be kept. '
+          'You can create a new crop plan afterward.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Keep plan'),
+          ),
+          FilledButton(
+            key: const ValueKey('confirm-cancel-crop-plan'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: AgriColors.danger),
+            child: const Text('Cancel plan'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isCancelling = true);
+    final state = context.read<AppState>();
+    final succeeded = await state.cancelCropPlanRequest(plan.id);
+    if (!mounted) return;
+    setState(() => _isCancelling = false);
+    _syncPolling(_planFrom(state));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          succeeded
+              ? 'Crop plan cancelled. You can now create a new plan.'
+              : state.error ?? 'The crop plan could not be cancelled.',
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
-    final plan = state.cropPlans.where((item) => item.id == planId).firstOrNull;
+    final plan = _planFrom(state);
     final workflow =
-        state.planWorkflows[planId] ??
-        (state.lastCropPlanRequestId == planId
+        state.planWorkflows[widget.planId] ??
+        (state.lastCropPlanRequestId == widget.planId
             ? state.lastWorkflowStatus
             : null);
-    final latest = state.lastCropPlanRequestId == planId;
-    final start = latest ? state.lastWorkflowStart : null;
+    final latest = state.lastCropPlanRequestId == widget.planId;
     final result = latest ? state.lastPlanningResult : null;
     final crop = plan == null
         ? null
@@ -38,14 +141,10 @@ class PlanningProgressScreen extends StatelessWidget {
               .firstOrNull;
     final warnings = <String>{
       ...?workflow?.warnings,
-      ...?start?.warnings,
       ...?result?.warnings,
     }.toList();
-    final status =
-        workflow?.statusLabel ??
-        start?.status ??
-        plan?.statusLabel ??
-        'Status unavailable';
+    final status = plan?.statusLabel ?? 'Loading plan status';
+    final overallStatus = plan?.overallStatusLabel ?? 'Loading';
     final currentStep = workflow?.currentStep.isNotEmpty == true
         ? workflow!.currentStep
         : 'Awaiting a workflow update';
@@ -53,7 +152,7 @@ class PlanningProgressScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Plan progress')),
       body: RefreshIndicator(
-        onRefresh: () => _refresh(state),
+        onRefresh: _refreshStatus,
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
           children: [
@@ -71,15 +170,19 @@ class PlanningProgressScreen extends StatelessWidget {
                 children: [
                   const JourneyEyebrow('CURRENT STAGE'),
                   const SizedBox(height: 10),
-                  Text(
-                    currentStep,
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
+                  Text(status, style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 9),
                   JourneyStatusPill(
                     status,
-                    tone: _workflowTone(workflow?.status),
+                    tone: _statusTone(plan?.statusCode),
                   ),
+                  if (workflow != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      'Workflow step: $currentStep',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ],
                   if (plan != null) ...[
                     const SizedBox(height: 14),
                     Text(
@@ -90,6 +193,61 @@ class PlanningProgressScreen extends StatelessWidget {
                 ],
               ),
             ),
+            const SizedBox(height: 12),
+            JourneyCard(
+              child: Row(
+                children: [
+                  const Expanded(child: JourneyEyebrow('OVERALL WORKFLOW')),
+                  JourneyStatusPill(
+                    overallStatus,
+                    tone: _statusTone(plan?.overallStatusCode),
+                  ),
+                ],
+              ),
+            ),
+            if (_refreshWarning != null) ...[
+              const SizedBox(height: 12),
+              JourneyNotice(message: _refreshWarning!),
+            ],
+            if (plan?.isLifecycleStable == true) ...[
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  key: const ValueKey('refresh-plan-status'),
+                  onPressed: _refreshInFlight ? null : _refreshStatus,
+                  icon: _refreshInFlight
+                      ? const SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh_rounded),
+                  label: Text(
+                    _refreshInFlight ? 'Refreshing...' : 'Refresh status',
+                  ),
+                ),
+              ),
+            ],
+            if (plan?.canCancel == true) ...[
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  key: const ValueKey('cancel-crop-plan'),
+                  onPressed: _isCancelling ? null : () => _cancelPlan(plan!),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AgriColors.danger,
+                  ),
+                  icon: _isCancelling
+                      ? const SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.cancel_outlined),
+                  label: Text(_isCancelling ? 'Cancelling...' : 'Cancel plan'),
+                ),
+              ),
+            ],
             const SizedBox(height: 24),
             const JourneySectionHeading(
               title: 'Planning timeline',
@@ -143,13 +301,20 @@ class PlanningProgressScreen extends StatelessWidget {
                   const JourneyEyebrow('WHAT HAPPENS NEXT'),
                   const SizedBox(height: 9),
                   Text(
-                    _nextMessage(workflow?.status),
+                    _nextMessage(plan?.statusCode),
                     style: Theme.of(context).textTheme.bodyLarge,
                   ),
                   if (workflow?.status == 8) ...[
                     const SizedBox(height: 12),
                     const JourneyStatusPill(
                       'Human approval required',
+                      tone: JourneyTone.warning,
+                    ),
+                  ],
+                  if (workflow?.status == 12) ...[
+                    const SizedBox(height: 12),
+                    const JourneyStatusPill(
+                      'No farm work approved yet',
                       tone: JourneyTone.warning,
                     ),
                   ],
@@ -162,28 +327,53 @@ class PlanningProgressScreen extends StatelessWidget {
     );
   }
 
-  JourneyTone _workflowTone(int? status) => switch (status) {
-    4 => JourneyTone.success,
-    5 || 9 => JourneyTone.danger,
-    7 || 8 || 10 || 11 => JourneyTone.warning,
+  JourneyTone _statusTone(String? statusCode) => switch (statusCode) {
+    'approved' ||
+    'preliminary_plan_ready' ||
+    'candidate_ready' => JourneyTone.success,
+    'rejected' ||
+    'cancelled' ||
+    'ai_planning_failed' ||
+    'field_analysis_failed' ||
+    'weather_resource_analysis_failed' ||
+    'scheduling_validation_failed' ||
+    'workflow_failed' => JourneyTone.danger,
+    'awaiting_approval' ||
+    'revision_requested' ||
+    'waiting_for_required_data' ||
+    'candidate_blocked' => JourneyTone.warning,
     _ => JourneyTone.neutral,
   };
 
-  String _nextMessage(int? status) => switch (status) {
-    7 =>
+  String _nextMessage(String? statusCode) => switch (statusCode) {
+    'pending' =>
+      'Your request is waiting for the Crop Planning Admin to start AI planning.',
+    'ai_planning' =>
+      'Member 1 crop planning is running. This page will update automatically.',
+    'ai_planning_failed' =>
+      'The Admin can retry AI planning using this same crop-plan request.',
+    'preliminary_plan_ready' =>
+      'Your preliminary crop plan is ready. Later field, weather, resource, and approval stages are still required.',
+    'candidate_ready' =>
       'A candidate plan is ready for officer review. Final tasks and irrigation are not available until approval.',
-    8 =>
+    'awaiting_approval' =>
       'An officer will review the candidate plan. Final tasks and irrigation require explicit approval.',
-    9 =>
+    'rejected' =>
       'This workflow was rejected. Review any warnings and decisions shown in your plan history.',
-    10 =>
+    'revision_requested' =>
       'Revisions were requested. The planning workflow will show updated stages when available.',
-    11 =>
+    'waiting_for_required_data' =>
       'Required information is missing. The workflow is waiting for review or additional data.',
-    5 =>
+    'candidate_blocked' =>
+      'The proposed schedule is blocked by verified evidence. No tasks, irrigation, or resource reservations have been approved. An officer must start a new workflow after the evidence changes.',
+    'field_analysis_failed' ||
+    'weather_resource_analysis_failed' ||
+    'scheduling_validation_failed' ||
+    'workflow_failed' =>
       'The workflow stopped. Review the warnings and check again for an updated status.',
-    4 =>
-      'This workflow has completed. Your Plans area will show final details if the plan is approved.',
+    'approved' =>
+      'Your workflow is approved. Open the final plan from your Plans area.',
+    'cancelled' => 'This crop-plan request was cancelled.',
     _ =>
       'The next stage will appear here when the planning workflow reports an update.',
   };

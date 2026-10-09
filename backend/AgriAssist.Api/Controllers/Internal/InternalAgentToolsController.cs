@@ -5,8 +5,13 @@ using System.Text;
 using System.Text.Json;
 using AgriAssist.Api.Data;
 using AgriAssist.Api.Dtos.CropPlanning;
+using AgriAssist.Api.Dtos.Resources;
+using AgriAssist.Api.ExternalServices.Cloudinary;
+using AgriAssist.Api.ExternalServices.Weather;
 using AgriAssist.Api.Models.Inspections;
 using AgriAssist.Api.Models.Shared;
+using AgriAssist.Api.Services.Resources;
+using AgriAssist.Api.Services.Shared;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -16,7 +21,11 @@ namespace AgriAssist.Api.Controllers.Internal;
 [Route("api/internal/agent-tools")]
 public sealed class InternalAgentToolsController(
     AppDbContext dbContext,
-    IConfiguration configuration) : ControllerBase
+    IConfiguration configuration,
+    ICropResourceRequirementService requirementService,
+    IWeatherResourceToolService weatherResourceTools,
+    ICloudinaryService cloudinaryService,
+    ILogger<InternalAgentToolsController> logger) : ControllerBase
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -143,6 +152,22 @@ public sealed class InternalAgentToolsController(
             new { cropTypeId, cropReferenceProfileId, varietyName, region, workflowId, agentStepId },
             async () =>
             {
+                var pinnedWorkflow = workflowId.HasValue
+                    ? await dbContext.AgentWorkflows.AsNoTracking()
+                        .Include(item => item.CropPlanRequest)!.ThenInclude(item => item!.Farm)
+                        .Include(item => item.CropPlanRequest)!.ThenInclude(item => item!.Field)
+                        .Include(item => item.CropPlanRequest)!.ThenInclude(item => item!.CropVariety)
+                        .SingleOrDefaultAsync(item => item.Id == workflowId.Value, cancellationToken)
+                    : null;
+                if (pinnedWorkflow?.RequiredCropReferenceProfileId is { } requiredId)
+                {
+                    if (cropReferenceProfileId.HasValue && cropReferenceProfileId != requiredId)
+                        throw Safe(HttpStatusCode.Conflict, "This workflow requires its officer-verified reference profile.");
+                    cropReferenceProfileId = requiredId;
+                    genericOnly = false;
+                    varietyName = null;
+                    region = null;
+                }
                 if (!cropTypeId.HasValue && !cropReferenceProfileId.HasValue && workflowId.HasValue)
                 {
                     cropTypeId = await dbContext.AgentWorkflows.AsNoTracking()
@@ -158,6 +183,7 @@ public sealed class InternalAgentToolsController(
                 var profiles = dbContext.CropReferenceProfiles.AsNoTracking()
                     .Include(item => item.Stages)
                     .Include(item => item.Rules)
+                    .Include(item => item.FieldWaterRegimeVerification)
                     .Where(item => item.IsActive && !item.IsDeleted);
 
                 if (cropReferenceProfileId.HasValue) profiles = profiles.Where(item => item.Id == cropReferenceProfileId.Value);
@@ -169,6 +195,10 @@ public sealed class InternalAgentToolsController(
 
                 var profile = await profiles.OrderByDescending(item => item.VerifiedAt).FirstOrDefaultAsync(cancellationToken);
 
+                if (profile is not null && pinnedWorkflow?.RequiredCropReferenceProfileId.HasValue == true
+                    && (pinnedWorkflow.CropPlanRequest is null || !AgriAssist.Api.Services.Resources.CropReferenceCompatibility.IsVerifiedForPlan(
+                        profile, pinnedWorkflow.CropPlanRequest, pinnedWorkflow.RequiredCropReferenceVersion)))
+                    profile = null;
                 if (profile is null)
                 {
                     return new AgentCropReferenceProfileResponse(
@@ -181,7 +211,7 @@ public sealed class InternalAgentToolsController(
 
                 return new AgentCropReferenceProfileResponse(
                     "Available",
-                    new CropReferenceProfileSummary(profile.Id, profile.CropTypeId, profile.VarietyName, profile.Region, profile.SourceName, profile.SourceUrl, profile.SourceVersion, profile.VerifiedAt, profile.IsActive),
+                    new CropReferenceProfileSummary(profile.Id, profile.CropTypeId, profile.VarietyName, profile.Region, profile.SourceName, profile.SourceUrl, profile.SourceVersion, profile.VerifiedAt!.Value, profile.IsActive),
                     profile.Stages.OrderBy(stage => stage.Sequence).Select(stage => new CropStageReferenceSummary(stage.Id, stage.StageName, stage.Sequence, stage.TypicalMinDays, stage.TypicalMaxDays, stage.Notes, stage.SourceName, stage.SourceUrl)).ToArray(),
                     profile.Rules.OrderBy(rule => rule.RuleType).ThenBy(rule => rule.RuleKey).Select(rule => new CropRuleReferenceSummary(rule.Id, rule.RuleType, rule.RuleKey, rule.StructuredValueJson, rule.SourceName, rule.SourceUrl, rule.VerifiedAt)).ToArray(),
                     []);
@@ -205,7 +235,7 @@ public sealed class InternalAgentToolsController(
                     .Where(item => item.CropPlanRequestId == cropPlanRequestId && !item.IsDeleted)
                     .OrderByDescending(item => item.CreatedAt)
                     .Take(5)
-                    .Select(item => new CropPlanHistoryResponse(item.Id, item.CropPlanRequestId, item.FromStatus, item.ToStatus, item.Note, item.ChangedByUserId, item.CreatedAt))
+                    .Select(item => new CropPlanHistoryResponse(item.Id, item.CropPlanRequestId, item.FromStatus, item.ToStatus, item.Note, item.ChangedByUserId, item.CreatedAt, item.Action, item.ChangedByRole, item.Reason))
                     .ToListAsync(cancellationToken);
             },
             cancellationToken);
@@ -246,8 +276,10 @@ public sealed class InternalAgentToolsController(
 
                 return inspections.Select(inspection => new AgentInspectionSummaryResponse(
                     inspection.Id,
+                    inspection.CropPlanRequestId!.Value,
                     inspection.FieldId,
                     inspection.InspectorUserId,
+                    inspection.Purpose.ToString(),
                     inspection.ScheduledAt,
                     inspection.CompletedAt,
                     inspection.Status.ToString(),
@@ -324,6 +356,199 @@ public sealed class InternalAgentToolsController(
                     .ToListAsync(cancellationToken);
             },
             cancellationToken);
+
+    // Member 3 WeatherResourceAgent tools. All are read-only and require the workflow context.
+    [HttpGet("crop-resource-requirements/{cropPlanRequestId:guid}")]
+    public async Task<ActionResult<AgentToolResponse<CropResourceRequirementsResult>>> GetCropResourceRequirements(
+        Guid cropPlanRequestId,
+        [FromQuery] Guid? workflowId,
+        [FromQuery] Guid? agentStepId,
+        CancellationToken cancellationToken) =>
+        await RunToolAsync(
+            WeatherResourceToolNames.GetCropResourceRequirements,
+            workflowId,
+            agentStepId,
+            new { cropPlanRequestId, workflowId, agentStepId },
+            async () =>
+            {
+                await RequireWorkflowScopeAsync(workflowId, cropPlanRequestId, cancellationToken);
+                var workflow = await dbContext.AgentWorkflows.AsNoTracking()
+                    .SingleAsync(item => item.Id == workflowId, cancellationToken);
+                var requiredId = workflow.RequiredCropReferenceProfileId;
+                if (requiredId.HasValue && !await dbContext.CropReferenceProfiles.AsNoTracking()
+                    .AnyAsync(item => item.Id == requiredId.Value && item.DraftVersion == workflow.RequiredCropReferenceVersion, cancellationToken))
+                    requiredId = Guid.Empty;
+                return await AsToolErrorAsync(() => requirementService.GetRequirementsAsync(cropPlanRequestId, requiredId, cancellationToken));
+            },
+            cancellationToken);
+
+    [HttpGet("resource-availability")]
+    public async Task<ActionResult<AgentToolResponse<IReadOnlyList<StockSnapshot>>>> GetResourceAvailability(
+        [FromQuery] Guid[]? resourceIds,
+        [FromQuery] Guid? workflowId,
+        [FromQuery] Guid? agentStepId,
+        CancellationToken cancellationToken) =>
+        await RunToolAsync(
+            WeatherResourceToolNames.GetResourceAvailability,
+            workflowId,
+            agentStepId,
+            new { resourceIds = resourceIds ?? [], workflowId, agentStepId },
+            async () =>
+            {
+                await RequireWorkflowAsync(workflowId, cancellationToken);
+                return await weatherResourceTools.GetResourceAvailabilityAsync(RequireResourceIds(resourceIds), cancellationToken);
+            },
+            cancellationToken);
+
+    [HttpGet("existing-reservations")]
+    public async Task<ActionResult<AgentToolResponse<IReadOnlyList<ReservationSnapshot>>>> GetExistingReservations(
+        [FromQuery] Guid[]? resourceIds,
+        [FromQuery] Guid? workflowId,
+        [FromQuery] Guid? agentStepId,
+        CancellationToken cancellationToken) =>
+        await RunToolAsync(
+            WeatherResourceToolNames.GetExistingReservations,
+            workflowId,
+            agentStepId,
+            new { resourceIds = resourceIds ?? [], workflowId, agentStepId },
+            async () =>
+            {
+                await RequireWorkflowAsync(workflowId, cancellationToken);
+                return await weatherResourceTools.GetExistingReservationsAsync(RequireResourceIds(resourceIds), cancellationToken);
+            },
+            cancellationToken);
+
+    [HttpGet("low-stock-status")]
+    public async Task<ActionResult<AgentToolResponse<IReadOnlyList<StockSnapshot>>>> GetLowStockStatus(
+        [FromQuery] Guid? workflowId,
+        [FromQuery] Guid? agentStepId,
+        CancellationToken cancellationToken) =>
+        await RunToolAsync(
+            WeatherResourceToolNames.GetLowStockStatus,
+            workflowId,
+            agentStepId,
+            new { workflowId, agentStepId },
+            async () =>
+            {
+                await RequireWorkflowAsync(workflowId, cancellationToken);
+                return await weatherResourceTools.GetLowStockStatusAsync(cancellationToken);
+            },
+            cancellationToken);
+
+    [HttpGet("weather-forecast")]
+    public async Task<ActionResult<AgentToolResponse<WeatherForecastResponse>>> GetWeatherForecast(
+        [FromQuery] Guid? workflowId,
+        [FromQuery] Guid? agentStepId,
+        CancellationToken cancellationToken) =>
+        await RunToolAsync(
+            WeatherResourceToolNames.GetWeatherForecast,
+            workflowId,
+            agentStepId,
+            new { workflowId, agentStepId },
+            async () =>
+            {
+                await RequireWorkflowAsync(workflowId, cancellationToken);
+                return await AsToolErrorAsync(() => weatherResourceTools.GetWeatherForecastAsync(workflowId!.Value, cancellationToken));
+            },
+            cancellationToken);
+
+    [HttpGet("inspection-image-analysis/{analysisId:guid}/image-bytes")]
+    public async Task<ActionResult<AgentInspectionImageBytesResponse>> GetInspectionImageAnalysisBytes(
+        Guid analysisId,
+        CancellationToken cancellationToken)
+    {
+        if (!HasValidToolToken()) return Unauthorized();
+
+        var analysis = await dbContext.InspectionImageAnalyses.AsNoTracking()
+            .Include(item => item.InspectionImage)
+            .SingleOrDefaultAsync(item => item.Id == analysisId, cancellationToken);
+        if (analysis?.InspectionImage is null || analysis.Status != InspectionImageAnalysisStatus.Running)
+            return NotFound();
+
+        try
+        {
+            var image = analysis.InspectionImage;
+            using var snapshot = JsonDocument.Parse(analysis.InputSnapshotJson);
+            var root = snapshot.RootElement;
+            var snapshotImageId = root.GetProperty("inspectionImageId").GetGuid();
+            var snapshotPublicId = root.GetProperty("publicId").GetString();
+            var snapshotHash = root.GetProperty("contentSha256").GetString();
+            long? snapshotVersion = root.TryGetProperty("storageVersion", out var versionElement)
+                && versionElement.ValueKind == JsonValueKind.Number
+                ? versionElement.GetInt64()
+                : null;
+            if (snapshotImageId != image.Id
+                || !string.Equals(snapshotPublicId, image.PublicId, StringComparison.Ordinal)
+                || !string.Equals(snapshotHash, image.ContentSha256, StringComparison.OrdinalIgnoreCase)
+                || snapshotVersion != image.StorageVersion)
+            {
+                logger.LogWarning("Inspection image startup snapshot mismatch for analysis {AnalysisId}", analysisId);
+                return Conflict(new { code = "IMAGE_SNAPSHOT_MISMATCH", message = "Stored analysis image identity no longer matches its immutable startup snapshot." });
+            }
+            var retrieved = await cloudinaryService.RetrieveInspectionImageAsync(
+                snapshotPublicId!,
+                snapshotVersion,
+                image.DeliveryType,
+                cancellationToken);
+            var actualHash = Convert.ToHexString(SHA256.HashData(retrieved.Bytes)).ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(snapshotHash) ||
+                !CryptographicOperations.FixedTimeEquals(
+                    Encoding.ASCII.GetBytes(snapshotHash.ToLowerInvariant()),
+                    Encoding.ASCII.GetBytes(actualHash)))
+            {
+                logger.LogWarning("Inspection image integrity check failed for analysis {AnalysisId}", analysisId);
+                return Conflict(new { code = "IMAGE_INTEGRITY_FAILED", message = "Stored inspection image integrity verification failed." });
+            }
+
+            logger.LogInformation("Retrieved verified inspection image for analysis {AnalysisId}", analysisId);
+            return Ok(new AgentInspectionImageBytesResponse(
+                analysis.Id,
+                image.Id,
+                retrieved.ContentType,
+                actualHash,
+                Convert.ToBase64String(retrieved.Bytes)));
+        }
+        catch (ApiException exception)
+        {
+            logger.LogWarning("Inspection image retrieval failed for analysis {AnalysisId}: {FailureCategory}", analysisId, exception.Code);
+            return StatusCode((int)exception.StatusCode, new { code = exception.Code, message = exception.Message });
+        }
+    }
+
+    private async Task RequireWorkflowScopeAsync(Guid? workflowId, Guid cropPlanRequestId, CancellationToken cancellationToken)
+    {
+        if (!workflowId.HasValue) throw Safe(HttpStatusCode.Forbidden, "Workflow context is required.");
+        await EnsureWorkflowScopeAsync(workflowId, cropPlanRequestId, cancellationToken);
+    }
+
+    private async Task RequireWorkflowAsync(Guid? workflowId, CancellationToken cancellationToken)
+    {
+        if (!workflowId.HasValue || !await dbContext.AgentWorkflows.AsNoTracking().AnyAsync(item => item.Id == workflowId.Value && !item.IsDeleted, cancellationToken))
+        {
+            throw Safe(HttpStatusCode.Forbidden, "Workflow context is required.");
+        }
+    }
+
+    private static IReadOnlyCollection<Guid> RequireResourceIds(Guid[]? resourceIds)
+    {
+        var ids = (resourceIds ?? []).Where(id => id != Guid.Empty).Distinct().ToArray();
+        if (ids.Length > WeatherResourceToolService.MaxRequestedResources)
+            throw Safe(HttpStatusCode.BadRequest, $"At most {WeatherResourceToolService.MaxRequestedResources} resources may be requested.");
+        return ids;
+    }
+
+    private static async Task<T> AsToolErrorAsync<T>(Func<Task<T>> action)
+    {
+        try
+        {
+            return await action();
+        }
+        catch (ApiException exception)
+        {
+            throw Safe(exception.StatusCode, exception.Message);
+        }
+    }
+
     private async Task<ActionResult<AgentToolResponse<T>>> RunToolAsync<T>(
         string toolName,
         Guid? workflowId,

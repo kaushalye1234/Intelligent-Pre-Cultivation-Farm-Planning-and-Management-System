@@ -1,4 +1,4 @@
-using AgriAssist.Api.Dtos.CropPlanning;
+﻿using AgriAssist.Api.Dtos.CropPlanning;
 using AgriAssist.Api.Dtos.Shared;
 using AgriAssist.Api.Models.Shared;
 using AgriAssist.Api.Services.CropPlanning;
@@ -10,7 +10,7 @@ namespace AgriAssist.Api.Controllers.CropPlanning;
 [ApiController]
 [Route("api/crop-planning")]
 [Authorize]
-public sealed class CropPlanningController(ICropPlanningService cropPlanningService) : ControllerBase
+public sealed class CropPlanningController(ICropPlanningService cropPlanningService, CropReferenceVerificationService referenceVerificationService) : ControllerBase
 {
     [HttpGet("farms")]
     public async Task<ActionResult<PagedResult<FarmResponse>>> SearchFarms([FromQuery] PagedQuery query, CancellationToken cancellationToken) =>
@@ -69,6 +69,14 @@ public sealed class CropPlanningController(ICropPlanningService cropPlanningServ
     public async Task<ActionResult<CropTypeResponse>> UpdateCropType(Guid id, CropTypeRequest request, CancellationToken cancellationToken) =>
         Ok(await cropPlanningService.UpdateCropTypeAsync(id, request, cancellationToken));
 
+    [HttpDelete("crop-types/{id:guid}")]
+    [Authorize(Roles = nameof(ApplicationRole.Admin))]
+    public async Task<IActionResult> DeleteCropType(Guid id, CancellationToken cancellationToken)
+    {
+        await cropPlanningService.DeleteCropTypeAsync(id, cancellationToken);
+        return NoContent();
+    }
+
     [HttpGet("crop-varieties")]
     public async Task<ActionResult<PagedResult<CropVarietyResponse>>> SearchCropVarieties([FromQuery] PagedQuery query, [FromQuery] Guid? cropTypeId, [FromQuery] bool includeInactive, CancellationToken cancellationToken) =>
         Ok(await cropPlanningService.SearchCropVarietiesAsync(query, cropTypeId, cancellationToken, includeInactive));
@@ -83,18 +91,40 @@ public sealed class CropPlanningController(ICropPlanningService cropPlanningServ
     public async Task<ActionResult<CropVarietyResponse>> UpdateCropVariety(Guid id, CropVarietyRequest request, CancellationToken cancellationToken) =>
         Ok(await cropPlanningService.UpdateCropVarietyAsync(id, request, cancellationToken));
 
-    [HttpGet("crop-reference-profiles")]
+    [HttpDelete("crop-varieties/{id:guid}")]
     [Authorize(Roles = nameof(ApplicationRole.Admin))]
+    public async Task<IActionResult> DeleteCropVariety(Guid id, CancellationToken cancellationToken)
+    {
+        await cropPlanningService.DeleteCropVarietyAsync(id, cancellationToken);
+        return NoContent();
+    }
+
+    [HttpGet("crop-reference-profiles")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
     public async Task<ActionResult<PagedResult<CropReferenceProfileResponse>>> SearchReferenceProfiles([FromQuery] PagedQuery query, [FromQuery] Guid? cropTypeId, CancellationToken cancellationToken) =>
         Ok(await cropPlanningService.SearchReferenceProfilesAsync(query, cropTypeId, cancellationToken));
 
+    [HttpGet("crop-reference-profiles/{id:guid}")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
+    public async Task<ActionResult<CropReferenceProfileDetailsResponse>> GetReferenceProfile(Guid id, CancellationToken cancellationToken) =>
+        Ok(await cropPlanningService.GetReferenceProfileAsync(id, cancellationToken));
+
     [HttpPost("crop-reference-profiles")]
-    [Authorize(Roles = nameof(ApplicationRole.Admin))]
+    [Authorize(Roles = $"{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
     public async Task<ActionResult<CropReferenceProfileResponse>> CreateReferenceProfile(CropReferenceProfileRequest request, CancellationToken cancellationToken) =>
         Ok(await cropPlanningService.CreateReferenceProfileAsync(request, cancellationToken));
 
+    [HttpPut("crop-reference-profiles/{id:guid}/draft")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
+    public async Task<ActionResult<CropReferenceProfileDetailsResponse>> UpdateReferenceDraft(Guid id, CropReferenceDraftUpdateRequest request, CancellationToken cancellationToken) =>
+        Ok(await cropPlanningService.UpdateReferenceDraftAsync(id, request, cancellationToken));
+
+    [HttpPost("crop-reference-profiles/{id:guid}/verify")]
+    [Authorize(Roles = nameof(ApplicationRole.AgriculturalOfficer))]
+    public async Task<ActionResult<CropReferenceProfileDetailsResponse>> VerifyReferenceProfile(Guid id, VerifyReferenceRequest request, CancellationToken cancellationToken) =>
+        Ok(await referenceVerificationService.VerifyAsync(id, request, cancellationToken));
     [HttpPut("crop-reference-profiles/{id:guid}/active")]
-    [Authorize(Roles = nameof(ApplicationRole.Admin))]
+    [Authorize(Roles = $"{nameof(ApplicationRole.AgriculturalOfficer)},{nameof(ApplicationRole.Admin)}")]
     public async Task<ActionResult<CropReferenceProfileResponse>> SetReferenceProfileActive(Guid id, [FromBody] bool isActive, CancellationToken cancellationToken) =>
         Ok(await cropPlanningService.SetReferenceProfileActiveAsync(id, isActive, cancellationToken));
 
@@ -111,6 +141,10 @@ public sealed class CropPlanningController(ICropPlanningService cropPlanningServ
     public async Task<ActionResult<PagedResult<CropPlanRequestResponse>>> SearchRequests([FromQuery] PagedQuery query, CancellationToken cancellationToken) =>
         Ok(await cropPlanningService.SearchCropPlanRequestsAsync(query, cancellationToken));
 
+    [HttpGet("requests/{id:guid}")]
+    public async Task<ActionResult<CropPlanRequestResponse>> GetRequest(Guid id, CancellationToken cancellationToken) =>
+        Ok(await cropPlanningService.GetCropPlanRequestAsync(id, cancellationToken));
+
     [HttpPost("requests")]
     [Authorize(Roles = $"{nameof(ApplicationRole.Farmer)},{nameof(ApplicationRole.Admin)}")]
     public async Task<ActionResult<CropPlanRequestResponse>> CreateRequest(CropPlanRequestCreate request, CancellationToken cancellationToken) =>
@@ -121,6 +155,19 @@ public sealed class CropPlanningController(ICropPlanningService cropPlanningServ
     public async Task<ActionResult<CropPlanRequestResponse>> UpdateRequest(Guid id, CropPlanRequestUpdate request, CancellationToken cancellationToken) =>
         Ok(await cropPlanningService.UpdateCropPlanRequestAsync(id, request, cancellationToken));
 
+    [HttpPost("requests/{id:guid}/cancel")]
+    [Authorize(Roles = $"{nameof(ApplicationRole.Farmer)},{nameof(ApplicationRole.Admin)}")]
+    public async Task<ActionResult<CropPlanRequestResponse>> CancelRequest(Guid id, CropPlanCancellationRequest request, CancellationToken cancellationToken) =>
+        Ok(await cropPlanningService.CancelCropPlanRequestAsync(id, request, cancellationToken));
+
+    [HttpDelete("requests/{id:guid}")]
+    [Authorize(Roles = nameof(ApplicationRole.Admin))]
+    public async Task<IActionResult> ArchiveRequest(Guid id, CancellationToken cancellationToken)
+    {
+        await cropPlanningService.ArchiveCropPlanRequestAsync(id, cancellationToken);
+        return NoContent();
+    }
+
     [HttpPost("requests/preliminary")]
     [Authorize(Roles = $"{nameof(ApplicationRole.Farmer)},{nameof(ApplicationRole.Admin)}")]
     public async Task<ActionResult<CropPlanRequestResponse>> GeneratePreliminary(CropPlanRequestCreate request, CancellationToken cancellationToken) =>
@@ -129,4 +176,9 @@ public sealed class CropPlanningController(ICropPlanningService cropPlanningServ
     [HttpGet("requests/{id:guid}/history")]
     public async Task<ActionResult<IReadOnlyList<CropPlanHistoryResponse>>> GetHistory(Guid id, CancellationToken cancellationToken) =>
         Ok(await cropPlanningService.GetCropPlanHistoryAsync(id, cancellationToken));
+
+    [HttpGet("requests/{id:guid}/approved-plan")]
+    [Authorize(Roles = nameof(ApplicationRole.Farmer))]
+    public async Task<ActionResult<FarmerApprovedPlanResponse>> GetApprovedPlan(Guid id, CancellationToken cancellationToken) =>
+        Ok(await cropPlanningService.GetApprovedPlanAsync(id, cancellationToken));
 }

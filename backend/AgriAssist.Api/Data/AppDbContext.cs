@@ -1,4 +1,4 @@
-﻿using AgriAssist.Api.Models.CropPlanning;
+using AgriAssist.Api.Models.CropPlanning;
 using AgriAssist.Api.Models.Inspections;
 using AgriAssist.Api.Models.Resources;
 using AgriAssist.Api.Models.Shared;
@@ -18,12 +18,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<CropPlanRequest> CropPlanRequests => Set<CropPlanRequest>();
     public DbSet<CropPlanRequestHistory> CropPlanRequestHistories => Set<CropPlanRequestHistory>();
     public DbSet<CropReferenceProfile> CropReferenceProfiles => Set<CropReferenceProfile>();
+    public DbSet<FieldWaterRegimeVerification> FieldWaterRegimeVerifications => Set<FieldWaterRegimeVerification>();
     public DbSet<CropStageReference> CropStageReferences => Set<CropStageReference>();
     public DbSet<CropRuleReference> CropRuleReferences => Set<CropRuleReference>();
     public DbSet<FieldInspection> FieldInspections => Set<FieldInspection>();
     public DbSet<InspectionObservation> InspectionObservations => Set<InspectionObservation>();
     public DbSet<CropIssue> CropIssues => Set<CropIssue>();
     public DbSet<InspectionImage> InspectionImages => Set<InspectionImage>();
+    public DbSet<InspectionImageAnalysis> InspectionImageAnalyses => Set<InspectionImageAnalysis>();
+    public DbSet<InspectionImageAnalysisReview> InspectionImageAnalysisReviews => Set<InspectionImageAnalysisReview>();
     public DbSet<FollowUpRecommendation> FollowUpRecommendations => Set<FollowUpRecommendation>();
     public DbSet<ResourceCategory> ResourceCategories => Set<ResourceCategory>();
     public DbSet<Supplier> Suppliers => Set<Supplier>();
@@ -47,6 +50,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             entity.Property(user => user.FullName).IsRequired().HasMaxLength(120);
             entity.Property(user => user.Email).IsRequired().HasMaxLength(180);
+            entity.Property(user => user.PhoneNumber).HasMaxLength(12);
+            entity.Property(user => user.ContactAddress).HasMaxLength(500);
             entity.Property(user => user.PasswordHash).IsRequired().HasMaxLength(500);
             entity.Property(user => user.Role).HasConversion<string>().HasMaxLength(40);
             entity.Property(user => user.MustChangePassword).HasDefaultValue(false);
@@ -60,6 +65,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             entity.Property(farm => farm.Name).IsRequired().HasMaxLength(120);
             entity.Property(farm => farm.Location).IsRequired().HasMaxLength(240);
+            entity.Property(farm => farm.District).HasMaxLength(40);
             entity.Property(farm => farm.TotalArea).HasPrecision(12, 2);
             entity.HasOne(farm => farm.OwnerUser).WithMany().HasForeignKey(farm => farm.OwnerUserId).OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(farm => farm.OwnerUserId);
@@ -125,7 +131,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             entity.Property(history => history.FromStatus).HasConversion<string>().HasMaxLength(40);
             entity.Property(history => history.ToStatus).HasConversion<string>().HasMaxLength(40);
+            entity.Property(history => history.Action).HasConversion<string>().HasMaxLength(40);
+            entity.Property(history => history.ChangedByRole).HasConversion<string>().HasMaxLength(40);
             entity.Property(history => history.Note).HasMaxLength(500);
+            entity.Property(history => history.Reason).HasMaxLength(500);
             entity.HasOne(history => history.CropPlanRequest).WithMany(request => request.History).HasForeignKey(history => history.CropPlanRequestId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(history => history.ChangedByUser).WithMany().HasForeignKey(history => history.ChangedByUserId).OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(history => history.CropPlanRequestId);
@@ -138,9 +147,23 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.Property(profile => profile.SourceName).IsRequired().HasMaxLength(180);
             entity.Property(profile => profile.SourceUrl).HasMaxLength(1000);
             entity.Property(profile => profile.SourceVersion).IsRequired().HasMaxLength(120);
+            entity.Property(profile => profile.VerificationState).HasConversion<string>().HasMaxLength(32).HasDefaultValue(CropReferenceVerificationState.LegacyReviewRequired);
+            entity.Property(profile => profile.DraftVersion).IsConcurrencyToken().HasDefaultValue(1);
+            entity.Property(profile => profile.WaterRegime).HasConversion<string>().HasMaxLength(20);
+            entity.HasOne<AppUser>().WithMany().HasForeignKey(profile => profile.VerifiedByUserId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(profile => profile.FieldWaterRegimeVerification).WithMany().HasForeignKey(profile => profile.FieldWaterRegimeVerificationId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(profile => profile.CropType).WithMany().HasForeignKey(profile => profile.CropTypeId).OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(profile => new { profile.CropTypeId, profile.VarietyName, profile.Region, profile.IsActive });
             entity.HasIndex(profile => profile.VerifiedAt);
+        });
+
+        modelBuilder.Entity<FieldWaterRegimeVerification>(entity =>
+        {
+            entity.Property(item => item.WaterRegime).HasConversion<string>().HasMaxLength(20);
+            entity.Property(item => item.Observation).IsRequired().HasMaxLength(2000);
+            entity.HasOne(item => item.Field).WithMany().HasForeignKey(item => item.FieldId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<AppUser>().WithMany().HasForeignKey(item => item.VerifiedByUserId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(item => new { item.FieldId, item.VerifiedAt });
         });
 
         modelBuilder.Entity<CropStageReference>(entity =>
@@ -172,10 +195,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.HasOne(inspection => inspection.Field).WithMany().HasForeignKey(inspection => inspection.FieldId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(inspection => inspection.CropPlanRequest).WithMany().HasForeignKey(inspection => inspection.CropPlanRequestId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(inspection => inspection.InspectorUser).WithMany().HasForeignKey(inspection => inspection.InspectorUserId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(inspection => inspection.FrozenImageAnalysisReview).WithMany().HasForeignKey(inspection => inspection.FrozenImageAnalysisReviewId).OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(inspection => inspection.FieldId);
-            entity.HasIndex(inspection => new { inspection.CropPlanRequestId, inspection.Purpose }).IsUnique();
+            entity.HasIndex(inspection => inspection.CropPlanRequestId)
+                .IsUnique()
+                .HasFilter("\"CropPlanRequestId\" IS NOT NULL AND \"Purpose\" = 'PrePlanting'");
             entity.HasIndex(inspection => inspection.Status);
             entity.HasIndex(inspection => inspection.ScheduledAt);
+            entity.HasIndex(inspection => inspection.FrozenImageAnalysisReviewId);
         });
 
         modelBuilder.Entity<InspectionObservation>(entity =>
@@ -201,9 +228,51 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             entity.Property(image => image.Url).IsRequired().HasMaxLength(1000);
             entity.Property(image => image.PublicId).IsRequired().HasMaxLength(240);
+            entity.Property(image => image.AssetId).HasMaxLength(120);
+            entity.Property(image => image.DeliveryType).IsRequired().HasMaxLength(40).HasDefaultValue("upload");
             entity.Property(image => image.ContentType).IsRequired().HasMaxLength(80);
+            entity.Property(image => image.ContentSha256).HasMaxLength(64);
+            entity.Property(image => image.IsRepresentativeForAi).HasDefaultValue(false);
             entity.HasOne(image => image.FieldInspection).WithMany().HasForeignKey(image => image.FieldInspectionId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(image => image.FieldInspectionId);
+            entity.HasIndex(image => image.FieldInspectionId)
+                .IsUnique()
+                .HasFilter("\"IsRepresentativeForAi\" = TRUE");
+        });
+
+        modelBuilder.Entity<InspectionImageAnalysis>(entity =>
+        {
+            entity.Property(analysis => analysis.AnalysisFingerprint).IsRequired().HasMaxLength(64);
+            entity.Property(analysis => analysis.Status).HasConversion<string>().HasMaxLength(40);
+            entity.Property(analysis => analysis.InputSnapshotJson).IsRequired().HasColumnType("jsonb");
+            entity.Property(analysis => analysis.Provider).IsRequired().HasMaxLength(40);
+            entity.Property(analysis => analysis.Model).IsRequired().HasMaxLength(120);
+            entity.Property(analysis => analysis.SourcePolicyVersion).IsRequired().HasMaxLength(80);
+            entity.Property(analysis => analysis.SourcePolicyHash).IsRequired().HasMaxLength(64);
+            entity.Property(analysis => analysis.Pass1ResultJson).HasColumnType("jsonb");
+            entity.Property(analysis => analysis.EvidencePacketJson).HasColumnType("jsonb");
+            entity.Property(analysis => analysis.FinalResultJson).HasColumnType("jsonb");
+            entity.Property(analysis => analysis.FailureCategory).HasMaxLength(80);
+            entity.Property(analysis => analysis.FailureMessageSafe).HasMaxLength(1000);
+            entity.Property(analysis => analysis.Version).IsConcurrencyToken().HasDefaultValue(1);
+            entity.HasOne(analysis => analysis.FieldInspection).WithMany().HasForeignKey(analysis => analysis.FieldInspectionId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(analysis => analysis.InspectionImage).WithMany().HasForeignKey(analysis => analysis.InspectionImageId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(analysis => analysis.FieldInspectionId);
+            entity.HasIndex(analysis => analysis.InspectionImageId);
+            entity.HasIndex(analysis => new { analysis.InspectionImageId, analysis.AnalysisFingerprint })
+                .IsUnique()
+                .HasFilter("\"Status\" IN ('Running', 'Succeeded')");
+        });
+
+        modelBuilder.Entity<InspectionImageAnalysisReview>(entity =>
+        {
+            entity.Property(review => review.Disposition).HasConversion<string>().HasMaxLength(40);
+            entity.Property(review => review.ReviewedProjectionJson).HasColumnType("jsonb");
+            entity.Property(review => review.EditedFieldsJson).IsRequired().HasColumnType("jsonb");
+            entity.Property(review => review.StaffNote).HasMaxLength(1000);
+            entity.HasOne(review => review.InspectionImageAnalysis).WithMany().HasForeignKey(review => review.InspectionImageAnalysisId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(review => review.ReviewedByUser).WithMany().HasForeignKey(review => review.ReviewedByUserId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(review => new { review.InspectionImageAnalysisId, review.ReviewedAt });
         });
 
         modelBuilder.Entity<FollowUpRecommendation>(entity =>
@@ -241,9 +310,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         modelBuilder.Entity<InventoryStock>(entity =>
         {
-            entity.Property(stock => stock.QuantityOnHand).HasPrecision(12, 2);
-            entity.Property(stock => stock.ReservedQuantity).HasPrecision(12, 2);
-            entity.Property(stock => stock.LowStockThreshold).HasPrecision(12, 2);
+            entity.Property(stock => stock.QuantityOnHand).HasPrecision(13, 3);
+            entity.Property(stock => stock.ReservedQuantity).HasPrecision(13, 3);
+            entity.Property(stock => stock.LowStockThreshold).HasPrecision(13, 3);
             entity.Property(stock => stock.RowVersion).IsConcurrencyToken().IsRequired();
             entity.HasOne(stock => stock.Resource).WithMany().HasForeignKey(stock => stock.ResourceId).OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(stock => stock.ResourceId).IsUnique();
@@ -252,7 +321,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<StockTransaction>(entity =>
         {
             entity.Property(transaction => transaction.Type).HasConversion<string>().HasMaxLength(40);
-            entity.Property(transaction => transaction.Quantity).HasPrecision(12, 2);
+            entity.Property(transaction => transaction.Quantity).HasPrecision(13, 3);
             entity.Property(transaction => transaction.Note).HasMaxLength(500);
             entity.HasOne(transaction => transaction.InventoryStock).WithMany().HasForeignKey(transaction => transaction.InventoryStockId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(transaction => transaction.InventoryStockId);
@@ -261,7 +330,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         modelBuilder.Entity<ResourceReservation>(entity =>
         {
-            entity.Property(reservation => reservation.Quantity).HasPrecision(12, 2);
+            entity.Property(reservation => reservation.Quantity).HasPrecision(13, 3);
             entity.Property(reservation => reservation.Status).HasConversion<string>().HasMaxLength(40);
             entity.Property(reservation => reservation.Purpose).IsRequired().HasMaxLength(500);
             entity.HasOne(reservation => reservation.InventoryStock).WithMany().HasForeignKey(reservation => reservation.InventoryStockId).OnDelete(DeleteBehavior.Restrict);
@@ -319,6 +388,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.HasOne(workflow => workflow.CropPlanRequest).WithMany().HasForeignKey(workflow => workflow.CropPlanRequestId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(workflow => workflow.InitiatedByUser).WithMany().HasForeignKey(workflow => workflow.InitiatedByUserId).OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(workflow => workflow.CropPlanRequestId);
+            entity.HasOne<CropReferenceProfile>().WithMany().HasForeignKey(workflow => workflow.RequiredCropReferenceProfileId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<AgentWorkflow>().WithMany().HasForeignKey(workflow => workflow.SupersedesWorkflowId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(workflow => workflow.SupersedesWorkflowId).IsUnique();
+            entity.HasIndex(workflow => new { workflow.CropPlanRequestId, workflow.ReplacementIdempotencyKey }).IsUnique();
             entity.HasIndex(workflow => workflow.Status);
         });
 
@@ -333,6 +406,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.Property(step => step.ErrorMessageSafe).HasMaxLength(1000);
             entity.HasOne(step => step.AgentWorkflow).WithMany(workflow => workflow.Steps).HasForeignKey(step => step.AgentWorkflowId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(step => new { step.AgentWorkflowId, step.Sequence });
+            entity.HasIndex(step => new { step.AgentWorkflowId, step.CandidateRevision })
+                .IsUnique()
+                .HasDatabaseName("IX_AgentSteps_FinalGuideRevision")
+                .HasFilter("\"AgentName\" = 'FinalCultivationGuideAgent' AND \"IsDeleted\" = FALSE");
         });
 
         modelBuilder.Entity<AgentToolExecution>(entity =>

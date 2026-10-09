@@ -35,6 +35,10 @@ erDiagram
     AgentWorkflows ||--o{ AgentToolExecutions : executes
     AgentWorkflows ||--o{ AgentValidationResults : validates
     AgentWorkflows ||--o{ ApprovalDecisions : supports
+    CropPlanRequests ||--o{ AgentWorkflows : starts
+    AgentWorkflows ||--o{ FarmTasks : generates
+    AgentWorkflows ||--o{ IrrigationSchedules : generates
+    AgentWorkflows ||--o{ ResourceReservations : generates
 ```
 
-The AgentWorkflow tables are present for later AI phases only. The current BASIC foundation does not execute AI workflows.
+The workflow tables are active. `AgentStep` stores each agent's execution result, `AgentValidationResult` records candidate checks, and `ApprovalDecision` records the officer's decision. Final tasks, irrigation schedules, and reservations have nullable `GeneratedByWorkflowId` provenance and a candidate revision; they are created only after approval. The workflow-to-final-record relationships are optional because manual records also exist.

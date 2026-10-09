@@ -1,30 +1,31 @@
-# Member 4 next-phase readiness
+# Member 4 implementation and submission readiness
 
-## Completed
+Updated 2026-10-05 after checking the current `dev` head, PR status, CI, and public demo endpoints.
 
-- SchedulingValidationAgent and its structured contract are implemented.
-- Deterministic candidate validation and human approval are implemented.
-- React workflow review and Flutter farmer status are implemented.
-- Five EF migrations apply to isolated PostgreSQL 16.
-- PostgreSQL migration, required-table, rollback, and row-lock smoke checks pass.
-- Backend (44), AI service (27), and individual Flutter (6) tests pass.
-- API and AI health checks pass; officer authentication and Member 4 read endpoints pass.
-- Unauthenticated Member 4 workflow access returns HTTP 401.
+## Member 4 implementation status
 
-## Remaining before final submission
+- Phases 1-3 (task and irrigation models, deterministic evidence-based proposals, officer approval and revalidation, React review, Flutter farmer status, and integration evidence) are merged into `dev` through PRs [#59](https://github.com/kaushalye1234/Intelligent-Pre-Cultivation-Farm-Planning-and-Management-System/pull/59) and [#60](https://github.com/kaushalye1234/Intelligent-Pre-Cultivation-Farm-Planning-and-Management-System/pull/60).
+- The optional single-tool verified-profile retrieval and Render preparation were merged in [PR #67](https://github.com/kaushalye1234/Intelligent-Pre-Cultivation-Farm-Planning-and-Management-System/pull/67).
+- Additional retrieval hardening is in [PR #72](https://github.com/kaushalye1234/Intelligent-Pre-Cultivation-Farm-Planning-and-Management-System/pull/72). All four CI jobs (backend, AI service, React, Flutter) passed on the PR head. The Python 3.12 AI CI also validates the project's pinned dependencies. PR #72 is not yet merged.
 
-Completed on 2026-09-19 in the disposable PostgreSQL environment:
+## Deployment check performed
 
-1. Created a real workflow with coordinator, field-analysis, weather/resource, and scheduling outputs.
-2. Generated candidate revision 1 and recorded the officer approval state.
-3. Ran the API concurrency probe with one HTTP 200 and one HTTP 409 conflict.
-4. Verified farmer-scoped visibility of the completed workflow, one approved task, one approved irrigation schedule, and one workflow approval decision.
+The publicly shared Render endpoints were checked read-only on 2026-10-05:
 
-Still required before final submission:
+- React root: HTTP 200 — <https://agriassist-react.onrender.com/>
+- ASP.NET API health: HTTP 200 — <https://agriassist-api-sl97.onrender.com/health>
+- ASP.NET Swagger document: HTTP 200 — <https://agriassist-api-sl97.onrender.com/swagger/v1/swagger.json>
+- AI service health: HTTP 200 after a retry — <https://agriassist-ai-3boo.onrender.com/health>
 
-6. Extend measured workflow latency beyond the single-run baseline in `docs/testing/performance-report.md`.
-7. Attach Swagger/API evidence, ERD, verification log, and the final submission checklist.
+These checks prove endpoint reachability only. They do not prove database readiness, a successful authenticated workflow, or a full live AI scheduling run. PR [#71](https://github.com/kaushalye1234/Intelligent-Pre-Cultivation-Farm-Planning-and-Management-System/pull/71), which preserves the Supabase configuration and updates the mobile build path, is merged into `dev`; its four CI jobs passed. Its PR notes report a live login, weather, and image check, but those authenticated/integration checks were not independently repeated here. Do not run schema migrations against the existing Supabase database without a separate backup and explicit deployment operation.
 
-Flutter evidence is recorded: Flutter 3.47.4, dependency resolution, analysis, and the individual login, crop-planning, and inspection tests passed; the combined suite and debug APK Gradle task did not complete in this environment.
+## Still required for final Group 04 submission
 
-The current evidence is valid for the disposable local database only. It must not be presented as production performance or as proof of a genuine external LLM-provider run.
+1. Review and merge the outstanding Member 4 hardening PR #72 through the group's normal review process.
+2. With PR #71 merged, verify one authenticated Supabase-backed end-to-end workflow using the group's evaluator account and confirm that final tasks/schedules appear only after officer approval.
+3. Record the exact tested React, API, Swagger, and AI URLs and the database mode in the report; do not include credentials.
+4. Record and share the demonstration video, then verify access in a private browser.
+5. Obtain each member's own contribution section, AI log/reflection, and signed declaration. Member 4 must write and sign their own reflection/declaration as well.
+6. Assemble and review one final Group 04 PDF. The existing report/PDF is a draft, not the submitted final document.
+
+No source change can supply another student's personal reflection or declaration, and a reachable URL alone is not end-to-end workflow evidence. The [Phase 3 checklist](../testing/phase3-final-submission-checklist.md) and [verification log](../testing/verification-log.md) record the earlier local and CI evidence and its limits.

@@ -1,0 +1,20 @@
+{
+  "contractVersion": 1,
+  "visibleFindings": ["Several brown lesions are visible on the leaf."],
+  "possibleIssueCategory": "Fungal",
+  "possibleIssues": ["Possible fungal-type leaf symptoms"],
+  "severity": "Moderate",
+  "uncertainty": "The image is visually compatible with a crop-health issue, but does not confirm a diagnosis.",
+  "validatedSourceReferences": [
+    {
+      "sourcePolicyId": "doa-rice",
+      "organization": "Sri Lanka Department of Agriculture",
+      "title": "Rice crop-health guidance",
+      "url": "https://doa.gov.lk/rice/health",
+      "sourceStage": "Stage1"
+    }
+  ],
+  "recommendedNonChemicalActions": ["RemoveAffectedResidue", "InspectNearbyPlants", "MonitorSymptoms", "RequestFurtherAssessment"],
+  "requiresFurtherAssessment": true,
+  "groundingStatus": "Grounded"
+}

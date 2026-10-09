@@ -25,4 +25,6 @@ public interface IInspectionService
     Task<FollowUpRecommendationResponse> UpdateRecommendationAsync(Guid id, FollowUpRecommendationUpdateRequest request, CancellationToken cancellationToken);
     Task<InspectionImageResponse> UploadImageAsync(Guid inspectionId, IFormFile file, CancellationToken cancellationToken);
     Task<IReadOnlyList<InspectionImageResponse>> GetInspectionImagesAsync(Guid inspectionId, CancellationToken cancellationToken);
+    Task<InspectionImageContent> GetInspectionImageContentAsync(Guid inspectionId, Guid imageId, CancellationToken cancellationToken);
+    Task<InspectionImageResponse> SelectRepresentativeImageAsync(Guid cropPlanRequestId, Guid imageId, CancellationToken cancellationToken);
 }

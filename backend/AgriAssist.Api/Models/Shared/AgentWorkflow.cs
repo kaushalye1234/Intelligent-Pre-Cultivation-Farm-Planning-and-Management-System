@@ -11,6 +11,10 @@ public sealed class AgentWorkflow : AuditableEntity
     public string Objective { get; set; } = string.Empty;
     public AgentWorkflowStatus Status { get; set; } = AgentWorkflowStatus.NotStarted;
     public string CurrentStep { get; set; } = string.Empty;
+    public Guid? RequiredCropReferenceProfileId { get; set; }
+    public int? RequiredCropReferenceVersion { get; set; }
+    public Guid? SupersedesWorkflowId { get; set; }
+    public Guid? ReplacementIdempotencyKey { get; set; }
     public int CandidateRevision { get; set; } = 1;
     public int RevisionCount { get; set; }
     public int Version { get; set; } = 1;
@@ -31,5 +35,6 @@ public enum AgentWorkflowStatus
     PendingOfficerApproval = 8,
     Rejected = 9,
     RevisionRequested = 10,
-    MissingDependency = 11
+    MissingDependency = 11,
+    CandidateBlocked = 12
 }

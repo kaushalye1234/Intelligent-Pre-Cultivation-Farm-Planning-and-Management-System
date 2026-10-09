@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../state/app_state.dart';
 import '../ui/journey_widgets.dart';
+import '../utils/farmer_registration_validation.dart';
 import '../utils/password_validation.dart';
+import '../utils/sri_lankan_phone_validation.dart';
 
 class RegisterFarmerScreen extends StatefulWidget {
   const RegisterFarmerScreen({super.key});
@@ -16,6 +19,8 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
   final _formKey = GlobalKey<FormState>();
   final _fullNameController = TextEditingController();
   final _emailController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _contactAddressController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   bool _obscurePassword = true;
@@ -24,6 +29,8 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
   void dispose() {
     _fullNameController.dispose();
     _emailController.dispose();
+    _phoneController.dispose();
+    _contactAddressController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
@@ -35,6 +42,8 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
     await state.registerFarmer(
       fullName: _fullNameController.text.trim(),
       email: _emailController.text.trim(),
+      phoneNumber: normalizeSriLankanPhoneNumber(_phoneController.text)!,
+      contactAddress: _contactAddressController.text.trim(),
       password: _passwordController.text,
     );
     if (!mounted) return;
@@ -63,19 +72,18 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
                 ),
                 const SizedBox(height: 18),
                 TextFormField(
+                  key: const Key('farmerFullNameField'),
                   controller: _fullNameController,
                   decoration: const InputDecoration(
                     labelText: 'Full name',
                     prefixIcon: Icon(Icons.person_outline_rounded),
                   ),
                   autofillHints: const [AutofillHints.name],
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r"[A-Za-z '\-]")),
+                  ],
                   textInputAction: TextInputAction.next,
-                  validator: (value) {
-                    final name = value?.trim() ?? '';
-                    if (name.isEmpty) return 'Full name is required';
-                    if (name.length > 120) return 'Use 120 characters or fewer';
-                    return null;
-                  },
+                  validator: validateFarmerFullName,
                 ),
                 const SizedBox(height: 14),
                 TextFormField(
@@ -95,6 +103,44 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
                     }
                     if (email.length > 180) {
                       return 'Use 180 characters or fewer';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 14),
+                TextFormField(
+                  key: const Key('farmerPhoneField'),
+                  controller: _phoneController,
+                  decoration: const InputDecoration(
+                    labelText: 'Phone number',
+                    hintText: '077 123 4567',
+                    prefixIcon: Icon(Icons.phone_outlined),
+                  ),
+                  keyboardType: TextInputType.phone,
+                  autofillHints: const [AutofillHints.telephoneNumber],
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  textInputAction: TextInputAction.next,
+                  validator: validateSriLankanPhoneNumber,
+                ),
+                const SizedBox(height: 14),
+                TextFormField(
+                  controller: _contactAddressController,
+                  decoration: const InputDecoration(
+                    labelText: 'Contact / home address',
+                    prefixIcon: Icon(Icons.home_outlined),
+                  ),
+                  keyboardType: TextInputType.streetAddress,
+                  autofillHints: const [AutofillHints.fullStreetAddress],
+                  textInputAction: TextInputAction.next,
+                  minLines: 1,
+                  maxLines: 3,
+                  validator: (value) {
+                    final address = value?.trim() ?? '';
+                    if (address.isEmpty) {
+                      return 'Contact / home address is required';
+                    }
+                    if (address.length > 500) {
+                      return 'Use 500 characters or fewer';
                     }
                     return null;
                   },

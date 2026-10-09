@@ -1,4 +1,4 @@
-﻿import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthContext'
 import { Layout } from './components/Layout'
 import { ProtectedRoute } from './components/ProtectedRoute'
@@ -21,9 +21,12 @@ import { LoginPage } from './pages/LoginPage'
 import { ResourcesPage } from './pages/ResourcesPage'
 import { TaskApprovalPage } from './pages/TaskApprovalPage'
 import { WorkflowReviewPage } from './pages/WorkflowReviewPage'
+import { WorkflowEvidenceResolutionPage } from './pages/WorkflowEvidenceResolutionPage'
 import { UsersPage } from './pages/UsersPage'
 import { Roles, staffRoles } from './routing'
+import './styles/theme.css'
 import './styles.css'
+import './styles/public.css'
 
 export function AppRoutes() {
   return (
@@ -54,6 +57,7 @@ export function AppRoutes() {
           <Route path="inspections/follow-ups" element={<ProtectedRoute allowedRoles={[Roles.Admin, Roles.FieldOfficer, Roles.AgriculturalOfficer]}><FollowUpRecommendations /></ProtectedRoute>} />
           <Route path="resources" element={<ProtectedRoute allowedRoles={[Roles.Admin, Roles.ResourceOfficer]}><ResourcesPage /></ProtectedRoute>} />
           <Route path="task-approval" element={<ProtectedRoute allowedRoles={[Roles.Admin, Roles.FieldOfficer, Roles.AgriculturalOfficer]}><TaskApprovalPage /></ProtectedRoute>} />
+          <Route path="task-approval/workflows/:id/resolve-evidence" element={<ProtectedRoute allowedRoles={[Roles.Admin, Roles.AgriculturalOfficer]}><WorkflowEvidenceResolutionPage /></ProtectedRoute>} />
           <Route path="task-approval/workflows/:id" element={<ProtectedRoute allowedRoles={[Roles.Admin, Roles.FieldOfficer, Roles.AgriculturalOfficer]}><WorkflowReviewPage /></ProtectedRoute>} />
           <Route path="users" element={<ProtectedRoute allowedRoles={[Roles.Admin]}><UsersPage /></ProtectedRoute>} />
         </Route>

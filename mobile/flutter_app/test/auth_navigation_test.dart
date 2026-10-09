@@ -22,6 +22,13 @@ Widget _authGateHarness(AppState state) {
   );
 }
 
+Future<void> _openFarmerRegistration(WidgetTester tester) async {
+  await tester.pumpWidget(_authGateHarness(AppState()));
+  await tester.ensureVisible(find.text('Create farmer account'));
+  await tester.tap(find.text('Create farmer account'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('Farmer shell exposes Home, Plans and Tasks', (tester) async {
     final state = AppState()..user = _farmer;
@@ -74,8 +81,72 @@ void main() {
 
     expect(find.text('Start with your farm'), findsOneWidget);
     expect(find.text('Full name'), findsOneWidget);
+    expect(find.text('Phone number'), findsOneWidget);
+    expect(find.text('Contact / home address'), findsOneWidget);
     expect(find.text('Role'), findsNothing);
     expect(find.byType(DropdownButtonFormField<int>), findsNothing);
+  });
+
+  testWidgets('new Farmer registration requires phone and contact address', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_authGateHarness(AppState()));
+    await tester.ensureVisible(find.text('Create farmer account'));
+    await tester.tap(find.text('Create farmer account'));
+    await tester.pumpAndSettle();
+
+    final submit = find.widgetWithText(FilledButton, 'Create farmer account');
+    await tester.ensureVisible(submit);
+    await tester.tap(submit);
+    await tester.pump();
+
+    expect(find.text('Phone number is required'), findsOneWidget);
+    expect(find.text('Contact / home address is required'), findsOneWidget);
+  });
+
+  testWidgets('Farmer registration filters invalid name and phone input', (
+    tester,
+  ) async {
+    await _openFarmerRegistration(tester);
+    final nameFinder = find.byKey(const Key('farmerFullNameField'));
+    final phoneFinder = find.byKey(const Key('farmerPhoneField'));
+
+    await tester.enterText(nameFinder, 'Nimal2@ Perera');
+    await tester.enterText(phoneFinder, '077 123-AB4567');
+
+    expect(
+      tester.widget<TextFormField>(nameFinder).controller!.text,
+      'Nimal Perera',
+    );
+    expect(
+      tester.widget<TextFormField>(phoneFinder).controller!.text,
+      '0771234567',
+    );
+  });
+
+  testWidgets('Farmer registration validators reject autofill bypass values', (
+    tester,
+  ) async {
+    await _openFarmerRegistration(tester);
+    final nameField = tester.widget<TextFormField>(
+      find.byKey(const Key('farmerFullNameField')),
+    );
+    final phoneField = tester.widget<TextFormField>(
+      find.byKey(const Key('farmerPhoneField')),
+    );
+    nameField.controller!.text = 'Nimal2 Perera';
+    phoneField.controller!.text = '+94771234567';
+
+    final submit = find.widgetWithText(FilledButton, 'Create farmer account');
+    await tester.ensureVisible(submit);
+    await tester.tap(submit);
+    await tester.pump();
+
+    expect(
+      find.text('Use letters, spaces, apostrophes, and hyphens only'),
+      findsOneWidget,
+    );
+    expect(find.text('Enter a valid Sri Lankan phone number'), findsOneWidget);
   });
 
   testWidgets('staff temporary session is blocked from Farmer screens', (
@@ -123,6 +194,7 @@ void main() {
 
     expect(find.text('Add your first farm'), findsOneWidget);
     expect(find.text('STEP 1 OF 2'), findsOneWidget);
+    expect(find.text('District'), findsWidgets);
   });
 
   testWidgets('Farmer with a farm but no active field opens field onboarding', (

@@ -1,29 +1,23 @@
 import { useContext, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import { AlertTriangle, PlayCircle, Plus, RefreshCw, Search, Sprout } from 'lucide-react'
-import { api, getErrorMessage } from '../api/client'
+import { AlertTriangle, PlayCircle, Plus, RefreshCw, Search, Sprout, Trash2, XCircle } from 'lucide-react'
+import { api, getErrorCode, getErrorMessage } from '../api/client'
 import { SelectInput, TextAreaInput, TextInput } from '../components/FormControls'
 import { DataTable } from '../components/DataTable'
 import { ErrorState, LoadingState } from '../components/States'
 import { StatusPill } from '../components/StatusPill'
-import { Button, MetricCard, Modal, Notice, PageHeader, Tabs, Toolbar } from '../components/Ui'
+import { Button, ConfirmDialog, MetricCard, Modal, Notice, PageHeader, Tabs, Toolbar } from '../components/Ui'
 import { formatArea, formatDate, formatMoney } from '../format'
 import { cropPlanStatus } from '../labels'
+import { sriLankanDistrictOptions } from '../location'
 import { AuthContext } from '../auth/AuthContext'
 import { AdminCropManagement } from './AdminCropManagement'
+import { Roles } from '../routing'
 import type { CropPlan, CropPlanningResult, CropPlanningWorkflowStatus, CropType, Farm, Field, PagedResult } from '../types'
 
 type CropTab = 'overview' | 'farms' | 'fields' | 'cropTypes' | 'requests'
 type CropModal = 'farm' | 'field' | 'plan' | null
-
-const workflowStatusLabel: Record<number, string> = {
-  1: 'Not Started',
-  2: 'Pending',
-  3: 'Running',
-  4: 'Completed',
-  5: 'Failed',
-  6: 'Cancelled',
-}
+type RequestAction = { kind: 'cancel' | 'archive'; plan: CropPlan } | null
 
 function getCropPlanTone(status: number) {
   if (status === 4) return 'good'
@@ -34,17 +28,23 @@ function getCropPlanTone(status: number) {
 
 function getWorkflowTone(status?: number) {
   if (status === 4) return 'good'
-  if (status === 5 || status === 6) return 'bad'
+  if (status === 5 || status === 6 || status === 12) return 'bad'
   if (status === 3) return 'info'
   return 'warn'
 }
 
-function isSafeFailure(result?: CropPlanningResult, status?: CropPlanningWorkflowStatus) {
-  return result?.status === 'SafeFailure' || status?.status === 5
+function startErrorMessage(error: unknown) {
+  return {
+    AI_WORKFLOW_ALREADY_ACTIVE: 'AI planning is already running for this request. The latest status has been refreshed.',
+    AI_WORKFLOW_ALREADY_COMPLETED: 'Member 1 crop planning has already completed for this request.',
+    CROP_PLAN_STATE_NOT_ALLOWED: 'This crop plan request is not eligible to start or retry AI planning.',
+  }[getErrorCode(error) ?? ''] ?? getErrorMessage(error)
 }
 
 export function CropPlanningPage() {
-  const isAdmin = useContext(AuthContext)?.user?.role === 5
+  const role = useContext(AuthContext)?.user?.role
+  const isAdmin = role === Roles.Admin
+  const isAgriculturalOfficer = role === Roles.AgriculturalOfficer
   const [farms, setFarms] = useState<Farm[]>([])
   const [fields, setFields] = useState<Field[]>([])
   const [cropTypes, setCropTypes] = useState<CropType[]>([])
@@ -53,6 +53,8 @@ export function CropPlanningPage() {
   const [planningResults, setPlanningResults] = useState<Record<string, CropPlanningResult>>({})
   const [activeTab, setActiveTab] = useState<CropTab>('overview')
   const [activeModal, setActiveModal] = useState<CropModal>(null)
+  const [requestAction, setRequestAction] = useState<RequestAction>(null)
+  const [cancellationReason, setCancellationReason] = useState('')
   const [search, setSearch] = useState('')
   const [error, setError] = useState('')
   const [actionError, setActionError] = useState('')
@@ -60,7 +62,7 @@ export function CropPlanningPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [workflowBusyId, setWorkflowBusyId] = useState<string | null>(null)
-  const [farmForm, setFarmForm] = useState({ name: '', location: '', totalArea: '' })
+  const [farmForm, setFarmForm] = useState({ name: '', location: '', district: '', totalArea: '' })
   const [fieldForm, setFieldForm] = useState({ farmId: '', name: '', area: '', soilType: '' })
   const [planForm, setPlanForm] = useState({ farmId: '', fieldId: '', cropTypeId: '', preferredStartDate: '', preferredEndDate: '', budget: '', objective: '' })
 
@@ -128,6 +130,56 @@ export function CropPlanningPage() {
     setActionError('')
   }
 
+  function closeRequestAction() {
+    if (isSubmitting) return
+    setRequestAction(null)
+    setCancellationReason('')
+    setActionError('')
+  }
+
+  function openRequestAction(kind: 'cancel' | 'archive', plan: CropPlan) {
+    setRequestAction({ kind, plan })
+    setCancellationReason('')
+    setActionError('')
+    setSuccess('')
+  }
+
+  async function cancelRequest(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (requestAction?.kind !== 'cancel' || !cancellationReason.trim()) return
+    setIsSubmitting(true)
+    setActionError('')
+    try {
+      await api.post(`/crop-planning/requests/${requestAction.plan.id}/cancel`, { reason: cancellationReason.trim() })
+      setSuccess('Crop plan request cancelled. The farmer can now create a replacement plan.')
+      setRequestAction(null)
+      setCancellationReason('')
+      await loadData()
+      setActiveTab('requests')
+    } catch (err) {
+      setActionError(getErrorMessage(err))
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  async function archiveRequest() {
+    if (requestAction?.kind !== 'archive') return
+    setIsSubmitting(true)
+    setActionError('')
+    try {
+      await api.delete(`/crop-planning/requests/${requestAction.plan.id}`)
+      setSuccess('Crop plan request removed from normal lists. Its audit history was retained.')
+      setRequestAction(null)
+      await loadData()
+      setActiveTab('requests')
+    } catch (err) {
+      setActionError(getErrorMessage(err))
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   async function refreshWorkflow(planId: string) {
     const [statusResult, planningResult] = await Promise.all([
       api.get<CropPlanningWorkflowStatus>(`/crop-plans/${planId}/workflow-status`),
@@ -148,7 +200,8 @@ export function CropPlanningPage() {
       await loadData()
       setActiveTab('requests')
     } catch (err) {
-      setActionError(getErrorMessage(err))
+      setActionError(startErrorMessage(err))
+      await loadData()
     } finally {
       setWorkflowBusyId(null)
     }
@@ -174,7 +227,7 @@ export function CropPlanningPage() {
     event.preventDefault()
     await runAction(async () => {
       await api.post('/crop-planning/farms', { ...farmForm, totalArea: Number(farmForm.totalArea), ownerUserId: null })
-      setFarmForm({ name: '', location: '', totalArea: '' })
+      setFarmForm({ name: '', location: '', district: '', totalArea: '' })
     }, 'Farm created successfully.')
   }
 
@@ -255,7 +308,7 @@ export function CropPlanningPage() {
               <div className="section-title"><h2>Farms</h2></div>
               <DataTable rows={farms} emptyTitle="No farms found" emptyMessage="Create a farm record before adding fields or planning requests." getRowKey={(row) => row.id} columns={[
                 { header: 'Farm Name', render: (row) => row.name },
-                { header: 'Location', render: (row) => row.location },
+                { header: 'Location', render: (row) => row.district ? `${row.location} · ${row.district}` : row.location },
                 { header: 'Area', render: (row) => formatArea(row.totalArea) },
                 { header: 'Created', render: (row) => formatDate(row.createdAt) },
               ]} />
@@ -275,9 +328,11 @@ export function CropPlanningPage() {
             </section>
           ) : null}
 
-          {activeTab === 'cropTypes' && isAdmin ? <AdminCropManagement /> : null}
+          {activeTab === 'cropTypes' && (isAdmin || isAgriculturalOfficer)
+            ? <AdminCropManagement referenceOnly={isAgriculturalOfficer} />
+            : null}
 
-          {activeTab === 'cropTypes' && !isAdmin ? (
+          {activeTab === 'cropTypes' && !isAdmin && !isAgriculturalOfficer ? (
             <section className="work-section">
               <div className="section-title"><h2>Crop Types</h2></div>
               <DataTable rows={cropTypes} emptyTitle="No crop types found" emptyMessage="Crop type records are managed through the existing API seed/admin flow." getRowKey={(row) => row.id} columns={[
@@ -302,7 +357,7 @@ export function CropPlanningPage() {
                   { header: 'Crop', render: (row) => cropNameById.get(row.cropTypeId) ?? row.cropTypeId.slice(0, 8) },
                   { header: 'Window', render: (row) => `${formatDate(row.preferredStartDate)} to ${formatDate(row.preferredEndDate)}` },
                   { header: 'Budget', render: (row) => formatMoney(row.budget) },
-                  { header: 'Status', render: (row) => <StatusPill label={cropPlanStatus[row.status] ?? String(row.status)} tone={getCropPlanTone(row.status)} /> },
+                  { header: 'Status', render: (row) => <StatusPill label={row.statusLabel || cropPlanStatus[row.status] || String(row.status)} tone={getCropPlanTone(row.status)} /> },
                   {
                     header: 'AI Workflow',
                     className: 'wide-column',
@@ -310,18 +365,28 @@ export function CropPlanningPage() {
                       const status = workflowStatuses[row.id]
                       const result = planningResults[row.id]
                       const busy = workflowBusyId === row.id
-                      const retry = isSafeFailure(result, status)
+                      const canStart = isAdmin && row.statusCode === 'pending'
+                      const canRetry = isAdmin && row.statusCode === 'ai_planning_failed'
+                      const canCancel = isAdmin && ![4, 5, 6].includes(row.status)
+                      const canArchive = isAdmin && [5, 6].includes(row.status)
                       return (
                         <div className="workflow-cell">
                           <div className="workflow-cell-top">
-                            <StatusPill label={status ? workflowStatusLabel[status.status] ?? String(status.status) : 'Not Started'} tone={getWorkflowTone(status?.status)} />
+                            <StatusPill label={status?.statusLabel ?? row.statusLabel} tone={getWorkflowTone(status?.status)} />
                             {result?.referenceDataStatus === 'Unavailable' ? <span className="reference-warning"><AlertTriangle size={14} aria-hidden="true" /> Missing reference</span> : null}
                           </div>
                           {result?.objectiveSummary ? <p>{result.objectiveSummary}</p> : <span className="muted-text">Coordinator output has not been generated.</span>}
                           {result?.warnings.length ? <ul className="workflow-warnings">{result.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}
                           {result?.steps.length ? <div className="workflow-step-list">{result.steps.map((step) => <span key={`${step.sequence}-${step.assignedAgent}`}>{step.sequence}. {step.assignedAgent}</span>)}</div> : null}
                           <div className="row-actions">
-                            <Button icon={<PlayCircle size={16} aria-hidden="true" />} disabled={busy || Boolean(status && !retry)} onClick={() => void startAiWorkflow(row)}>{busy ? 'Working...' : retry ? 'Retry AI' : 'Start AI'}</Button>
+                            {canStart || canRetry ? (
+                              <Button icon={<PlayCircle size={16} aria-hidden="true" />} disabled={busy} onClick={() => void startAiWorkflow(row)}>
+                                {busy ? 'Working...' : canRetry ? 'Retry AI Plan' : 'Start AI Plan'}
+                              </Button>
+                            ) : null}
+                            {row.statusCode === 'ai_planning' ? <span className="muted-text">AI planning is running.</span> : null}
+                            {canCancel ? <Button variant="danger" icon={<XCircle size={16} aria-hidden="true" />} disabled={busy || isSubmitting} onClick={() => openRequestAction('cancel', row)}>Cancel plan</Button> : null}
+                            {canArchive ? <Button variant="danger" icon={<Trash2 size={16} aria-hidden="true" />} disabled={isSubmitting} onClick={() => openRequestAction('archive', row)}>Delete request</Button> : null}
                             <Button variant="secondary" icon={<RefreshCw size={16} aria-hidden="true" />} disabled={busy || !status} onClick={() => void refreshWorkflow(row.id)}>Refresh</Button>
                           </div>
                         </div>
@@ -338,7 +403,8 @@ export function CropPlanningPage() {
       <Modal open={activeModal === 'farm'} title="Add Farm" description="Create a farm record for future field and planning workflows." onClose={closeModal} footer={<><Button variant="secondary" onClick={closeModal} disabled={isSubmitting}>Cancel</Button><Button type="submit" form="farm-form" disabled={isSubmitting}>{isSubmitting ? 'Creating...' : 'Create Farm'}</Button></>}>
         <form id="farm-form" className="form-grid" onSubmit={(event) => void createFarm(event)}>
           <TextInput label="Name" value={farmForm.name} placeholder="Farm name" required onChange={(value) => setFarmForm({ ...farmForm, name: value })} />
-          <TextInput label="Location" value={farmForm.location} placeholder="Farm location" required onChange={(value) => setFarmForm({ ...farmForm, location: value })} />
+          <TextInput label="Location" value={farmForm.location} placeholder="Farm address or town / city" required onChange={(value) => setFarmForm({ ...farmForm, location: value })} />
+          <SelectInput label="District" value={farmForm.district} required options={sriLankanDistrictOptions} onChange={(value) => setFarmForm({ ...farmForm, district: value })} />
           <TextInput label="Total area" value={farmForm.totalArea} type="number" min="0" step="0.01" placeholder="2.5" required onChange={(value) => setFarmForm({ ...farmForm, totalArea: value })} />
           {actionError ? <div className="form-error field-control-wide" role="alert">{actionError}</div> : null}
         </form>
@@ -366,6 +432,38 @@ export function CropPlanningPage() {
           {actionError ? <div className="form-error field-control-wide" role="alert">{actionError}</div> : null}
         </form>
       </Modal>
+
+      <Modal
+        open={requestAction?.kind === 'cancel'}
+        title="Cancel crop plan?"
+        description="This stops the active workflow and preserves all completed work and evidence."
+        onClose={closeRequestAction}
+        footer={<><Button variant="secondary" onClick={closeRequestAction} disabled={isSubmitting}>Keep plan</Button><Button variant="danger" type="submit" form="cancel-plan-form" disabled={isSubmitting || !cancellationReason.trim()}>{isSubmitting ? 'Cancelling...' : 'Confirm cancellation'}</Button></>}
+      >
+        <form id="cancel-plan-form" className="form-grid" onSubmit={(event) => void cancelRequest(event)}>
+          <TextAreaInput
+            label="Cancellation reason"
+            value={cancellationReason}
+            placeholder="Record why this plan is being cancelled"
+            rows={4}
+            required
+            disabled={isSubmitting}
+            onChange={setCancellationReason}
+          />
+          {actionError ? <div className="form-error field-control-wide" role="alert">{actionError}</div> : null}
+        </form>
+      </Modal>
+
+      <ConfirmDialog
+        open={requestAction?.kind === 'archive'}
+        title="Remove crop plan request?"
+        message="This request will disappear from normal Admin lists. Its workflow history, evidence, decisions, and audit data will be retained."
+        confirmLabel="Remove from list"
+        variant="danger"
+        isSubmitting={isSubmitting}
+        onCancel={closeRequestAction}
+        onConfirm={archiveRequest}
+      />
     </section>
   )
 }

@@ -1,4 +1,6 @@
 ﻿using System.Net;
+using System.Data;
+using System.Security.Cryptography;
 using AgriAssist.Api.Data;
 using AgriAssist.Api.Dtos.Inspections;
 using AgriAssist.Api.Dtos.Shared;
@@ -94,7 +96,12 @@ public sealed class InspectionService(
         Validate(inspectionValidator.Validate(request));
         RequireInspectionStaff();
         var inspection = await ApplyInspectionAccess(dbContext.FieldInspections).SingleOrDefaultAsync(item => item.Id == id, cancellationToken) ?? throw NotFound("Inspection");
-        RequireFieldOfficerForPrePlantingMutation(inspection);
+        RequirePrePlantingDraftMutation(inspection);
+        if (inspection.Purpose == InspectionPurpose.PrePlanting
+            && (request.FieldId != inspection.FieldId || request.Status != InspectionStatus.InProgress))
+        {
+            throw new ApiException(HttpStatusCode.Conflict, "PREPLANT_DEDICATED_MUTATION_REQUIRED", "Use the crop-plan pre-planting assessment endpoints to change linked assessment state or field linkage.");
+        }
         inspection.ScheduledAt = request.ScheduledAt;
         inspection.Status = request.Status;
         inspection.Summary = request.Summary.Trim();
@@ -112,10 +119,7 @@ public sealed class InspectionService(
     public async Task<PagedResult<ObservationResponse>> SearchObservationsAsync(PagedQuery query, Guid? inspectionId, CancellationToken cancellationToken)
     {
         query.Normalize();
-        var observations = dbContext.InspectionObservations.AsNoTracking()
-            .Include(item => item.FieldInspection)!.ThenInclude(inspection => inspection!.Field)!.ThenInclude(field => field!.Farm)
-            .Where(item => !item.IsDeleted);
-        if (currentUser.Role == ApplicationRole.Farmer) observations = observations.Where(item => item.FieldInspection!.Field!.Farm!.OwnerUserId == currentUser.UserId);
+        var observations = ApplyObservationAccess(dbContext.InspectionObservations.AsNoTracking());
         if (inspectionId.HasValue) observations = observations.Where(item => item.FieldInspectionId == inspectionId.Value);
         observations = observations.OrderBy(item => item.CreatedAt);
         var total = await observations.CountAsync(cancellationToken);
@@ -130,7 +134,7 @@ public sealed class InspectionService(
         var inspection = await ApplyInspectionAccess(dbContext.FieldInspections.AsNoTracking())
             .SingleOrDefaultAsync(item => item.Id == request.FieldInspectionId, cancellationToken)
             ?? throw NotFound("Inspection");
-        RequireFieldOfficerForPrePlantingMutation(inspection);
+        RequirePrePlantingDraftMutation(inspection);
         var observation = new InspectionObservation { FieldInspectionId = request.FieldInspectionId, ObservationType = request.ObservationType.Trim(), Notes = request.Notes.Trim(), CreatedByUserId = currentUser.UserId };
         dbContext.InspectionObservations.Add(observation);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -170,7 +174,10 @@ public sealed class InspectionService(
     {
         Validate(issueValidator.Validate(request));
         RequireInspectionStaff();
-        await EnsureInspectionVisibleAsync(request.FieldInspectionId, cancellationToken);
+        var inspection = await ApplyInspectionAccess(dbContext.FieldInspections.AsNoTracking())
+            .SingleOrDefaultAsync(item => item.Id == request.FieldInspectionId, cancellationToken)
+            ?? throw NotFound("Inspection");
+        RequirePrePlantingDraftMutation(inspection);
         if (request.Status == CropIssueStatus.Escalated && request.Severity is CropIssueSeverity.Low or CropIssueSeverity.Medium)
         {
             throw new ApiException(HttpStatusCode.BadRequest, "ISSUE_NOT_SERIOUS", "Only high or critical crop issues can be escalated.");
@@ -187,6 +194,7 @@ public sealed class InspectionService(
         RequireInspectionStaff();
         if (!Enum.IsDefined(request.Severity) || !Enum.IsDefined(request.Status)) throw new ApiException(HttpStatusCode.BadRequest, "VALIDATION_ERROR", "Issue severity or status is invalid.");
         var issue = await ApplyIssueAccess(dbContext.CropIssues).SingleOrDefaultAsync(item => item.Id == issueId, cancellationToken) ?? throw NotFound("Crop issue");
+        RequirePrePlantingDraftMutation(issue.FieldInspection!);
         if (request.Status == CropIssueStatus.Escalated && request.Severity is CropIssueSeverity.Low or CropIssueSeverity.Medium)
         {
             throw new ApiException(HttpStatusCode.BadRequest, "ISSUE_NOT_SERIOUS", "Only high or critical crop issues can be escalated.");
@@ -208,6 +216,7 @@ public sealed class InspectionService(
     {
         RequireInspectionStaff();
         var issue = await ApplyIssueAccess(dbContext.CropIssues).SingleOrDefaultAsync(item => item.Id == issueId, cancellationToken) ?? throw NotFound("Crop issue");
+        RequirePrePlantingDraftMutation(issue.FieldInspection!);
         if (issue.Severity is CropIssueSeverity.Low or CropIssueSeverity.Medium)
         {
             throw new ApiException(HttpStatusCode.BadRequest, "ISSUE_NOT_SERIOUS", "Only high or critical crop issues can be escalated.");
@@ -225,10 +234,7 @@ public sealed class InspectionService(
     public async Task<PagedResult<FollowUpRecommendationResponse>> SearchRecommendationsAsync(PagedQuery query, Guid? cropIssueId, bool? isCompleted, CancellationToken cancellationToken)
     {
         query.Normalize();
-        var recommendations = dbContext.FollowUpRecommendations.AsNoTracking()
-            .Include(item => item.CropIssue)!.ThenInclude(issue => issue!.FieldInspection)!.ThenInclude(inspection => inspection!.Field)!.ThenInclude(field => field!.Farm)
-            .Where(item => !item.IsDeleted);
-        if (currentUser.Role == ApplicationRole.Farmer) recommendations = recommendations.Where(item => item.CropIssue!.FieldInspection!.Field!.Farm!.OwnerUserId == currentUser.UserId);
+        var recommendations = ApplyRecommendationAccess(dbContext.FollowUpRecommendations.AsNoTracking());
         if (cropIssueId.HasValue) recommendations = recommendations.Where(item => item.CropIssueId == cropIssueId.Value);
         if (isCompleted.HasValue) recommendations = recommendations.Where(item => item.IsCompleted == isCompleted.Value);
         recommendations = query.SortDirection == "desc" ? recommendations.OrderByDescending(item => item.DueAt ?? item.CreatedAt) : recommendations.OrderBy(item => item.DueAt ?? item.CreatedAt);
@@ -241,7 +247,10 @@ public sealed class InspectionService(
     {
         Validate(recommendationValidator.Validate(request));
         RequireInspectionStaff();
-        if (!await ApplyIssueAccess(dbContext.CropIssues.AsNoTracking()).AnyAsync(item => item.Id == request.CropIssueId, cancellationToken)) throw NotFound("Crop issue");
+        var issue = await ApplyIssueAccess(dbContext.CropIssues.AsNoTracking())
+            .SingleOrDefaultAsync(item => item.Id == request.CropIssueId, cancellationToken)
+            ?? throw NotFound("Crop issue");
+        RequirePrePlantingDraftMutation(issue.FieldInspection!);
         var recommendation = new FollowUpRecommendation { CropIssueId = request.CropIssueId, Recommendation = request.Recommendation.Trim(), DueAt = request.DueAt, IsCompleted = request.IsCompleted, CreatedByUserId = currentUser.UserId };
         dbContext.FollowUpRecommendations.Add(recommendation);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -251,11 +260,10 @@ public sealed class InspectionService(
     public async Task<FollowUpRecommendationResponse> UpdateRecommendationAsync(Guid id, FollowUpRecommendationUpdateRequest request, CancellationToken cancellationToken)
     {
         RequireInspectionStaff();
-        var recommendation = await dbContext.FollowUpRecommendations
-            .Include(item => item.CropIssue)!.ThenInclude(issue => issue!.FieldInspection)!.ThenInclude(inspection => inspection!.Field)!.ThenInclude(field => field!.Farm)
+        var recommendation = await ApplyRecommendationAccess(dbContext.FollowUpRecommendations)
             .SingleOrDefaultAsync(item => item.Id == id && !item.IsDeleted, cancellationToken)
             ?? throw NotFound("Follow-up recommendation");
-        if (currentUser.Role == ApplicationRole.Farmer && recommendation.CropIssue!.FieldInspection!.Field!.Farm!.OwnerUserId != currentUser.UserId) throw NotFound("Follow-up recommendation");
+        RequirePrePlantingDraftMutation(recommendation.CropIssue!.FieldInspection!);
         recommendation.IsCompleted = request.IsCompleted;
         recommendation.UpdatedAt = DateTime.UtcNow;
         recommendation.UpdatedByUserId = currentUser.UserId;
@@ -269,9 +277,21 @@ public sealed class InspectionService(
         var inspection = await ApplyInspectionAccess(dbContext.FieldInspections.AsNoTracking())
             .SingleOrDefaultAsync(item => item.Id == inspectionId, cancellationToken)
             ?? throw NotFound("Inspection");
-        RequireFieldOfficerForPrePlantingMutation(inspection);
+        RequirePrePlantingDraftMutation(inspection);
         var upload = await cloudinaryService.UploadInspectionImageAsync(file, cancellationToken);
-        var image = new InspectionImage { FieldInspectionId = inspectionId, Url = upload.Url, PublicId = upload.PublicId, ContentType = upload.ContentType, SizeBytes = upload.SizeBytes, CreatedByUserId = currentUser.UserId };
+        var image = new InspectionImage
+        {
+            FieldInspectionId = inspectionId,
+            Url = upload.Url,
+            PublicId = upload.PublicId,
+            AssetId = upload.AssetId,
+            StorageVersion = upload.StorageVersion,
+            DeliveryType = upload.DeliveryType,
+            ContentType = upload.ContentType,
+            SizeBytes = upload.SizeBytes,
+            ContentSha256 = upload.ContentSha256,
+            CreatedByUserId = currentUser.UserId
+        };
         dbContext.InspectionImages.Add(image);
         await dbContext.SaveChangesAsync(cancellationToken);
         return MapImage(image);
@@ -287,11 +307,58 @@ public sealed class InspectionService(
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<InspectionImageContent> GetInspectionImageContentAsync(Guid inspectionId, Guid imageId, CancellationToken cancellationToken)
+    {
+        await EnsureInspectionVisibleAsync(inspectionId, cancellationToken);
+        var image = await dbContext.InspectionImages.AsNoTracking()
+            .SingleOrDefaultAsync(item => item.Id == imageId && item.FieldInspectionId == inspectionId && !item.IsDeleted, cancellationToken)
+            ?? throw NotFound("Inspection image");
+        var retrieved = await cloudinaryService.RetrieveInspectionImageAsync(image.PublicId, image.StorageVersion, image.DeliveryType, cancellationToken);
+        VerifyStoredHash(image, retrieved.Bytes);
+        return new InspectionImageContent(retrieved.Bytes, retrieved.ContentType);
+    }
+
+    public async Task<InspectionImageResponse> SelectRepresentativeImageAsync(Guid cropPlanRequestId, Guid imageId, CancellationToken cancellationToken)
+    {
+        RequireInspectionStaff();
+        await using var transaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+        var inspectionQuery = dbContext.Database.IsNpgsql()
+            ? dbContext.FieldInspections.FromSqlInterpolated($@"SELECT * FROM ""FieldInspections"" WHERE ""CropPlanRequestId"" = {cropPlanRequestId} FOR UPDATE")
+            : dbContext.FieldInspections;
+        var inspection = await inspectionQuery.SingleOrDefaultAsync(
+            item => item.CropPlanRequestId == cropPlanRequestId && item.Purpose == InspectionPurpose.PrePlanting && !item.IsDeleted,
+            cancellationToken) ?? throw NotFound("Pre-planting assessment");
+        RequirePrePlantingDraftMutation(inspection);
+        var selected = await dbContext.InspectionImages.SingleOrDefaultAsync(
+            item => item.Id == imageId && item.FieldInspectionId == inspection.Id && !item.IsDeleted,
+            cancellationToken) ?? throw NotFound("Inspection image");
+        var current = await dbContext.InspectionImages
+            .Where(item => item.FieldInspectionId == inspection.Id && item.IsRepresentativeForAi && !item.IsDeleted)
+            .ToListAsync(cancellationToken);
+        foreach (var item in current) item.IsRepresentativeForAi = false;
+        if (current.Count > 0) await dbContext.SaveChangesAsync(cancellationToken);
+        selected.IsRepresentativeForAi = true;
+        selected.UpdatedAt = DateTime.UtcNow;
+        selected.UpdatedByUserId = currentUser.UserId;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+        return MapImage(selected);
+    }
+
     private async Task<FieldInspectionResponse> SetInspectionStatusAsync(Guid id, InspectionStatus status, CancellationToken cancellationToken)
     {
         RequireInspectionStaff();
         var inspection = await ApplyInspectionAccess(dbContext.FieldInspections).SingleOrDefaultAsync(item => item.Id == id, cancellationToken) ?? throw NotFound("Inspection");
-        RequireFieldOfficerForPrePlantingMutation(inspection);
+        RequirePrePlantingDraftMutation(inspection);
+        if (inspection.Purpose == InspectionPurpose.PrePlanting)
+        {
+            var code = status == InspectionStatus.Completed
+                ? "PREPLANT_DEDICATED_SUBMISSION_REQUIRED"
+                : "PREPLANT_GENERIC_STATUS_CHANGE_BLOCKED";
+            throw new ApiException(HttpStatusCode.Conflict, code, "Use the crop-plan pre-planting assessment endpoints for assessment status changes.");
+        }
         inspection.Status = status;
         inspection.CompletedAt = status == InspectionStatus.Completed ? DateTime.UtcNow : inspection.CompletedAt;
         inspection.UpdatedAt = DateTime.UtcNow;
@@ -303,13 +370,49 @@ public sealed class InspectionService(
     private IQueryable<FieldInspection> ApplyInspectionAccess(IQueryable<FieldInspection> query)
     {
         query = query.Include(item => item.Field)!.ThenInclude(field => field!.Farm).Where(item => !item.IsDeleted);
+        if (!CanViewRawPrePlantingEvidence)
+            query = query.Where(item => item.Purpose != InspectionPurpose.PrePlanting);
         return currentUser.Role == ApplicationRole.Farmer ? query.Where(item => item.Field!.Farm!.OwnerUserId == currentUser.UserId) : query;
     }
 
     private IQueryable<CropIssue> ApplyIssueAccess(IQueryable<CropIssue> query)
     {
-        query = query.Include(item => item.FieldInspection)!.ThenInclude(inspection => inspection!.Field)!.ThenInclude(field => field!.Farm).Where(item => !item.IsDeleted);
+        query = query.Include(item => item.FieldInspection)!.ThenInclude(inspection => inspection!.Field)!.ThenInclude(field => field!.Farm)
+            .Where(item => !item.IsDeleted && item.FieldInspection != null && !item.FieldInspection.IsDeleted);
+        if (!CanViewRawPrePlantingEvidence)
+            query = query.Where(item => item.FieldInspection!.Purpose != InspectionPurpose.PrePlanting);
         return currentUser.Role == ApplicationRole.Farmer ? query.Where(item => item.FieldInspection!.Field!.Farm!.OwnerUserId == currentUser.UserId) : query;
+    }
+
+    private IQueryable<InspectionObservation> ApplyObservationAccess(IQueryable<InspectionObservation> query)
+    {
+        query = query.Include(item => item.FieldInspection)!.ThenInclude(inspection => inspection!.Field)!.ThenInclude(field => field!.Farm)
+            .Where(item => !item.IsDeleted && item.FieldInspection != null && !item.FieldInspection.IsDeleted);
+        if (!CanViewRawPrePlantingEvidence)
+            query = query.Where(item => item.FieldInspection!.Purpose != InspectionPurpose.PrePlanting);
+        return currentUser.Role == ApplicationRole.Farmer
+            ? query.Where(item => item.FieldInspection!.Field!.Farm!.OwnerUserId == currentUser.UserId)
+            : query;
+    }
+
+    private IQueryable<FollowUpRecommendation> ApplyRecommendationAccess(IQueryable<FollowUpRecommendation> query)
+    {
+        query = query
+            .Include(item => item.CropIssue)!
+                .ThenInclude(issue => issue!.FieldInspection)!
+                .ThenInclude(inspection => inspection!.Field)!
+                .ThenInclude(field => field!.Farm)
+            .Where(item =>
+                !item.IsDeleted
+                && item.CropIssue != null
+                && !item.CropIssue.IsDeleted
+                && item.CropIssue.FieldInspection != null
+                && !item.CropIssue.FieldInspection.IsDeleted);
+        if (!CanViewRawPrePlantingEvidence)
+            query = query.Where(item => item.CropIssue!.FieldInspection!.Purpose != InspectionPurpose.PrePlanting);
+        return currentUser.Role == ApplicationRole.Farmer
+            ? query.Where(item => item.CropIssue!.FieldInspection!.Field!.Farm!.OwnerUserId == currentUser.UserId)
+            : query;
     }
 
     private async Task EnsureFieldVisibleAsync(Guid fieldId, CancellationToken cancellationToken)
@@ -332,20 +435,49 @@ public sealed class InspectionService(
         }
     }
 
-    private void RequireFieldOfficerForPrePlantingMutation(FieldInspection inspection)
+    private bool CanViewRawPrePlantingEvidence =>
+        currentUser.Role is ApplicationRole.FieldOfficer or ApplicationRole.AgriculturalOfficer or ApplicationRole.Admin;
+
+    private void RequirePrePlantingDraftMutation(FieldInspection inspection)
     {
-        if (inspection.Purpose == InspectionPurpose.PrePlanting && currentUser.Role != ApplicationRole.FieldOfficer)
-        {
+        if (inspection.Purpose != InspectionPurpose.PrePlanting) return;
+        if (currentUser.Role != ApplicationRole.FieldOfficer)
             throw new ApiException(HttpStatusCode.Forbidden, "FIELD_OFFICER_REQUIRED", "A Field Officer is required to change a pre-planting assessment.");
-        }
+        if (inspection.InspectorUserId != RequireUser())
+            throw new ApiException(HttpStatusCode.Forbidden, "PREPLANT_ASSESSMENT_OWNER_REQUIRED", "Only the Field Officer who created this assessment may change it.");
+        if (inspection.Status != InspectionStatus.InProgress)
+            throw new ApiException(HttpStatusCode.Conflict, "PREPLANT_ASSESSMENT_IMMUTABLE", "A submitted or closed pre-planting assessment cannot be changed.");
     }
 
     private Guid RequireUser() => currentUser.UserId ?? throw new ApiException(HttpStatusCode.Unauthorized, "AUTH_REQUIRED", "Authentication is required.");
+    private static void VerifyStoredHash(InspectionImage image, byte[] bytes)
+    {
+        if (string.IsNullOrWhiteSpace(image.ContentSha256)) return;
+        byte[] expected;
+        try
+        {
+            expected = Convert.FromHexString(image.ContentSha256);
+        }
+        catch (FormatException)
+        {
+            throw new ApiException(HttpStatusCode.Conflict, "IMAGE_INTEGRITY_METADATA_INVALID", "Stored image integrity metadata is invalid.");
+        }
+
+        var actual = SHA256.HashData(bytes);
+        if (expected.Length != actual.Length || !CryptographicOperations.FixedTimeEquals(expected, actual))
+            throw new ApiException(HttpStatusCode.Conflict, "IMAGE_INTEGRITY_FAILED", "Stored inspection image integrity verification failed.");
+    }
     private static ApiException NotFound(string name) => new(HttpStatusCode.NotFound, "NOT_FOUND", $"{name} was not found.");
     private static void Validate(IReadOnlyList<string> errors) { if (errors.Count > 0) throw new ApiException(HttpStatusCode.BadRequest, "VALIDATION_ERROR", string.Join(" ", errors)); }
     private static FieldInspectionResponse MapInspection(FieldInspection item) => new(item.Id, item.FieldId, item.InspectorUserId, item.ScheduledAt, item.CompletedAt, item.Status, item.Summary);
     private static ObservationResponse MapObservation(InspectionObservation item) => new(item.Id, item.FieldInspectionId, item.ObservationType, item.Notes);
     private static CropIssueResponse MapIssue(CropIssue item) => new(item.Id, item.FieldInspectionId, item.Title, item.Description, item.Severity, item.Status, item.EscalatedAt);
     private static FollowUpRecommendationResponse MapRecommendation(FollowUpRecommendation item) => new(item.Id, item.CropIssueId, item.Recommendation, item.DueAt, item.IsCompleted);
-    private static InspectionImageResponse MapImage(InspectionImage item) => new(item.Id, item.FieldInspectionId, item.Url, item.PublicId, item.ContentType, item.SizeBytes);
+    private static InspectionImageResponse MapImage(InspectionImage item) => new(
+        item.Id,
+        item.FieldInspectionId,
+        $"/api/inspections/{item.FieldInspectionId}/images/{item.Id}/content",
+        item.ContentType,
+        item.SizeBytes,
+        item.IsRepresentativeForAi);
 }

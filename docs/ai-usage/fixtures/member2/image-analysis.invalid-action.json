@@ -1,0 +1,12 @@
+{
+  "contractVersion": 1,
+  "visibleFindings": ["Several brown lesions are visible on the leaf."],
+  "possibleIssueCategory": "Fungal",
+  "possibleIssues": ["Possible fungal-type leaf symptoms"],
+  "severity": "Moderate",
+  "uncertainty": "The cause is uncertain.",
+  "validatedSourceReferences": [],
+  "recommendedNonChemicalActions": ["ApplyFungicide"],
+  "requiresFurtherAssessment": true,
+  "groundingStatus": "Unavailable"
+}

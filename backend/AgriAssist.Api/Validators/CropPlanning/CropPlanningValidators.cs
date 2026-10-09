@@ -1,4 +1,5 @@
 using AgriAssist.Api.Dtos.CropPlanning;
+using AgriAssist.Api.Models.CropPlanning;
 using AgriAssist.Api.Validators.Shared;
 
 namespace AgriAssist.Api.Validators.CropPlanning;
@@ -10,6 +11,7 @@ public sealed class FarmRequestValidator : IRequestValidator<FarmRequest>
         var errors = new List<string>();
         if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Length > 120) errors.Add("Farm name is required and must be 120 characters or fewer.");
         if (string.IsNullOrWhiteSpace(request.Location) || request.Location.Length > 240) errors.Add("Farm location is required and must be 240 characters or fewer.");
+        if (SriLankanDistricts.Canonicalize(request.District) is null) errors.Add("A valid Sri Lankan District is required.");
         if (request.TotalArea <= 0) errors.Add("Farm total area must be positive.");
         return errors;
     }
@@ -72,7 +74,7 @@ public sealed class CropReferenceProfileRequestValidator : IRequestValidator<Cro
         if (string.IsNullOrWhiteSpace(request.SourceName) || request.SourceName.Length > 180) errors.Add("Source name is required and must be 180 characters or fewer.");
         if (request.SourceUrl?.Length > 1000) errors.Add("Source URL must be 1000 characters or fewer.");
         if (string.IsNullOrWhiteSpace(request.SourceVersion) || request.SourceVersion.Length > 120) errors.Add("Source version is required and must be 120 characters or fewer.");
-        if (request.VerifiedAt == default || request.VerifiedAt > DateTime.UtcNow) errors.Add("Verification date must be in the past.");
+        if (request.VerifiedAt.HasValue && request.VerifiedAt.Value != default) errors.Add("Verification time is recorded by the server after officer review.");
         if (request.Stages is null || request.Rules is null || request.Stages.Count + request.Rules.Count == 0) errors.Add("At least one reference stage or rule is required.");
         foreach (var stage in request.Stages ?? [])
         {
@@ -80,10 +82,14 @@ public sealed class CropReferenceProfileRequestValidator : IRequestValidator<Cro
             if (stage.Sequence < 1) errors.Add("Stage sequence must be positive.");
             if (stage.TypicalMinDays < 0 || stage.TypicalMaxDays < 0 ||
                 (stage.TypicalMinDays.HasValue && stage.TypicalMaxDays.HasValue && stage.TypicalMaxDays < stage.TypicalMinDays)) errors.Add("Stage duration range is invalid.");
+            if (stage.SourceName is not null && (string.IsNullOrWhiteSpace(stage.SourceName) || stage.SourceName.Length > 180)) errors.Add("Stage source name must contain text and be 180 characters or fewer.");
+            if (stage.SourceUrl is not null && (stage.SourceUrl.Length > 1000 || !Uri.TryCreate(stage.SourceUrl, UriKind.Absolute, out var stageUri) || stageUri.Scheme is not ("http" or "https"))) errors.Add("Stage source URL must be an HTTP or HTTPS URL of 1000 characters or fewer.");
             if (stage.Notes?.Length > 1000) errors.Add("Stage notes must be 1000 characters or fewer.");
         }
         foreach (var rule in request.Rules ?? [])
         {
+            if (rule.SourceName is not null && (string.IsNullOrWhiteSpace(rule.SourceName) || rule.SourceName.Length > 180)) errors.Add("Rule source name must contain text and be 180 characters or fewer.");
+            if (rule.SourceUrl is not null && (rule.SourceUrl.Length > 1000 || !Uri.TryCreate(rule.SourceUrl, UriKind.Absolute, out var ruleUri) || ruleUri.Scheme is not ("http" or "https"))) errors.Add("Rule source URL must be an HTTP or HTTPS URL of 1000 characters or fewer.");
             if (string.IsNullOrWhiteSpace(rule.RuleType) || rule.RuleType.Length > 120) errors.Add("Rule type is required and must be 120 characters or fewer.");
             if (string.IsNullOrWhiteSpace(rule.RuleKey) || rule.RuleKey.Length > 160) errors.Add("Rule key is required and must be 160 characters or fewer.");
             if (string.IsNullOrWhiteSpace(rule.StructuredValueJson))
@@ -92,8 +98,40 @@ public sealed class CropReferenceProfileRequestValidator : IRequestValidator<Cro
                 continue;
             }
             try { using var _ = System.Text.Json.JsonDocument.Parse(rule.StructuredValueJson); }
-            catch (System.Text.Json.JsonException) { errors.Add("Rule value must be valid JSON."); }
+            catch (System.Text.Json.JsonException) { errors.Add("Rule value must be valid JSON."); continue; }
+
+            // Member 3 reads these to calculate crop resource requirements, so the shape is checked on entry.
+            if (string.Equals(rule.RuleType?.Trim(), AgriAssist.Api.Services.Resources.CropResourceRequirementRule.RuleType, StringComparison.OrdinalIgnoreCase)
+                && !AgriAssist.Api.Services.Resources.CropResourceRequirementRule.TryParse(rule.StructuredValueJson, out _, out var requirementError))
+            {
+                errors.Add($"Resource requirement rule '{rule.RuleKey}': {requirementError}");
+            }
+            if (string.Equals(rule.RuleType?.Trim(), AgriAssist.Api.Services.TaskApproval.IrrigationScheduleReferenceRule.RuleType, StringComparison.OrdinalIgnoreCase)
+                && !AgriAssist.Api.Services.TaskApproval.IrrigationScheduleReferenceRule.TryParse(rule.StructuredValueJson, out _, out var irrigationError))
+            {
+                errors.Add($"Irrigation schedule rule '{rule.RuleKey}': {irrigationError}");
+            }
         }
+        var duplicateRequirement = (request.Rules ?? [])
+            .Where(rule => string.Equals(rule.RuleType?.Trim(), AgriAssist.Api.Services.Resources.CropResourceRequirementRule.RuleType, StringComparison.OrdinalIgnoreCase))
+            .Select(rule => AgriAssist.Api.Services.Resources.CropResourceRequirementRule.TryParse(rule.StructuredValueJson, out var parsed, out _) ? parsed : null)
+            .Where(parsed => parsed is not null)
+            .GroupBy(parsed => parsed!.ResourceId?.ToString() ?? parsed!.ResourceName.ToLowerInvariant())
+            .Any(group => group.Count() > 1);
+        if (duplicateRequirement) errors.Add("Each resource may have only one resource requirement rule per reference profile.");
+        var irrigationRules = (request.Rules ?? [])
+            .Where(rule => string.Equals(rule.RuleType?.Trim(), AgriAssist.Api.Services.TaskApproval.IrrigationScheduleReferenceRule.RuleType, StringComparison.OrdinalIgnoreCase))
+            .Select(rule => new
+            {
+                rule.RuleKey,
+                Parsed = AgriAssist.Api.Services.TaskApproval.IrrigationScheduleReferenceRule.TryParse(rule.StructuredValueJson, out var parsed, out _) ? parsed : null
+            })
+            .Where(item => item.Parsed is not null)
+            .ToList();
+        if (irrigationRules.GroupBy(item => (item.Parsed!.DayOffsetFromPlanting, item.Parsed.StartTimeUtc)).Any(group => group.Count() > 1))
+            errors.Add("Duplicate irrigation slot in one reference profile.");
+        if (irrigationRules.GroupBy(item => item.RuleKey, StringComparer.OrdinalIgnoreCase).Any(group => group.Count() > 1))
+            errors.Add("Irrigation rule keys must be unique in one reference profile.");
         return errors;
     }
 }
@@ -139,27 +177,164 @@ public sealed class CropPlanRequestUpdateValidator : IRequestValidator<CropPlanR
     }
 }
 
+public sealed class CropPlanCancellationRequestValidator : IRequestValidator<CropPlanCancellationRequest>
+{
+    public IReadOnlyList<string> Validate(CropPlanCancellationRequest request)
+    {
+        var errors = new List<string>();
+        if (request.Reason?.Length > 500) errors.Add("Cancellation reason must be 500 characters or fewer.");
+        return errors;
+    }
+}
+
 public sealed class PrePlantingAssessmentRequestValidator : IRequestValidator<PrePlantingAssessmentRequest>
 {
     public IReadOnlyList<string> Validate(PrePlantingAssessmentRequest request)
     {
         var errors = new List<string>();
-        ValidateRequired(request.SoilCondition, 240, "Soil type / condition", errors);
-        ValidateRequired(request.WaterAvailability, 500, "Water availability", errors);
-        ValidateRequired(request.IrrigationAvailability, 500, "Irrigation availability", errors);
-        ValidateRequired(request.DrainageCondition, 500, "Drainage condition", errors);
-        ValidateRequired(request.GeneralFieldCondition, 1000, "General field condition", errors);
-        ValidateRequired(request.PlantingReadiness, 500, "Planting readiness", errors);
-        ValidateRequired(request.RisksAndConcerns, 1500, "Risks / concerns", errors);
-        ValidateRequired(request.OfficerNotes, 2000, "Officer notes", errors);
+        ValidateEnum(request.SoilType, "Soil type", errors);
+        ValidateEnum(request.SoilCondition, "Soil condition", errors);
+        ValidateEnum(request.SoilMoisture, "Soil moisture", errors);
+        ValidateEnum(request.WaterAvailability, "Water availability", errors);
+        ValidateEnum(request.IrrigationAvailability, "Irrigation availability", errors);
+        ValidateEnum(request.WaterReliability, "Water reliability", errors);
+        ValidateEnum(request.DrainageCondition, "Drainage condition", errors);
+        ValidateEnum(request.WaterloggingRisk, "Waterlogging risk", errors);
+        ValidateEnum(request.GeneralFieldCondition, "General field condition", errors);
+        ValidateEnum(request.PlantingReadiness, "Planting readiness", errors);
+        ValidateOptionalText(request.SoilNotes, 1000, "Soil notes", errors);
+        ValidateOptionalText(request.MainWaterSource, 240, "Main water source", errors);
+        ValidateOptionalText(request.WaterConcerns, 1000, "Water concerns", errors);
+        ValidateOptionalText(request.DrainageNotes, 1000, "Drainage notes", errors);
+        ValidateOptionalText(request.GeneralFieldNotes, 1000, "General field notes", errors);
+        ValidateOptionalText(request.RiskNotes, 1500, "Risk notes", errors);
+        ValidateOptionalText(request.RisksAndConcerns, 1500, "Risks / concerns", errors);
+        ValidateOptionalText(request.OfficerNotes, 2000, "Officer notes", errors);
+
+        if (request.IdentifiedRisks is not null)
+        {
+            if (request.IdentifiedRisks.Any(risk => !Enum.IsDefined(risk)))
+                errors.Add("Identified risks contain an invalid value.");
+            if (request.IdentifiedRisks.Distinct().Count() != request.IdentifiedRisks.Count)
+                errors.Add("Identified risks contain duplicate values.");
+        }
+
         return errors;
     }
 
-    private static void ValidateRequired(string value, int maxLength, string name, List<string> errors)
+    private static void ValidateEnum<TEnum>(TEnum? value, string name, List<string> errors)
+        where TEnum : struct, Enum
     {
-        if (string.IsNullOrWhiteSpace(value) || value.Length > maxLength)
+        if (value.HasValue && !Enum.IsDefined(value.Value)) errors.Add($"{name} is invalid.");
+    }
+
+    private static void ValidateOptionalText(string? value, int maxLength, string name, List<string> errors)
+    {
+        if (value is not null && (string.IsNullOrWhiteSpace(value) || value.Length > maxLength))
+            errors.Add($"{name} must contain text and be {maxLength} characters or fewer when supplied.");
+    }
+}
+
+public static class PrePlantingAssessmentRules
+{
+    public static IReadOnlyList<string> ValidateSubmission(PrePlantingAssessmentRequest request)
+    {
+        var errors = new List<string>(new PrePlantingAssessmentRequestValidator().Validate(request));
+        Require(request.SoilType, "Soil type", errors);
+        Require(request.SoilCondition, "Soil condition", errors);
+        Require(request.SoilMoisture, "Soil moisture", errors);
+        Require(request.WaterAvailability, "Water availability", errors);
+        Require(request.IrrigationAvailability, "Irrigation availability", errors);
+        Require(request.WaterReliability, "Water reliability", errors);
+        Require(request.DrainageCondition, "Drainage condition", errors);
+        Require(request.WaterloggingRisk, "Waterlogging risk", errors);
+        Require(request.GeneralFieldCondition, "General field condition", errors);
+        Require(request.PlantingReadiness, "Planting readiness", errors);
+
+        if (request.IdentifiedRisks is null)
+            errors.Add("Identified risks must be assessed before submission.");
+
+        if (request.WaterAvailability is PrePlantingWaterAvailability.Adequate
+            or PrePlantingWaterAvailability.Limited
+            or PrePlantingWaterAvailability.Seasonal)
         {
-            errors.Add($"{name} is required and must be {maxLength} characters or fewer.");
+            RequireText(request.MainWaterSource, "Main water source", errors);
         }
+
+        if (request.WaterAvailability is PrePlantingWaterAvailability.Limited
+            or PrePlantingWaterAvailability.Unavailable
+            or PrePlantingWaterAvailability.Seasonal)
+        {
+            RequireText(request.WaterConcerns, "Water concerns", errors);
+        }
+
+        if (request.SoilType == PrePlantingSoilType.Other || request.SoilCondition == PrePlantingSoilCondition.Other)
+            RequireText(request.SoilNotes, "Soil notes", errors);
+        if (request.GeneralFieldCondition == PrePlantingGeneralFieldCondition.Other)
+            RequireText(request.GeneralFieldNotes, "General field notes", errors);
+        if (request.DrainageCondition == PrePlantingDrainageCondition.Poor
+            || request.WaterloggingRisk is PrePlantingWaterloggingRisk.Moderate or PrePlantingWaterloggingRisk.High)
+        {
+            RequireText(request.DrainageNotes, "Drainage notes", errors);
+        }
+
+        var riskNotes = request.RiskNotes ?? request.RisksAndConcerns;
+        if (request.IdentifiedRisks?.Contains(PrePlantingRisk.Other) == true)
+            RequireText(riskNotes, "Risk notes", errors);
+
+        return errors;
+    }
+
+    private static void Require<T>(T? value, string name, List<string> errors)
+        where T : struct
+    {
+        if (!value.HasValue) errors.Add($"{name} is required before submission.");
+    }
+
+    private static void RequireText(string? value, string name, List<string> errors)
+    {
+        if (string.IsNullOrWhiteSpace(value)) errors.Add($"{name} is required before submission.");
+    }
+}
+
+
+public sealed class StartReplacementRequestValidator : IRequestValidator<StartReplacementRequest>
+{
+    public IReadOnlyList<string> Validate(StartReplacementRequest request)
+    {
+        var errors = new List<string>();
+        if (request is null) return ["Replacement details are required."];
+        if (request.BlockedWorkflowId == Guid.Empty) errors.Add("A blocked workflow is required.");
+        if (request.VerifiedProfileId == Guid.Empty) errors.Add("A verified profile is required.");
+        if (request.IdempotencyKey == Guid.Empty) errors.Add("An idempotency key is required.");
+        return errors;
+    }
+}
+
+
+public sealed class VerifyReferenceRequestValidator : IRequestValidator<VerifyReferenceRequest>
+{
+    public IReadOnlyList<string> Validate(VerifyReferenceRequest request)
+    {
+        var errors = new List<string>();
+        if (request is null) return ["Verification details are required."];
+        if (!request.Confirmed) errors.Add("Confirm the officer review before verification.");
+        if (request.FieldId == Guid.Empty) errors.Add("An observed field is required.");
+        if (!Enum.IsDefined(request.WaterRegime)) errors.Add("Choose Irrigated or Rainfed.");
+        if (request.ExpectedDraftVersion < 1) errors.Add("A draft version is required.");
+        if (string.IsNullOrWhiteSpace(request.Observation) || request.Observation.Length > 2000)
+            errors.Add("An officer observation of 2000 characters or fewer is required.");
+        return errors;
+    }
+}
+
+public sealed class CropReferenceDraftUpdateRequestValidator : IRequestValidator<CropReferenceDraftUpdateRequest>
+{
+    public IReadOnlyList<string> Validate(CropReferenceDraftUpdateRequest request)
+    {
+        if (request is null || request.Profile is null) return ["A reference draft is required."];
+        var errors = new List<string>(new CropReferenceProfileRequestValidator().Validate(request.Profile));
+        if (request.ExpectedDraftVersion < 1) errors.Add("The expected draft version is required.");
+        return errors;
     }
 }

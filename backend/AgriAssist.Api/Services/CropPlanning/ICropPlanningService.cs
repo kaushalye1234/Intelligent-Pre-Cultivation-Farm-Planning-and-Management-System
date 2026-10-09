@@ -1,4 +1,4 @@
-﻿using AgriAssist.Api.Dtos.CropPlanning;
+using AgriAssist.Api.Dtos.CropPlanning;
 using AgriAssist.Api.Dtos.Shared;
 
 namespace AgriAssist.Api.Services.CropPlanning;
@@ -20,27 +20,39 @@ public interface ICropPlanningService
     Task<PagedResult<CropTypeResponse>> SearchCropTypesAsync(PagedQuery query, CancellationToken cancellationToken, bool includeInactive = false);
     Task<CropTypeResponse> CreateCropTypeAsync(CropTypeRequest request, CancellationToken cancellationToken);
     Task<CropTypeResponse> UpdateCropTypeAsync(Guid id, CropTypeRequest request, CancellationToken cancellationToken);
+    Task DeleteCropTypeAsync(Guid id, CancellationToken cancellationToken);
     Task<PagedResult<CropVarietyResponse>> SearchCropVarietiesAsync(PagedQuery query, Guid? cropTypeId, CancellationToken cancellationToken, bool includeInactive = false);
     Task<CropVarietyResponse> CreateCropVarietyAsync(CropVarietyRequest request, CancellationToken cancellationToken);
     Task<CropVarietyResponse> UpdateCropVarietyAsync(Guid id, CropVarietyRequest request, CancellationToken cancellationToken);
+    Task DeleteCropVarietyAsync(Guid id, CancellationToken cancellationToken);
     Task<PagedResult<CropReferenceProfileResponse>> SearchReferenceProfilesAsync(PagedQuery query, Guid? cropTypeId, CancellationToken cancellationToken);
+    Task<CropReferenceProfileDetailsResponse> GetReferenceProfileAsync(Guid id, CancellationToken cancellationToken);
     Task<CropReferenceProfileResponse> CreateReferenceProfileAsync(CropReferenceProfileRequest request, CancellationToken cancellationToken);
+    Task<CropReferenceProfileDetailsResponse> UpdateReferenceDraftAsync(Guid id, CropReferenceDraftUpdateRequest request, CancellationToken cancellationToken);
     Task<CropReferenceProfileResponse> SetReferenceProfileActiveAsync(Guid id, bool isActive, CancellationToken cancellationToken);
 
     Task<PagedResult<CropCycleResponse>> SearchCropCyclesAsync(PagedQuery query, Guid? fieldId, CancellationToken cancellationToken);
     Task<CropCycleResponse> CreateCropCycleAsync(CropCycleRequest request, CancellationToken cancellationToken);
 
     Task<PagedResult<CropPlanRequestResponse>> SearchCropPlanRequestsAsync(PagedQuery query, CancellationToken cancellationToken);
+    Task<CropPlanRequestResponse> GetCropPlanRequestAsync(Guid requestId, CancellationToken cancellationToken);
     Task<CropPlanRequestResponse> CreateCropPlanRequestAsync(CropPlanRequestCreate request, CancellationToken cancellationToken);
     Task<CropPlanRequestResponse> UpdateCropPlanRequestAsync(Guid id, CropPlanRequestUpdate request, CancellationToken cancellationToken);
+    Task<CropPlanRequestResponse> CancelCropPlanRequestAsync(Guid id, CropPlanCancellationRequest request, CancellationToken cancellationToken);
+    Task ArchiveCropPlanRequestAsync(Guid id, CancellationToken cancellationToken);
     Task<CropPlanRequestResponse> GeneratePreliminaryRequestAsync(CropPlanRequestCreate request, CancellationToken cancellationToken);
     Task<IReadOnlyList<CropPlanHistoryResponse>> GetCropPlanHistoryAsync(Guid requestId, CancellationToken cancellationToken);
     Task<CropPlanningWorkflowStartResponse> StartAiWorkflowAsync(Guid requestId, CancellationToken cancellationToken);
+    Task<CropPlanningWorkflowStartResponse> StartReplacementWorkflowAsync(Guid requestId, StartReplacementRequest request, CancellationToken cancellationToken);
     Task<PrePlantingAssessmentResponse?> GetPrePlantingAssessmentAsync(Guid requestId, CancellationToken cancellationToken);
+    Task<PrePlantingContextResponse> GetPrePlantingContextAsync(Guid requestId, CancellationToken cancellationToken);
+    Task<InspectionNoteAssistanceResponse> GenerateInspectionNoteSuggestionsAsync(Guid requestId, InspectionNoteAssistanceRequest request, CancellationToken cancellationToken);
     Task<PrePlantingAssessmentResponse> SavePrePlantingAssessmentAsync(Guid requestId, PrePlantingAssessmentRequest request, CancellationToken cancellationToken);
+    Task<PrePlantingAssessmentResponse> SubmitPrePlantingAssessmentAsync(Guid requestId, CancellationToken cancellationToken);
     Task<FieldAnalysisRunResponse> RunFieldAnalysisAsync(Guid requestId, CancellationToken cancellationToken);
     Task<CropPlanningWorkflowStatusResponse> GetWorkflowStatusAsync(Guid requestId, CancellationToken cancellationToken);
     Task<CropPlanningResultResponse> GetPlanningResultAsync(Guid requestId, CancellationToken cancellationToken);
+    Task<FarmerApprovedPlanResponse> GetApprovedPlanAsync(Guid requestId, CancellationToken cancellationToken);
     Task<FieldAnalysisOutput> GetFieldAnalysisResultAsync(Guid requestId, CancellationToken cancellationToken);
     Task<Member3HandoffResponse> GetMember3HandoffAsync(Guid requestId, CancellationToken cancellationToken);
 }

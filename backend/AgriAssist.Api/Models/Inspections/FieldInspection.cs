@@ -16,6 +16,8 @@ public sealed class FieldInspection : AuditableEntity
     public DateTime? CompletedAt { get; set; }
     public InspectionStatus Status { get; set; } = InspectionStatus.Scheduled;
     public string Summary { get; set; } = string.Empty;
+    public Guid? FrozenImageAnalysisReviewId { get; set; }
+    public InspectionImageAnalysisReview? FrozenImageAnalysisReview { get; set; }
 }
 
 public enum InspectionPurpose

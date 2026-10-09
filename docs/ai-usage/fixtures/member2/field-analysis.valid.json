@@ -1,0 +1,45 @@
+{
+  "contractVersion": 2,
+  "workflowId": "11111111-1111-1111-1111-111111111111",
+  "status": "Analyzed",
+  "requiresHumanReview": true,
+  "warnings": [],
+  "fieldCondition": { "summary": "The field is suitable with conditions.", "evidenceInspectionIds": ["22222222-2222-2222-2222-222222222222"] },
+  "openIssues": [],
+  "priority": "Medium",
+  "fieldSuitability": "SuitableWithConditions",
+  "soilAssessment": "Loamy soil was recorded.",
+  "waterAssessment": "Water was recorded as adequate.",
+  "drainageAssessment": "Drainage was recorded as good.",
+  "fieldPreparationRequirements": ["Complete minor land preparation."],
+  "plantingReadiness": "ReadyWithMinorPreparation",
+  "identifiedRisks": [],
+  "recommendedPrePlantingActions": ["Recheck field readiness before sowing."],
+  "reviewedCropIssueActions": [
+    {
+      "actionType": "RemoveAffectedResidue",
+      "order": 0,
+      "title": "Remove affected crop residues",
+      "description": "Remove visibly affected crop residues from the field before planting.",
+      "timingCategory": "BeforePlanting",
+      "responsibleRole": "Farmer",
+      "origin": "AiSuggested",
+      "inspectionId": "22222222-2222-2222-2222-222222222222",
+      "inspectionImageId": "33333333-3333-3333-3333-333333333333",
+      "analysisId": "44444444-4444-4444-4444-444444444444",
+      "reviewId": "55555555-5555-5555-5555-555555555555",
+      "sourceReferences": []
+    }
+  ],
+  "reviewedCropHealthGuidance": {
+    "visibleFindings": ["Brown lesions are visible."],
+    "possibleConcerns": ["Possible fungal-type issue"],
+    "severity": "Moderate",
+    "uncertainty": "Not a confirmed diagnosis.",
+    "requiresFurtherAssessment": true,
+    "inspectionId": "22222222-2222-2222-2222-222222222222",
+    "inspectionImageId": "33333333-3333-3333-3333-333333333333",
+    "analysisId": "44444444-4444-4444-4444-444444444444",
+    "reviewId": "55555555-5555-5555-5555-555555555555"
+  }
+}

@@ -34,11 +34,9 @@ import type { SortState } from '../components/DataTable'
 import { Pagination } from '../components/Pagination'
 import { EmptyState, ErrorState, LoadingState } from '../components/States'
 import { StatusPill } from '../components/StatusPill'
-import { ThemeToggle } from '../components/ThemeToggle'
 import { Button, ConfirmDialog, MetricCard, Modal, Notice, PageHeader, Tabs, Toolbar } from '../components/Ui'
 import { formatDate, formatDateTime, formatNumber } from '../format'
 import { reservationStatus, stockTransactionType } from '../labels'
-import { useThemeMode } from '../theme'
 import type { InventoryStock, PagedResult, Reservation, ResourceCategory, ResourceItem, StockTransaction, Supplier, WeatherForecast } from '../types'
 import './ResourcesPage.css'
 
@@ -119,7 +117,6 @@ export function ResourcesPage() {
   const [resourceTotal, setResourceTotal] = useState(0)
   const [stockTotal, setStockTotal] = useState(0)
   const [activeReservationTotal, setActiveReservationTotal] = useState<number | null>(null)
-  const { theme, toggleTheme } = useThemeMode()
 
   const [activeTab, setActiveTab] = useState<ResourceTab>('inventory')
   const [views, setViews] = useState<Record<PagedTab, TabView>>(DEFAULT_VIEWS)
@@ -492,17 +489,12 @@ export function ResourcesPage() {
   const emptyFilterHint = hasFilters ? 'No records match the current search or filters.' : undefined
 
   return (
-    <section className="page-stack resource-hub" data-theme={theme}>
+    <section className="page-stack resource-hub">
       <PageHeader
         eyebrow="Resource Operations"
         title="Resources"
         description="Track agricultural resource availability, suppliers, stock and reservations."
-        actions={(
-          <>
-            <ThemeToggle theme={theme} onToggle={toggleTheme} />
-            <Button icon={<Plus size={16} aria-hidden="true" />} onClick={() => openResource()}>Add Resource</Button>
-          </>
-        )}
+        actions={<Button icon={<Plus size={16} aria-hidden="true" />} onClick={() => openResource()}>Add Resource</Button>}
       >
         {showSearchToolbar ? (
           <Toolbar>

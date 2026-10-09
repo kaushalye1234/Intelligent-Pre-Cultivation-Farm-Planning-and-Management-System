@@ -21,6 +21,40 @@ afterEach(() => {
 })
 
 describe('TaskApprovalPage', () => {
+  it('shows officer-facing workflow states in the review queue', async () => {
+    const workflows = [
+      { id: 'ready-workflow', objective: 'Prepare north field', status: 8, currentStep: 'HumanApproval', candidateRevision: 1, version: 2, createdAt: '2026-10-01T00:00:00Z' },
+      { id: 'blocked-workflow', objective: 'Prepare south field', status: 12, currentStep: 'HumanApproval', candidateRevision: 1, version: 2, createdAt: '2026-10-01T00:00:00Z' },
+    ]
+    vi.spyOn(api, 'get').mockImplementation(async (url) => {
+      const items = url.includes('/task-approval/workflows') ? workflows : []
+      return { data: { items, page: 1, pageSize: 20, totalCount: items.length, totalPages: 1 } } as never
+    })
+
+    render(
+      <MemoryRouter>
+        <AuthContext.Provider value={{
+          user: adminUser,
+          token: 'token',
+          isAuthenticated: true,
+          isLoading: false,
+          passwordChangeUser: null,
+          hasPasswordChangeSession: false,
+          login: vi.fn(),
+          changeTemporaryPassword: vi.fn(),
+          logout: vi.fn(),
+        }}>
+          <TaskApprovalPage />
+        </AuthContext.Provider>
+      </MemoryRouter>,
+    )
+
+    await screen.findByText('Prepare north field')
+    expect(screen.getByText('Pending Officer Approval')).toBeInTheDocument()
+    expect(screen.getByText('Candidate Blocked')).toBeInTheDocument()
+    expect(screen.queryByText('HumanApproval')).not.toBeInTheDocument()
+  })
+
   it('submits the officer-written rejection reason', async () => {
     const task = {
       id: 'task-1',

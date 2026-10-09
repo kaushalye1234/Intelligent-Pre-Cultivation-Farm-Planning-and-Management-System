@@ -2,7 +2,12 @@ using AgriAssist.Api.Models.Shared;
 
 namespace AgriAssist.Api.Dtos.Shared;
 
-public sealed record RegisterFarmerRequest(string FullName, string Email, string Password);
+public sealed record RegisterFarmerRequest(
+    string FullName,
+    string Email,
+    string Password,
+    string? PhoneNumber = null,
+    string? ContactAddress = null);
 
 public sealed record LoginRequest(string Email, string Password);
 

@@ -31,7 +31,6 @@ class AppState extends ChangeNotifier {
   List<IrrigationScheduleRecord> irrigationSchedules = [];
   List<ApprovalHistoryRecord> approvalHistory = [];
   String? lastCropPlanRequestId;
-  CropPlanningWorkflowStart? lastWorkflowStart;
   CropPlanningWorkflowStatus? lastWorkflowStatus;
   CropPlanningResult? lastPlanningResult;
   String? error;
@@ -87,12 +86,16 @@ class AppState extends ChangeNotifier {
   Future<void> registerFarmer({
     required String fullName,
     required String email,
+    required String phoneNumber,
+    required String contactAddress,
     required String password,
   }) async {
     await _guard(() async {
       final session = await _apiClient.registerFarmer(
         fullName: fullName,
         email: email,
+        phoneNumber: phoneNumber,
+        contactAddress: contactAddress,
         password: password,
       );
       passwordChangeSession = null;
@@ -144,12 +147,14 @@ class AppState extends ChangeNotifier {
   Future<void> createOnboardingFarm({
     required String name,
     required String location,
+    required String district,
     required num totalArea,
   }) async {
     await _guard(() async {
       await _apiClient.createFarm(
         name: name,
         location: location,
+        district: district,
         totalArea: totalArea,
       );
       await _loadAuthenticatedLanding();
@@ -205,8 +210,8 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<ApprovedWorkflowDetail> approvedWorkflowDetail(String workflowId) =>
-      _apiClient.approvedWorkflowDetail(workflowId);
+  Future<FarmerApprovedPlan> farmerApprovedPlan(String cropPlanRequestId) =>
+      _apiClient.farmerApprovedPlan(cropPlanRequestId);
 
   Future<void> _loadAuthenticatedLanding() async {
     if (user == null || !isMobileRole(user!.role)) {
@@ -226,40 +231,6 @@ class AppState extends ChangeNotifier {
     if (farmerOnboarding?.stage == 'complete') {
       await refresh();
     }
-  }
-
-  Future<void> createAndStartAiCropPlan({
-    required String farmId,
-    required String? fieldId,
-    required String cropTypeId,
-    required String startDate,
-    required String endDate,
-    required num budget,
-    required String objective,
-    String? cropVarietyId,
-    int cultivationSeason = 0,
-    String? previousCropTypeId,
-    List<String> previousKnownProblems = const [],
-  }) async {
-    await _guard(() async {
-      final requestId = await _apiClient.createPreliminaryCropPlan(
-        farmId: farmId,
-        fieldId: fieldId,
-        cropTypeId: cropTypeId,
-        cropVarietyId: cropVarietyId,
-        cultivationSeason: cultivationSeason,
-        previousCropTypeId: previousCropTypeId,
-        previousKnownProblems: previousKnownProblems,
-        preferredStartDate: startDate,
-        preferredEndDate: endDate,
-        budget: budget,
-        objective: objective,
-      );
-      lastCropPlanRequestId = requestId;
-      lastWorkflowStart = await _apiClient.startCropPlanningWorkflow(requestId);
-      await refreshLastCropPlanningWorkflow();
-      await refresh();
-    });
   }
 
   Future<void> createPreliminaryCropPlan({
@@ -296,9 +267,67 @@ class AppState extends ChangeNotifier {
   Future<void> refreshLastCropPlanningWorkflow() async {
     final requestId = lastCropPlanRequestId;
     if (requestId == null) return;
-    lastWorkflowStatus = await _apiClient.cropPlanningWorkflowStatus(requestId);
-    lastPlanningResult = await _apiClient.cropPlanningResult(requestId);
+    await refreshCropPlanProgress(requestId);
+  }
+
+  Future<bool> refreshCropPlanProgress(String requestId) async {
+    try {
+      final plan = await _apiClient.cropPlanRequest(requestId);
+      CropPlanningWorkflowStatus? workflow;
+      CropPlanningResult? result;
+      try {
+        workflow = await _apiClient.cropPlanningWorkflowStatus(requestId);
+        result = await _apiClient.cropPlanningResult(requestId);
+      } on ApiException catch (exception) {
+        if (exception.statusCode != 404) rethrow;
+      }
+
+      final planIndex = cropPlans.indexWhere((item) => item.id == requestId);
+      if (planIndex == -1) {
+        cropPlans = [...cropPlans, plan];
+      } else {
+        cropPlans = [...cropPlans]..[planIndex] = plan;
+      }
+      final nextWorkflows = {...planWorkflows};
+      if (workflow == null) {
+        nextWorkflows.remove(requestId);
+      } else {
+        nextWorkflows[requestId] = workflow;
+      }
+      planWorkflows = nextWorkflows;
+      lastCropPlanRequestId = requestId;
+      lastWorkflowStatus = workflow;
+      lastPlanningResult = result;
+      notifyListeners();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> cancelCropPlanRequest(String requestId) async {
+    isBusy = true;
+    error = null;
     notifyListeners();
+    try {
+      final cancelled = await _apiClient.cancelCropPlanRequest(requestId);
+      final planIndex = cropPlans.indexWhere((item) => item.id == requestId);
+      if (planIndex == -1) {
+        cropPlans = [...cropPlans, cancelled];
+      } else {
+        cropPlans = [...cropPlans]..[planIndex] = cancelled;
+      }
+      lastCropPlanRequestId = requestId;
+      notifyListeners();
+      await refreshCropPlanProgress(requestId);
+      return true;
+    } catch (exception) {
+      error = exception.toString();
+      return false;
+    } finally {
+      isBusy = false;
+      notifyListeners();
+    }
   }
 
   Future<void> _rejectStaffSession() async {

@@ -1,14 +1,19 @@
+using System.Globalization;
 using System.Net;
 using System.Text.Json;
 using AgriAssist.Api.Data;
+using AgriAssist.Api.Dtos.CropPlanning;
+using AgriAssist.Api.Dtos.Inspections;
 using AgriAssist.Api.Dtos.Resources;
 using AgriAssist.Api.Dtos.Shared;
 using AgriAssist.Api.Dtos.TaskApproval;
 using AgriAssist.Api.ExternalServices.AgenticAI;
 using AgriAssist.Api.Models.CropPlanning;
+using AgriAssist.Api.Models.Inspections;
 using AgriAssist.Api.Models.Shared;
 using AgriAssist.Api.Models.TaskApproval;
 using AgriAssist.Api.Services.Resources;
+using AgriAssist.Api.Services.Inspections;
 using AgriAssist.Api.Services.Shared;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -21,6 +26,7 @@ public sealed class WorkflowApprovalService(
     ISchedulingValidationAIClient aiClient,
     IResourceService resourceService) : IWorkflowApprovalService
 {
+    private const string FieldAnalysisAgentName = "CropFieldAnalysisAgent";
     private const string SchedulingAgentName = "SchedulingValidationAgent";
     private const string SchedulingStepName = "Scheduling";
     private const int MaxRevisionCount = 3;
@@ -54,6 +60,56 @@ public sealed class WorkflowApprovalService(
     {
         var workflow = await LoadForReviewAsync(workflowId, asTracking: false, cancellationToken);
         return await MapReviewAsync(workflow, cancellationToken);
+    }
+
+    public async Task<WorkflowEvidenceResolutionResponse> GetEvidenceResolutionAsync(Guid workflowId, CancellationToken cancellationToken)
+    {
+        RequireSchedulingOperator();
+        var workflow = await LoadForReviewAsync(workflowId, false, cancellationToken);
+        var plan = workflow.CropPlanRequest ?? throw NotFound("Crop plan request");
+        var review = await MapReviewAsync(workflow, cancellationToken);
+        var profiles = await dbContext.CropReferenceProfiles.AsNoTracking().Include(item => item.Stages)
+            .Include(item => item.Rules).Include(item => item.FieldWaterRegimeVerification)
+            .Where(item => item.CropTypeId == plan.CropTypeId && !item.IsDeleted)
+            .OrderByDescending(item => item.CreatedAt).ToListAsync(cancellationToken);
+        var compatible = profiles.Where(item => CropReferenceCompatibility.IsVerifiedForPlan(item, plan)
+            && item.Stages.Any(stage => !stage.IsDeleted)
+            && item.Rules.Any(rule => !rule.IsDeleted && rule.RuleType == CropResourceRequirementRule.RuleType))
+            .Select(item => item.Id).ToArray();
+        var successor = await dbContext.AgentWorkflows.AsNoTracking()
+            .Where(item => item.SupersedesWorkflowId == workflowId).Select(item => new { item.Id, item.CurrentStep })
+            .SingleOrDefaultAsync(cancellationToken);
+        var latestId = await dbContext.AgentWorkflows.AsNoTracking()
+            .Where(item => item.CropPlanRequestId == plan.Id && !item.IsDeleted)
+            .OrderByDescending(item => item.CreatedAt).ThenByDescending(item => item.Id)
+            .Select(item => item.Id).FirstOrDefaultAsync(cancellationToken);
+        var eligible = successor is null && latestId == workflow.Id
+            && workflow.Status is AgentWorkflowStatus.MissingDependency or AgentWorkflowStatus.CandidateBlocked
+            && plan.Status is CropPlanRequestStatus.Submitted or CropPlanRequestStatus.PreliminaryGenerated
+            && plan.PreferredStartDate > DateOnly.FromDateTime(DateTime.UtcNow)
+            && plan.PreferredEndDate > plan.PreferredStartDate;
+        var next = successor is not null ? successor.CurrentStep switch
+        {
+            "Completed" => "Farmer",
+            "CropFieldAnalysisAgent" => "FieldOfficer",
+            "WeatherResourceAgent" => "ResourceOfficer",
+            "SchedulingValidationAgent" or "HumanApproval" => "AgriculturalOfficer",
+            _ => "Admin"
+        } : compatible.Length == 0 ? "AgriculturalOfficer" : "Admin";
+        var blocked = review.Validations.SelectMany(item => item.Errors.Concat(item.Warnings))
+            .Concat(review.Steps.Where(item => item.ErrorMessageSafe is not null).Select(item => item.ErrorMessageSafe!))
+            .Distinct().ToArray();
+        var member3 = workflow.Steps.Where(item => item.AgentName == "WeatherResourceAgent" && item.Status == AgentStepStatus.Completed)
+            .OrderByDescending(item => item.CompletedAt).FirstOrDefault();
+        return new WorkflowEvidenceResolutionResponse(workflow.Id, plan.Id, plan.CropTypeId,
+            plan.CropType?.Name ?? "", plan.CropVarietyId, plan.CropVariety?.Name, plan.FieldId, plan.Field?.Name,
+            plan.Farm?.District ?? plan.Farm?.Location, workflow.Status, plan.PreferredStartDate, plan.PreferredEndDate,
+            workflow.RequiredCropReferenceProfileId ?? SchedulingEvidenceBuilder.ReadRequirementProfileId(member3?.OutputJson),
+            blocked, profiles.Select(item => new CropReferenceProfileResponse(item.Id, item.CropTypeId, item.VarietyName,
+                item.Region, item.SourceName, item.SourceUrl, item.SourceVersion, item.VerifiedAt, item.IsActive,
+                item.Stages.Count(stage => !stage.IsDeleted), item.Rules.Count(rule => !rule.IsDeleted),
+                item.VerificationState, item.DraftVersion)).ToArray(), compatible, successor?.Id,
+            next, eligible && compatible.Length > 0 && currentUser.Role == ApplicationRole.Admin);
     }
 
     public async Task<WorkflowHistoryResponse> GetHistoryAsync(Guid workflowId, CancellationToken cancellationToken)
@@ -101,6 +157,7 @@ public sealed class WorkflowApprovalService(
         try
         {
             output = await aiClient.RunSchedulingValidationAsync(input, cancellationToken);
+            output = await AttachCropHealthProposalAsync(output, input, plan, cancellationToken);
         }
         catch (Exception)
         {
@@ -110,10 +167,12 @@ public sealed class WorkflowApprovalService(
 
         var (errors, warnings) = await ValidateCandidateAsync(workflow, output, cancellationToken);
         var ready = errors.Count == 0 && output.Status.Equals("CandidateReady", StringComparison.OrdinalIgnoreCase);
+        var blocked = output.Status.Equals("CandidateBlocked", StringComparison.OrdinalIgnoreCase)
+            && !output.RequiresHumanApproval;
         step.OutputJson = JsonSerializer.Serialize(output, JsonOptions);
         step.CompletedAt = DateTime.UtcNow;
         step.Status = ready ? AgentStepStatus.Completed : AgentStepStatus.Failed;
-        step.ErrorCode = ready ? null : output.Status.Equals("MissingDependency", StringComparison.OrdinalIgnoreCase)
+        step.ErrorCode = ready ? null : blocked ? "CANDIDATE_BLOCKED" : output.Status.Equals("MissingDependency", StringComparison.OrdinalIgnoreCase)
             ? "MISSING_DEPENDENCY"
             : "CANDIDATE_VALIDATION_FAILED";
         step.ErrorMessageSafe = ready ? null : errors.Concat(output.Warnings ?? []).FirstOrDefault();
@@ -132,6 +191,7 @@ public sealed class WorkflowApprovalService(
         });
 
         workflow.Status = ready ? AgentWorkflowStatus.PendingOfficerApproval
+            : blocked ? AgentWorkflowStatus.CandidateBlocked
             : output.Status.Equals("MissingDependency", StringComparison.OrdinalIgnoreCase)
                 ? AgentWorkflowStatus.MissingDependency
                 : AgentWorkflowStatus.Failed;
@@ -145,6 +205,112 @@ public sealed class WorkflowApprovalService(
 
     public Task<WorkflowDecisionResponse> ApproveAsync(Guid workflowId, WorkflowDecisionRequest request, CancellationToken cancellationToken) =>
         DecideAsync(workflowId, request, ApprovalDecisionType.Approved, cancellationToken);
+
+    public async Task<WorkflowReviewResponse> DecideCropHealthGuidanceAsync(
+        Guid workflowId,
+        CropHealthGuidanceDecisionRequest request,
+        CancellationToken cancellationToken)
+    {
+        RequireApprover();
+        if (request.Decision is not (CropHealthGuidanceDecision.Included or CropHealthGuidanceDecision.Rejected))
+            throw BadRequest("CROP_HEALTH_GUIDANCE_DECISION_INVALID", "Crop-health guidance must be explicitly included or rejected.");
+        if (request.CandidateRevision < 1 || request.ExpectedWorkflowVersion < 1)
+            throw BadRequest("WORKFLOW_VERSION_REQUIRED", "Candidate revision and expected workflow version are required.");
+        if (string.IsNullOrWhiteSpace(request.IdempotencyKey) || request.IdempotencyKey.Trim().Length > 120)
+            throw BadRequest("IDEMPOTENCY_KEY_INVALID", "An idempotency key of 120 characters or fewer is required.");
+        if (request.Decision == CropHealthGuidanceDecision.Rejected && string.IsNullOrWhiteSpace(request.RejectionReason))
+            throw BadRequest("GUIDANCE_REJECTION_REASON_REQUIRED", "A bounded reason is required when rejecting crop-health guidance.");
+        if ((request.RejectionReason?.Length ?? 0) > 500)
+            throw BadRequest("GUIDANCE_REJECTION_REASON_INVALID", "The rejection reason must be 500 characters or fewer.");
+
+        await using var transaction = await BeginTransactionAsync(cancellationToken);
+        var workflow = await LoadForReviewAsync(workflowId, asTracking: true, cancellationToken);
+        if (workflow.CandidateRevision != request.CandidateRevision || workflow.Version != request.ExpectedWorkflowVersion)
+            throw Conflict("WORKFLOW_STALE", "The workflow changed after it was reviewed. Refresh before deciding.");
+        if (workflow.Status != AgentWorkflowStatus.PendingOfficerApproval)
+            throw Conflict("GUIDANCE_DECISION_NOT_ALLOWED", "Crop-health guidance can be decided only while the proposal awaits approval.");
+        var step = FindSchedulingStep(workflow);
+        var output = ReadSchedulingOutput(step.OutputJson, workflow.Id, workflow.CandidateRevision);
+        var guidance = output.CropHealthGuidance;
+        if (guidance is null || guidance.Decision == CropHealthGuidanceDecision.NotApplicable)
+            throw Conflict("GUIDANCE_NOT_APPLICABLE", "This proposal has no crop-health guidance candidate.");
+
+        var actor = RequireUser();
+        output = output with
+        {
+            CropHealthGuidance = guidance with
+            {
+                Decision = request.Decision,
+                DecidedByUserId = actor,
+                DecidedAt = DateTime.UtcNow,
+                RejectionReason = request.Decision == CropHealthGuidanceDecision.Rejected ? request.RejectionReason!.Trim() : null
+            }
+        };
+        step.OutputJson = JsonSerializer.Serialize(output, JsonOptions);
+        MarkUpdated(step, actor);
+        workflow.Version++;
+        MarkUpdated(workflow, actor);
+        dbContext.ApprovalDecisions.Add(new ApprovalDecision
+        {
+            AgentWorkflowId = workflow.Id,
+            CandidateRevision = workflow.CandidateRevision,
+            ExpectedWorkflowVersion = request.ExpectedWorkflowVersion,
+            IdempotencyKey = request.IdempotencyKey.Trim(),
+            DecidedByUserId = actor,
+            Decision = request.Decision == CropHealthGuidanceDecision.Included
+                ? ApprovalDecisionType.GuidanceIncluded
+                : ApprovalDecisionType.GuidanceRejected,
+            Comment = request.RejectionReason?.Trim() ?? string.Empty,
+            CreatedByUserId = actor,
+            UpdatedByUserId = actor
+        });
+        await dbContext.SaveChangesAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+        return await MapReviewAsync(workflow, cancellationToken);
+    }
+
+    public async Task<WorkflowReviewResponse> UpdateCropHealthCandidateAsync(
+        Guid workflowId,
+        string actionKey,
+        CropHealthCandidateOperationalRequest request,
+        CancellationToken cancellationToken)
+    {
+        RequireApprover();
+        if (string.IsNullOrWhiteSpace(actionKey) || actionKey.Length > 80)
+            throw BadRequest("CROP_HEALTH_ACTION_KEY_INVALID", "A valid crop-health action key is required.");
+        if ((request.SchedulingNote?.Length ?? 0) > 500)
+            throw BadRequest("CROP_HEALTH_SCHEDULING_NOTE_INVALID", "The staff scheduling note must be 500 characters or fewer.");
+
+        await using var transaction = await BeginTransactionAsync(cancellationToken);
+        var workflow = await LoadForReviewAsync(workflowId, asTracking: true, cancellationToken);
+        if (workflow.CandidateRevision != request.CandidateRevision || workflow.Version != request.ExpectedWorkflowVersion)
+            throw Conflict("WORKFLOW_STALE", "The workflow changed after it was reviewed. Refresh before updating scheduling.");
+        if (workflow.Status != AgentWorkflowStatus.PendingOfficerApproval)
+            throw Conflict("CROP_HEALTH_ACTION_UPDATE_NOT_ALLOWED", "Crop-health scheduling can be changed only while the proposal awaits approval.");
+        var step = FindSchedulingStep(workflow);
+        var output = ReadSchedulingOutput(step.OutputJson, workflow.Id, workflow.CandidateRevision);
+        var candidates = (output.CropHealthCandidateTasks ?? []).ToArray();
+        var index = Array.FindIndex(candidates, item => string.Equals(item.ActionKey, actionKey, StringComparison.Ordinal));
+        if (index < 0) throw NotFound("Crop-health candidate action");
+        candidates[index] = candidates[index] with
+        {
+            Included = request.Included,
+            DueAt = request.DueAt,
+            AssignedToUserId = request.AssignedToUserId,
+            SchedulingNote = string.IsNullOrWhiteSpace(request.SchedulingNote) ? null : request.SchedulingNote.Trim()
+        };
+        output = output with { CropHealthCandidateTasks = candidates };
+        var (errors, _) = await ValidateCandidateAsync(workflow, output, cancellationToken);
+        if (errors.Count > 0) throw Conflict("CROP_HEALTH_ACTION_UPDATE_INVALID", string.Join(" ", errors));
+        var actor = RequireUser();
+        step.OutputJson = JsonSerializer.Serialize(output, JsonOptions);
+        MarkUpdated(step, actor);
+        workflow.Version++;
+        MarkUpdated(workflow, actor);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+        return await MapReviewAsync(workflow, cancellationToken);
+    }
 
     public Task<WorkflowDecisionResponse> RejectAsync(Guid workflowId, WorkflowDecisionRequest request, CancellationToken cancellationToken) =>
         DecideAsync(workflowId, request, ApprovalDecisionType.Rejected, cancellationToken);
@@ -182,6 +348,8 @@ public sealed class WorkflowApprovalService(
             {
                 var step = FindSchedulingStep(workflow);
                 var output = ReadSchedulingOutput(step.OutputJson, workflow.Id, workflow.CandidateRevision);
+                if (output.CropHealthGuidance?.Decision == CropHealthGuidanceDecision.PendingDecision)
+                    throw Conflict("CROP_HEALTH_GUIDANCE_DECISION_REQUIRED", "Include or reject the crop-health guidance before approving this proposal.");
                 var (errors, _) = await ValidateCandidateAsync(workflow, output, cancellationToken);
                 if (errors.Count > 0)
                     throw Conflict("WORKFLOW_REVALIDATION_FAILED", string.Join(" ", errors));
@@ -193,6 +361,26 @@ public sealed class WorkflowApprovalService(
                         FarmId = candidate.FarmId,
                         Title = candidate.Title.Trim(),
                         Description = candidate.Description.Trim(),
+                        DueAt = candidate.DueAt,
+                        AssignedToUserId = candidate.AssignedToUserId,
+                        Status = FarmTaskStatus.Approved,
+                        GeneratedByWorkflowId = workflow.Id,
+                        CandidateRevision = workflow.CandidateRevision,
+                        CreatedByUserId = actor,
+                        UpdatedByUserId = actor
+                    };
+                    dbContext.FarmTasks.Add(task);
+                    taskIds.Add(task.Id);
+                }
+
+                foreach (var candidate in (output.CropHealthCandidateTasks ?? []).Where(item => item.Included))
+                {
+                    var definition = CropHealthActionCatalog.Get(candidate.ActionType);
+                    var task = new FarmTask
+                    {
+                        FarmId = plan.FarmId,
+                        Title = definition.Title,
+                        Description = definition.Description,
                         DueAt = candidate.DueAt,
                         AssignedToUserId = candidate.AssignedToUserId,
                         Status = FarmTaskStatus.Approved,
@@ -364,8 +552,121 @@ public sealed class WorkflowApprovalService(
             StepOutput("CropFieldAnalysisAgent"),
             StepOutput("WeatherResourceAgent"),
             tasks,
-            irrigation);
+            irrigation,
+            await SchedulingEvidenceBuilder.BuildAsync(dbContext, workflow, plan, cancellationToken));
     }
+
+    private async Task<SchedulingValidationOutput> AttachCropHealthProposalAsync(
+        SchedulingValidationOutput output,
+        SchedulingValidationInput input,
+        CropPlanRequest plan,
+        CancellationToken cancellationToken)
+    {
+        var fieldAnalysis = ReadFieldAnalysis(input.FieldAnalysisOutput);
+        var reviewedActions = (fieldAnalysis?.ReviewedCropIssueActions ?? []).OrderBy(item => item.Order).ToArray();
+        var guidanceSource = fieldAnalysis?.ReviewedCropHealthGuidance;
+        if (reviewedActions.Length == 0 || guidanceSource is null)
+        {
+            return output with
+            {
+                CropHealthCandidateTasks = [],
+                CropHealthGuidance = new CropHealthGuidanceCandidate("", "", "", [], [], null, "",
+                    CropHealthGuidanceDecision.NotApplicable)
+            };
+        }
+
+        var inspectionIds = reviewedActions.Select(item => item.InspectionId).Distinct().ToArray();
+        var officers = await dbContext.FieldInspections.AsNoTracking()
+            .Where(item => inspectionIds.Contains(item.Id))
+            .ToDictionaryAsync(item => item.Id, item => item.InspectorUserId, cancellationToken);
+        var firstDay = plan.PreferredStartDate > DateOnly.FromDateTime(DateTime.UtcNow)
+            ? plan.PreferredStartDate
+            : DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1);
+        var lastDay = plan.PreferredEndDate < firstDay ? firstDay : plan.PreferredEndDate;
+        var occupied = (output.CandidateTasks ?? []).Select(item => item.DueAt).ToHashSet();
+        var candidates = new List<CropHealthCandidateTask>(reviewedActions.Length);
+        foreach (var action in reviewedActions)
+        {
+            var definition = CropHealthActionCatalog.Get(action.ActionType);
+            var day = definition.TimingCategory == "EarlyGrowth"
+                ? Min(firstDay.AddDays(7), lastDay)
+                : definition.TimingCategory == "AsNeededAssessment"
+                    ? Min(firstDay.AddDays(1), lastDay)
+                    : firstDay;
+            var dueAt = DateTime.SpecifyKind(day.ToDateTime(new TimeOnly(14, 0)), DateTimeKind.Utc);
+            while (occupied.Contains(dueAt) && dueAt.Date == day.ToDateTime(TimeOnly.MinValue).Date)
+                dueAt = dueAt.AddHours(1);
+            occupied.Add(dueAt);
+            var assignee = definition.ResponsibleRole == "FieldOfficer" && officers.TryGetValue(action.InspectionId, out var officerId)
+                ? officerId
+                : plan.RequestedByUserId;
+            candidates.Add(new CropHealthCandidateTask(
+                CropHealthActionCatalog.ActionKey(action.ReviewId, action.Order),
+                action.ActionType,
+                definition.TaskCategory,
+                definition.Title,
+                definition.Description,
+                definition.TimingCategory,
+                dueAt,
+                assignee,
+                true,
+                null,
+                action.InspectionId,
+                action.InspectionImageId,
+                action.AnalysisId,
+                action.ReviewId));
+        }
+
+        return output with
+        {
+            CropHealthCandidateTasks = candidates,
+            CropHealthGuidance = BuildCropHealthGuidance(guidanceSource, reviewedActions, CropHealthGuidanceDecision.PendingDecision)
+        };
+    }
+
+    private static CropHealthGuidanceCandidate BuildCropHealthGuidance(
+        ReviewedCropHealthGuidanceSource source,
+        IReadOnlyList<ReviewedCropIssueActionResponse> reviewedActions,
+        CropHealthGuidanceDecision decision)
+    {
+        var prePlanting = reviewedActions
+            .Where(action => CropHealthActionCatalog.Get(action.ActionType).TimingCategory == "BeforePlanting")
+            .Select(action => CropHealthActionCatalog.Get(action.ActionType).Description)
+            .ToArray();
+        var monitoring = reviewedActions
+            .Where(action => CropHealthActionCatalog.Get(action.ActionType).TimingCategory == "EarlyGrowth")
+            .Select(action => CropHealthActionCatalog.Get(action.ActionType).Description)
+            .ToArray();
+        var escalation = reviewedActions
+            .Where(action => CropHealthActionCatalog.Get(action.ActionType).TaskCategory == "AssessmentEscalationTask")
+            .Select(action => CropHealthActionCatalog.Get(action.ActionType).Description)
+            .FirstOrDefault();
+        var observation = string.Join(" ", source.VisibleFindings).Trim();
+        var concern = source.PossibleConcerns.Count == 0
+            ? "The exact crop-health concern was not confirmed from one image."
+            : $"The visible symptoms may indicate {string.Join(", ", source.PossibleConcerns)}; the exact cause was not confirmed from one image.";
+        var uncertainty = source.RequiresFurtherAssessment
+            ? "The image does not confirm a diagnosis. Further Field Officer or Agricultural Officer assessment is recommended."
+            : "The image does not confirm a diagnosis; continue monitoring for changes.";
+        return new CropHealthGuidanceCandidate(
+            observation,
+            concern,
+            uncertainty,
+            prePlanting,
+            monitoring,
+            escalation,
+            "This guidance is based on submitted field-inspection evidence reviewed by a Field Officer.",
+            decision);
+    }
+
+    private static FieldAnalysisOutput? ReadFieldAnalysis(JsonElement element)
+    {
+        if (element.ValueKind != JsonValueKind.Object) return null;
+        try { return JsonSerializer.Deserialize<FieldAnalysisOutput>(element.GetRawText(), JsonOptions); }
+        catch (JsonException) { return null; }
+    }
+
+    private static DateOnly Min(DateOnly left, DateOnly right) => left <= right ? left : right;
 
     private async Task<(List<string> Errors, List<string> Warnings)> ValidateCandidateAsync(
         AgentWorkflow workflow,
@@ -382,14 +683,83 @@ public sealed class WorkflowApprovalService(
         if (!output.RequiresHumanApproval) errors.Add("A ready scheduling candidate must require human approval.");
         if (output.CandidateTasks is null || output.CandidateTasks.Count is < 1 or > 50)
             errors.Add("Candidate must contain between 1 and 50 tasks.");
-        if (output.CandidateIrrigation is null || output.CandidateIrrigation.Count is < 1 or > 20)
-            errors.Add("Candidate must contain between 1 and 20 irrigation schedules.");
+        if (output.CandidateIrrigation is null || output.CandidateIrrigation.Count > 20 ||
+            (output.ContractVersion < 2 && output.CandidateIrrigation.Count == 0))
+            errors.Add("Candidate irrigation count is invalid.");
         if (output.CandidateReservations is null || output.CandidateReservations.Count > 50)
             errors.Add("Candidate may contain at most 50 resource reservations.");
         if (output.Constraints is null || output.Constraints.Any(item => string.IsNullOrWhiteSpace(item.Code) || string.IsNullOrWhiteSpace(item.Message)))
             errors.Add("Candidate constraints must have codes and messages.");
         if (errors.Count > 0 && (output.CandidateTasks is null || output.CandidateIrrigation is null || output.CandidateReservations is null))
             return (errors, warnings);
+
+        var fieldJson = workflow.Steps.OrderBy(item => item.Sequence)
+            .LastOrDefault(item => item.AgentName == "CropFieldAnalysisAgent" && item.Status == AgentStepStatus.Completed)?.OutputJson;
+        var fieldAnalysis = ReadFieldAnalysis(ParseJson(fieldJson));
+        var sourceActions = (fieldAnalysis?.ReviewedCropIssueActions ?? []).OrderBy(item => item.Order).ToArray();
+        var candidateCropHealthTasks = output.CropHealthCandidateTasks ?? [];
+        if (sourceActions.Length == 0 || fieldAnalysis?.ReviewedCropHealthGuidance is null)
+        {
+            if (candidateCropHealthTasks.Count != 0)
+                errors.Add("Crop-health candidate tasks exist without authoritative reviewed Member 2 actions.");
+            if (output.CropHealthGuidance is not null && output.CropHealthGuidance.Decision != CropHealthGuidanceDecision.NotApplicable)
+                errors.Add("Crop-health guidance must be NotApplicable when no authoritative candidate exists.");
+        }
+        else
+        {
+            if (candidateCropHealthTasks.Count != sourceActions.Length)
+                errors.Add("Crop-health candidate tasks must correspond one-to-one with reviewed Member 2 actions.");
+            var candidatesByKey = candidateCropHealthTasks
+                .GroupBy(item => item.ActionKey, StringComparer.Ordinal)
+                .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal);
+            foreach (var sourceAction in sourceActions)
+            {
+                var key = CropHealthActionCatalog.ActionKey(sourceAction.ReviewId, sourceAction.Order);
+                if (!candidatesByKey.TryGetValue(key, out var matches) || matches.Length != 1)
+                {
+                    errors.Add("A crop-health candidate is missing or duplicated for a reviewed action.");
+                    continue;
+                }
+                var candidate = matches[0];
+                var definition = CropHealthActionCatalog.Get(sourceAction.ActionType);
+                if (candidate.ActionType != sourceAction.ActionType || candidate.TaskCategory != definition.TaskCategory ||
+                    candidate.Title != definition.Title || candidate.Description != definition.Description ||
+                    candidate.TimingCategory != definition.TimingCategory)
+                    errors.Add("A crop-health candidate changed its catalog-controlled semantics.");
+                if (candidate.InspectionId != sourceAction.InspectionId || candidate.InspectionImageId != sourceAction.InspectionImageId ||
+                    candidate.AnalysisId != sourceAction.AnalysisId || candidate.ReviewId != sourceAction.ReviewId)
+                    errors.Add("A crop-health candidate lost required Member 2 provenance.");
+                if ((candidate.SchedulingNote?.Length ?? 0) > 500)
+                    errors.Add("A crop-health staff scheduling note is too long.");
+            }
+
+            var guidance = output.CropHealthGuidance;
+            var expectedGuidance = BuildCropHealthGuidance(fieldAnalysis.ReviewedCropHealthGuidance, sourceActions,
+                guidance?.Decision ?? CropHealthGuidanceDecision.PendingDecision);
+            if (guidance is null || guidance.Decision == CropHealthGuidanceDecision.NotApplicable ||
+                guidance.CropHealthObservation != expectedGuidance.CropHealthObservation ||
+                guidance.PossibleConcern != expectedGuidance.PossibleConcern ||
+                guidance.UncertaintyGuidance != expectedGuidance.UncertaintyGuidance ||
+                !guidance.PrePlantingActions.SequenceEqual(expectedGuidance.PrePlantingActions) ||
+                !guidance.MonitoringActions.SequenceEqual(expectedGuidance.MonitoringActions) ||
+                guidance.EscalationGuidance != expectedGuidance.EscalationGuidance ||
+                guidance.WhyThisIsRecommended != expectedGuidance.WhyThisIsRecommended)
+                errors.Add("Crop-health guidance changed its locked reviewed semantics.");
+            else if (guidance.Decision == CropHealthGuidanceDecision.PendingDecision &&
+                (guidance.DecidedByUserId.HasValue || guidance.DecidedAt.HasValue || guidance.RejectionReason is not null))
+                errors.Add("Pending crop-health guidance cannot contain decision metadata.");
+            else if (guidance.Decision is CropHealthGuidanceDecision.Included or CropHealthGuidanceDecision.Rejected &&
+                (!guidance.DecidedByUserId.HasValue || !guidance.DecidedAt.HasValue))
+                errors.Add("A decided crop-health guidance candidate requires decision audit metadata.");
+            if (guidance?.Decision == CropHealthGuidanceDecision.Rejected &&
+                (string.IsNullOrWhiteSpace(guidance.RejectionReason) || guidance.RejectionReason.Length > 500))
+                errors.Add("Rejected crop-health guidance requires a bounded staff-only reason.");
+        }
+
+        if (workflow.RequiredCropReferenceProfileId.HasValue && output.ContractVersion < 2)
+            errors.Add("Replacement workflows require source-attributed scheduling contract version 2.");
+        if (output.ContractVersion >= 2)
+            errors.AddRange(await ValidateVersionTwoAsync(workflow, output, cancellationToken));
 
         var start = DateTime.SpecifyKind(plan.PreferredStartDate.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
         var end = DateTime.SpecifyKind(plan.PreferredEndDate.ToDateTime(TimeOnly.MaxValue), DateTimeKind.Utc);
@@ -410,6 +780,26 @@ public sealed class WorkflowApprovalService(
             if (task.DueAt < start || task.DueAt > end || task.DueAt <= DateTime.UtcNow) errors.Add("Candidate task falls outside the valid future date window.");
             if (!candidateTaskSlots.Add((task.AssignedToUserId, task.DueAt)) || existingTasks.Any(item => item.AssignedToUserId == task.AssignedToUserId && item.DueAt == task.DueAt))
                 errors.Add("Candidate task conflicts with another task for the assignee.");
+        }
+
+        var activeUsers = await dbContext.Users.AsNoTracking()
+            .Where(item => item.IsActive && !item.IsDeleted)
+            .Select(item => new { item.Id, item.Role })
+            .ToDictionaryAsync(item => item.Id, item => item.Role, cancellationToken);
+        foreach (var task in candidateCropHealthTasks.Where(item => item.Included))
+        {
+            var definition = CropHealthActionCatalog.Get(task.ActionType);
+            if (!activeUsers.TryGetValue(task.AssignedToUserId, out var role))
+                errors.Add("A crop-health candidate references an inactive or unknown assignee.");
+            else if (definition.ResponsibleRole == "Farmer" && role != ApplicationRole.Farmer)
+                errors.Add("A farmer crop-health action must remain assigned to an authorized farmer.");
+            else if (definition.ResponsibleRole == "FieldOfficer" && role is not (ApplicationRole.FieldOfficer or ApplicationRole.AgriculturalOfficer))
+                errors.Add("A crop-health assessment action must be assigned to a Field or Agricultural Officer.");
+            if (task.DueAt < start || task.DueAt > end || task.DueAt <= DateTime.UtcNow)
+                errors.Add("A crop-health candidate falls outside the valid future date window.");
+            if (!candidateTaskSlots.Add((task.AssignedToUserId, task.DueAt)) ||
+                existingTasks.Any(item => item.AssignedToUserId == task.AssignedToUserId && item.DueAt == task.DueAt))
+                errors.Add("A crop-health candidate conflicts with another task for the assignee.");
         }
 
         var existingSchedules = await dbContext.IrrigationSchedules.AsNoTracking()
@@ -458,6 +848,199 @@ public sealed class WorkflowApprovalService(
         return (errors.Distinct().ToList(), warnings.Distinct().ToList());
     }
 
+    private async Task<IReadOnlyList<string>> ValidateVersionTwoAsync(
+        AgentWorkflow workflow,
+        SchedulingValidationOutput output,
+        CancellationToken cancellationToken)
+    {
+        var errors = new List<string>();
+        var plan = workflow.CropPlanRequest ?? throw NotFound("Crop plan request");
+        var fresh = await BuildInputAsync(workflow, plan, cancellationToken);
+        var evidence = fresh.Evidence;
+        if (evidence?.ProfileId is null || evidence.VerifiedAt is null || evidence.Stages.Count == 0)
+        {
+            errors.Add("A matching active verified crop profile with stages is required.");
+            return errors;
+        }
+
+        SchedulingValidationInput? submitted;
+        try { submitted = JsonSerializer.Deserialize<SchedulingValidationInput>(FindSchedulingStep(workflow).InputJson, JsonOptions); }
+        catch (JsonException) { submitted = null; }
+        var original = submitted?.Evidence;
+        if (original is null || JsonSerializer.Serialize(original, JsonOptions) != JsonSerializer.Serialize(evidence, JsonOptions))
+            errors.Add("Verified crop reference evidence changed after candidate generation.");
+        if (evidence.InvalidIrrigationRuleIds.Count > 0)
+            errors.Add("A persisted verified irrigation rule is invalid and cannot be ignored.");
+
+        var weather = fresh.WeatherResourceOutput;
+        if (weather.ValueKind != JsonValueKind.Object ||
+            !weather.TryGetProperty("weatherRisk", out var risk) || risk.ValueKind != JsonValueKind.String)
+            errors.Add("Persisted weather risk is unavailable.");
+        else if (risk.GetString() == "High")
+            errors.Add("High weather risk blocks approval.");
+        else if (risk.GetString() is not ("Low" or "Medium" or "Unknown"))
+            errors.Add("Persisted weather risk is invalid.");
+
+        if (weather.ValueKind != JsonValueKind.Object ||
+            !weather.TryGetProperty("requirementStatus", out var overall) ||
+            overall.ValueKind != JsonValueKind.String || overall.GetString() != "Sufficient")
+            errors.Add("Verified resource requirements are not sufficient.");
+        JsonElement requirements = default;
+        JsonElement checks = default;
+        if (weather.ValueKind != JsonValueKind.Object ||
+            !weather.TryGetProperty("resourceRequirements", out requirements) || requirements.ValueKind != JsonValueKind.Array ||
+            !weather.TryGetProperty("resourceChecks", out checks) || checks.ValueKind != JsonValueKind.Array)
+            errors.Add("Verified resource requirements and stock checks are unavailable.");
+
+        var preparations = fresh.FieldAnalysisOutput.ValueKind == JsonValueKind.Object &&
+            fresh.FieldAnalysisOutput.TryGetProperty("fieldPreparationRequirements", out var preparationArray) &&
+            preparationArray.ValueKind == JsonValueKind.Array
+                ? preparationArray.EnumerateArray().Where(item => item.ValueKind == JsonValueKind.String)
+                    .Select(item => item.GetString() ?? string.Empty).ToArray()
+                : [];
+        var preparationCount = fresh.FieldAnalysisOutput.ValueKind == JsonValueKind.Object &&
+            fresh.FieldAnalysisOutput.TryGetProperty("fieldPreparationRequirements", out var preparationCountArray) &&
+            preparationCountArray.ValueKind == JsonValueKind.Array ? preparationCountArray.GetArrayLength() : 0;
+        var taskList = output.CandidateTasks ?? [];
+        if (taskList.Count != preparationCount + evidence.Stages.Count)
+            errors.Add("Candidate tasks do not cover every verified preparation requirement and crop stage.");
+        if ((output.CandidateIrrigation?.Count ?? 0) != evidence.IrrigationRules.Count)
+            errors.Add("Candidate irrigation must match the verified irrigation rules exactly.");
+
+        bool SourceMatches(SchedulingSource? source, string kind, Guid id, bool profileSource,
+            DateTime? verifiedAt = null)
+        {
+            if (source is null || source.Kind != kind || source.Id != id ||
+                string.IsNullOrWhiteSpace(source.Label) || source.Label.Length > 180) return false;
+            return !profileSource || source.ProfileId == evidence.ProfileId &&
+                source.SourceVersion == evidence.SourceVersion && source.VerifiedAt == (verifiedAt ?? evidence.VerifiedAt);
+        }
+
+        void CheckItem(string? reason, IReadOnlyList<SchedulingSource>? sources)
+        {
+            if (string.IsNullOrWhiteSpace(reason) || reason.Length > 500 || sources is null || sources.Count is < 1 or > 4)
+                errors.Add("Every version-2 item needs a bounded reason and source.");
+        }
+
+        var firstDay = plan.PreferredStartDate > DateOnly.FromDateTime(DateTime.UtcNow)
+            ? plan.PreferredStartDate : DateOnly.FromDateTime(DateTime.UtcNow);
+        var plantingDay = firstDay.AddDays(preparationCount > 0 ? 1 : 0);
+        foreach (var task in taskList)
+            CheckItem(task.Reason, task.Sources);
+        var preparationTasks = taskList.Where(item => item.Sources is { Count: 1 } &&
+            item.Sources[0].Kind == "FieldAnalysis").ToArray();
+        var expectedPreparationReasons = preparations.Select(item =>
+            $"Member 2 recorded: {item[..Math.Min(350, item.Length)]}").ToList();
+        var preparationReasonsMatch = preparationTasks.All(item => expectedPreparationReasons.Remove(item.Reason ?? string.Empty))
+            && expectedPreparationReasons.Count == 0;
+        if (preparationTasks.Length != preparationCount || preparationTasks.Any(item =>
+            !SourceMatches(item.Sources![0], "FieldAnalysis", evidence.FieldAnalysisStepId ?? Guid.Empty, false) ||
+            DateOnly.FromDateTime(item.DueAt) != firstDay || item.Title != "Review recorded field preparation requirement") ||
+            !preparationReasonsMatch)
+            errors.Add("Preparation task evidence, explanation, or timing does not match persisted Member 2 output.");
+
+        var stageDay = plantingDay;
+        var orderedStages = evidence.Stages.OrderBy(item => item.Sequence).ThenBy(item => item.Id).ToArray();
+        if (orderedStages.Select(item => item.Sequence).Distinct().Count() != orderedStages.Length)
+            errors.Add("Verified crop stages have duplicate sequence numbers.");
+        for (var index = 0; index < orderedStages.Length; index++)
+        {
+            if (index > 0)
+            {
+                var duration = orderedStages[index - 1].TypicalMinDays;
+                if (duration is null or < 0) { errors.Add("A verified crop stage duration is missing."); break; }
+                stageDay = stageDay.AddDays(duration.Value);
+            }
+            var stage = orderedStages[index];
+            var matches = taskList.Where(item => item.Sources is { Count: 1 } &&
+                SourceMatches(item.Sources[0], "CropStage", stage.Id, true)).ToArray();
+            if (matches.Length != 1 || DateOnly.FromDateTime(matches[0].DueAt) != stageDay ||
+                matches[0].Title != $"Review {stage.StageName[..Math.Min(120, stage.StageName.Length)]} stage" ||
+                matches[0].Reason != $"Verified stage {stage.Sequence} follows the profile's minimum stage durations.")
+                errors.Add($"Candidate stage {stage.Id} lacks its verified source, explanation, or derived date.");
+        }
+        if (taskList.Any(item => item.Sources is not { Count: 1 } ||
+            item.Sources[0].Kind is not ("FieldAnalysis" or "CropStage")))
+            errors.Add("Candidate task has an unsupported or ambiguous source.");
+
+        foreach (var schedule in output.CandidateIrrigation ?? [])
+        {
+            CheckItem(schedule.Reason, schedule.Sources);
+            if (schedule.Sources is not { Count: 1 }) { errors.Add("Irrigation source is ambiguous."); continue; }
+            var rules = evidence.IrrigationRules.Where(item =>
+                SourceMatches(schedule.Sources[0], "IrrigationRule", item.Id, true, item.VerifiedAt)).ToArray();
+            if (rules.Length != 1 || !TimeOnly.TryParseExact(rules[0].StartTimeUtc, "HH:mm", out var ruleTime) ||
+                schedule.DurationMinutes != rules[0].DurationMinutes ||
+                DateOnly.FromDateTime(schedule.ScheduledAt) != plantingDay.AddDays(rules[0].DayOffsetFromPlanting) ||
+                schedule.ScheduledAt.TimeOfDay < ruleTime.ToTimeSpan() ||
+                (schedule.ScheduledAt.TimeOfDay - ruleTime.ToTimeSpan()).TotalHours is < 0 or > 23 ||
+                (schedule.ScheduledAt.TimeOfDay - ruleTime.ToTimeSpan()).TotalMinutes % 60 != 0 ||
+                schedule.Reason != $"Verified irrigation rule {rules[0].RuleKey[..Math.Min(100, rules[0].RuleKey.Length)]} specifies this offset, UTC time and duration.")
+                errors.Add("Irrigation candidate does not follow a verified rule, explanation, and same-day slot.");
+        }
+
+        var reservationList = output.CandidateReservations ?? [];
+        if (requirements.ValueKind == JsonValueKind.Array && checks.ValueKind == JsonValueKind.Array)
+        {
+            if (reservationList.Count != requirements.GetArrayLength())
+                errors.Add("Reservations do not cover each verified Member 3 requirement exactly once.");
+            var seenStocks = new HashSet<Guid>();
+            var seenResources = new HashSet<(Guid, string)>();
+            foreach (var requirement in requirements.EnumerateArray())
+            {
+                if (requirement.ValueKind != JsonValueKind.Object ||
+                    !requirement.TryGetProperty("ruleId", out var ruleIdElement) || ruleIdElement.ValueKind != JsonValueKind.String || !Guid.TryParse(ruleIdElement.GetString(), out var ruleId) ||
+                    !requirement.TryGetProperty("resourceId", out var resourceIdElement) || resourceIdElement.ValueKind != JsonValueKind.String || !Guid.TryParse(resourceIdElement.GetString(), out var resourceId) ||
+                    !requirement.TryGetProperty("unit", out var unitElement) || unitElement.ValueKind != JsonValueKind.String ||
+                    !requirement.TryGetProperty("requiredQuantity", out var quantityElement) || quantityElement.ValueKind != JsonValueKind.Number || !quantityElement.TryGetDecimal(out var quantity) ||
+                    quantity <= 0 || decimal.Round(quantity, 3) != quantity ||
+                    !requirement.TryGetProperty("requirementStatus", out var statusElement) || statusElement.ValueKind != JsonValueKind.String || statusElement.GetString() != "Sufficient")
+                { errors.Add("A Member 3 requirement is incomplete or not sufficient."); continue; }
+                if (!seenResources.Add((resourceId, unitElement.GetString()!.ToUpperInvariant())))
+                    errors.Add("Duplicate Member 3 resource requirements cannot be reserved twice.");
+                if (!await dbContext.CropRuleReferences.AsNoTracking().AnyAsync(item =>
+                    item.Id == ruleId && item.CropReferenceProfileId == evidence.ProfileId &&
+                    item.RuleType == "ResourceRequirement" && !item.IsDeleted, cancellationToken))
+                    errors.Add("A Member 3 resource rule no longer belongs to the verified profile.");
+                var stockMatches = checks.EnumerateArray().Where(item => item.ValueKind == JsonValueKind.Object &&
+                    item.TryGetProperty("resourceId", out var id) && id.ValueKind == JsonValueKind.String && id.GetString() == resourceId.ToString() &&
+                    item.TryGetProperty("unit", out var unit) && unit.ValueKind == JsonValueKind.String &&
+                    string.Equals(unit.GetString(), unitElement.GetString(), StringComparison.OrdinalIgnoreCase)).ToArray();
+                if (stockMatches.Length != 1 || !stockMatches[0].TryGetProperty("inventoryStockId", out var stockIdElement) ||
+                    stockIdElement.ValueKind != JsonValueKind.String ||
+                    !Guid.TryParse(stockIdElement.GetString(), out var stockId) || !seenStocks.Add(stockId))
+                { errors.Add("Member 3 stock mapping is missing or ambiguous."); continue; }
+                var stockCheck = stockMatches[0];
+                if (!stockCheck.TryGetProperty("requested", out var requested) || requested.ValueKind != JsonValueKind.Number ||
+                    !requested.TryGetDecimal(out var checkedQuantity) || checkedQuantity != quantity ||
+                    !stockCheck.TryGetProperty("availableQuantity", out var available) || available.ValueKind != JsonValueKind.Number ||
+                    !available.TryGetDecimal(out var availableQuantity) || availableQuantity < quantity ||
+                    !stockCheck.TryGetProperty("sufficient", out var sufficient) || sufficient.ValueKind != JsonValueKind.True)
+                    errors.Add("Member 3 stock check does not confirm the required quantity and availability.");
+                var currentStock = await dbContext.InventoryStocks.AsNoTracking()
+                    .Include(item => item.Resource)
+                    .SingleOrDefaultAsync(item => item.Id == stockId && !item.IsDeleted, cancellationToken);
+                if (currentStock?.Resource is null || currentStock.Resource.IsDeleted || !currentStock.Resource.IsActive ||
+                    currentStock.ResourceId != resourceId ||
+                    !string.Equals(currentStock.Resource.Unit, unitElement.GetString(), StringComparison.OrdinalIgnoreCase))
+                    errors.Add("Current inventory no longer matches the verified resource and unit.");
+                var unitName = unitElement.GetString() ?? string.Empty;
+                var unitLabel = unitName[..Math.Min(40, unitName.Length)];
+                var expectedReservationReason =
+                    $"Member 3 verified {quantity.ToString("0.###", CultureInfo.InvariantCulture)} {unitLabel} required and available.";
+                var matching = reservationList.Where(item => item.InventoryStockId == stockId && item.Quantity == quantity &&
+                    item.EstimatedUnitCost is null && item.Sources is { Count: 1 } &&
+                    SourceMatches(item.Sources[0], "ResourceRequirement", ruleId, true) &&
+                    item.Reason == expectedReservationReason).ToArray();
+                if (matching.Length != 1) errors.Add("Reservation quantity, explanation, or source differs from Member 3 evidence.");
+            }
+        }
+        foreach (var reservation in reservationList) CheckItem(reservation.Reason, reservation.Sources);
+        if (reservationList.Any(item => item.EstimatedUnitCost.HasValue) || output.EstimatedCost.HasValue)
+            errors.Add("Version-2 cost cannot be asserted without an authoritative price contract.");
+        return errors;
+    }
+
     private async Task<WorkflowDecisionResponse?> FindReplayAsync(
         Guid workflowId,
         WorkflowDecisionRequest request,
@@ -483,18 +1066,36 @@ public sealed class WorkflowApprovalService(
     {
         IQueryable<AgentWorkflow> query = dbContext.AgentWorkflows
             .Include(item => item.CropPlanRequest)!.ThenInclude(item => item!.Farm)
+            .Include(item => item.CropPlanRequest)!.ThenInclude(item => item!.Field)
+            .Include(item => item.CropPlanRequest)!.ThenInclude(item => item!.CropVariety)
+            .Include(item => item.CropPlanRequest)!.ThenInclude(item => item!.CropType)
             .Include(item => item.Steps)
             .Include(item => item.ValidationResults)
             .Where(item => !item.IsDeleted);
         if (!asTracking) query = query.AsNoTracking();
-        return await ApplyAccess(query).SingleOrDefaultAsync(item => item.Id == workflowId, cancellationToken)
+        var workflow = await ApplyAccess(query).SingleOrDefaultAsync(item => item.Id == workflowId, cancellationToken)
             ?? throw NotFound("AI workflow");
+        if (asTracking && await dbContext.AgentWorkflows.AsNoTracking().AnyAsync(item => item.SupersedesWorkflowId == workflowId, cancellationToken))
+            throw Conflict("WORKFLOW_SUPERSEDED", "This blocked workflow is preserved as history; continue its replacement.");
+        return workflow;
     }
 
     private IQueryable<AgentWorkflow> ApplyAccess(IQueryable<AgentWorkflow> query)
     {
-        if (currentUser.Role != ApplicationRole.Farmer) return query;
         var userId = RequireUser();
+        if (currentUser.Role == ApplicationRole.FieldOfficer)
+            return query.Where(item => item.CropPlanRequestId.HasValue &&
+                (dbContext.FieldInspections.Any(inspection =>
+                    inspection.CropPlanRequestId == item.CropPlanRequestId &&
+                    inspection.InspectorUserId == userId &&
+                    !inspection.IsDeleted)
+                || (item.Status == AgentWorkflowStatus.Pending &&
+                    item.CurrentStep == FieldAnalysisAgentName &&
+                    !dbContext.FieldInspections.Any(inspection =>
+                        inspection.CropPlanRequestId == item.CropPlanRequestId &&
+                        inspection.Purpose == InspectionPurpose.PrePlanting &&
+                        !inspection.IsDeleted))));
+        if (currentUser.Role != ApplicationRole.Farmer) return query;
         return query.Where(item => item.CropPlanRequest != null &&
             (item.CropPlanRequest.RequestedByUserId == userId || item.CropPlanRequest.Farm!.OwnerUserId == userId));
     }

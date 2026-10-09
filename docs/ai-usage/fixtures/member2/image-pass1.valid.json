@@ -1,0 +1,12 @@
+{
+  "contractVersion": 1,
+  "visibleFindings": ["Several brown lesions are visible on the leaf.", "Some surrounding yellowing is visible."],
+  "possibleIssueCategories": ["Fungal", "DiseaseLike"],
+  "severityIndicators": ["Multiple lesions are present."],
+  "uncertainty": "One image is insufficient to confirm a cause.",
+  "requiresFurtherAssessment": true,
+  "searchIntents": [
+    { "issueCategory": "Fungal", "isPrimary": true, "terms": ["rice", "leaf spot symptoms"] },
+    { "issueCategory": "DiseaseLike", "isPrimary": false, "terms": ["rice", "brown lesions"] }
+  ]
+}

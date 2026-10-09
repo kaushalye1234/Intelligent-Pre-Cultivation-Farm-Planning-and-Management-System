@@ -38,6 +38,6 @@ Ten sequential requests to `GET http://127.0.0.1:5087/health` were measured afte
 
 ## Limitations
 
-The local fixture used deterministic fallback output. Weather provider access was unavailable and no stored inspection or inventory rows were present, so the workflow retained human-review warnings. No k6 load run or APK build completion is claimed by this report.
+The local fixture used deterministic fallback output. Weather provider access was unavailable and no stored inspection or inventory rows were present, so the workflow retained human-review warnings. No k6 load run is claimed by this report. An Android debug APK was subsequently built and launch-checked on 2026-10-01; that is artifact evidence, not a performance sample.
 
 The final-submission verification initially hit the external Supabase configuration, then succeeded against the disposable local PostgreSQL container after applying the local connection string and process-scoped JWT settings. The persisted workflow step timing remains one fixture; the repeated health runs provide readiness evidence only, and no load-test percentile claim is made.

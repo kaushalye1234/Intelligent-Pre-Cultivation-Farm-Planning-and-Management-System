@@ -30,6 +30,10 @@ void main() {
           cropTypeId: 'crop-1',
           objective: 'Grow rice',
           status: 2,
+          statusCode: 'awaiting_approval',
+          statusLabel: 'Awaiting Final Approval',
+          overallStatusCode: 'in_progress',
+          overallStatusLabel: 'In Progress',
           preferredStartDate: '2026-10-01',
           preferredEndDate: '2027-01-01',
           budget: 25000,
@@ -45,6 +49,10 @@ void main() {
           cropPlanRequestId: 'plan-1',
           status: 8,
           currentStep: 'Officer review',
+          statusCode: 'awaiting_approval',
+          statusLabel: 'Awaiting Final Approval',
+          overallStatusCode: 'in_progress',
+          overallStatusLabel: 'In Progress',
           warnings: [],
         ),
       }
@@ -77,6 +85,7 @@ void main() {
 
     await tester.tap(find.text('Home'));
     await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
     await tester.ensureVisible(find.text('Create Crop Plan'));
     await tester.tap(find.text('Create Crop Plan'));
     await tester.pumpAndSettle();

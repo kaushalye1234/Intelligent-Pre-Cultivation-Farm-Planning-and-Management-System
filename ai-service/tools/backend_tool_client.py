@@ -36,3 +36,17 @@ class BackendToolClient:
         if response.status_code >= 400 or envelope.status.lower() == "failed":
             raise ToolClientError(envelope.safe_error or "Backend tool call failed safely.")
         return envelope
+
+    async def get_json(self, path: str) -> dict[str, Any]:
+        if not self._token:
+            raise ToolClientError("BACKEND_TOOL_TOKEN is not configured.")
+        headers = {"Authorization": f"Bearer {self._token}"}
+        async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
+            response = await client.get(f"{self._base_url}{path}", headers=headers)
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise ToolClientError("Backend tool returned non-JSON data.") from exc
+        if response.status_code >= 400 or not isinstance(payload, dict):
+            raise ToolClientError("Backend image retrieval failed safely.")
+        return payload

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../state/app_state.dart';
 import '../ui/journey_widgets.dart';
+import '../ui/sri_lankan_district_field.dart';
 
 class FarmOnboardingScreen extends StatefulWidget {
   const FarmOnboardingScreen({super.key});
@@ -16,6 +17,7 @@ class _FarmOnboardingScreenState extends State<FarmOnboardingScreen> {
   final _nameController = TextEditingController();
   final _locationController = TextEditingController();
   final _areaController = TextEditingController();
+  String? _district;
 
   @override
   void dispose() {
@@ -30,6 +32,7 @@ class _FarmOnboardingScreenState extends State<FarmOnboardingScreen> {
     await context.read<AppState>().createOnboardingFarm(
       name: _nameController.text.trim(),
       location: _locationController.text.trim(),
+      district: _district!,
       totalArea: num.parse(_areaController.text.trim()),
     );
   }
@@ -82,7 +85,7 @@ class _FarmOnboardingScreenState extends State<FarmOnboardingScreen> {
                 TextFormField(
                   controller: _locationController,
                   decoration: const InputDecoration(
-                    labelText: 'Location',
+                    labelText: 'Farm address or town / city',
                     prefixIcon: Icon(Icons.location_on_outlined),
                   ),
                   textInputAction: TextInputAction.next,
@@ -94,6 +97,12 @@ class _FarmOnboardingScreenState extends State<FarmOnboardingScreen> {
                     }
                     return null;
                   },
+                ),
+                const SizedBox(height: 14),
+                SriLankanDistrictField(
+                  value: _district,
+                  enabled: !state.isBusy,
+                  onChanged: (district) => setState(() => _district = district),
                 ),
                 const SizedBox(height: 14),
                 TextFormField(

@@ -72,8 +72,10 @@ public sealed record CropRuleReferenceSummary(
 
 public sealed record AgentInspectionSummaryResponse(
     Guid Id,
+    Guid CropPlanRequestId,
     Guid FieldId,
     Guid InspectorUserId,
+    string InspectionPurpose,
     DateTime ScheduledAt,
     DateTime? CompletedAt,
     string Status,
@@ -103,3 +105,10 @@ public sealed record AgentInspectionImageMetadataResponse(
     string ContentType,
     long SizeBytes,
     DateTime CreatedAt);
+
+public sealed record AgentInspectionImageBytesResponse(
+    Guid AnalysisId,
+    Guid InspectionImageId,
+    string ContentType,
+    string ContentSha256,
+    string ImageBase64);

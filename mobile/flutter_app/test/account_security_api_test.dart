@@ -58,6 +58,8 @@ void main() {
       final session = await client.registerFarmer(
         fullName: 'Taylor Farmer',
         email: 'taylor@example.test',
+        phoneNumber: '+94771234567',
+        contactAddress: '25 Wariyapola Road, Kurunegala',
         password: 'a long farm passphrase',
       );
       final payload = jsonDecode(captured.body) as Map<String, dynamic>;
@@ -66,6 +68,11 @@ void main() {
       expect(captured.url.path, '/api/auth/register-farmer');
       expect(captured.headers.containsKey('authorization'), isFalse);
       expect(payload, containsPair('fullName', 'Taylor Farmer'));
+      expect(payload, containsPair('phoneNumber', '+94771234567'));
+      expect(
+        payload,
+        containsPair('contactAddress', '25 Wariyapola Road, Kurunegala'),
+      );
       expect(payload.containsKey('role'), isFalse);
       expect(session.user.role, 1);
       expect(await storage.read(key: 'agriassist.token'), 'access-token');
@@ -199,6 +206,7 @@ void main() {
               'id': 'farm-1',
               'name': 'North Farm',
               'location': 'North',
+              'district': 'Kurunegala',
               'totalArea': 10,
             }),
             201,
@@ -227,6 +235,7 @@ void main() {
       await client.createFarm(
         name: 'North Farm',
         location: 'North',
+        district: 'Kurunegala',
         totalArea: 10,
       );
       await client.createField(
@@ -252,6 +261,7 @@ void main() {
       final farmPayload = jsonDecode(requests[1].body) as Map<String, dynamic>;
       final fieldPayload = jsonDecode(requests[2].body) as Map<String, dynamic>;
       expect(farmPayload['ownerUserId'], isNull);
+      expect(farmPayload, containsPair('district', 'Kurunegala'));
       expect(fieldPayload, containsPair('farmId', 'farm-1'));
       expect(fieldPayload, containsPair('isActive', true));
     },
