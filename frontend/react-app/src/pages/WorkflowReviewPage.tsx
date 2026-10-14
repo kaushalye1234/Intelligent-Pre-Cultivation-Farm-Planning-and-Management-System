@@ -4,6 +4,7 @@ import { ArrowLeft, Check, Play, RotateCcw, X } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api, getErrorMessage } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
+import { FinalGuideRecoveryPanel } from '../components/FinalGuideRecoveryPanel'
 import { TextAreaInput } from '../components/FormControls'
 import { EmptyState, ErrorState, LoadingState } from '../components/States'
 import { StatusPill } from '../components/StatusPill'
@@ -191,6 +192,8 @@ export function WorkflowReviewPage() {
   const schedulingStep = [...review.steps].reverse().find((step) => step.agentName === 'SchedulingValidationAgent' &&
     step.candidateRevision === review.workflow.candidateRevision)
   const proposal = parseSchedulingOutput(schedulingStep?.output)
+  const guideStep = [...review.steps].reverse().find((step) => step.agentName === 'FinalCultivationGuideAgent'
+    && step.candidateRevision === review.workflow.candidateRevision)
   const guidanceDecisionPending = proposal?.cropHealthGuidance?.decision === 'PendingDecision'
   const canGenerate = canDecide
     && (review.workflow.currentStep === 'SchedulingValidationAgent' || review.workflow.status === 10)
@@ -214,6 +217,7 @@ export function WorkflowReviewPage() {
           <span className="muted-text">Candidate revision {review.workflow.candidateRevision} · Version {review.workflow.version} · {review.preferredStartDate} to {review.preferredEndDate} · Budget {review.budget}</span>
         </div>
         <div className="row-actions">
+          {canDecide && [11, 12].includes(review.workflow.status) ? <Button variant="secondary" onClick={() => navigate('/task-approval/workflows/' + id + '/resolve-evidence')}>Resolve missing evidence</Button> : null}
           {canGenerate ? <Button icon={<Play size={15} aria-hidden="true" />} onClick={() => void generateCandidate()} disabled={isSubmitting}>Generate Candidate</Button> : null}
           {canDecide && pendingApproval ? <>
             <Button icon={<Check size={15} aria-hidden="true" />} disabled={guidanceDecisionPending} onClick={() => setDecision('approve')}>Approve Workflow</Button>
@@ -222,6 +226,10 @@ export function WorkflowReviewPage() {
           </> : null}
         </div>
       </section>
+
+      {review.workflow.status === 4 ? <FinalGuideRecoveryPanel workflowId={review.workflow.id}
+        revision={review.workflow.candidateRevision} status={guideStep?.status === 3 ? 'Ready' : guideStep?.status === 2 ? 'Pending' : 'Unavailable'}
+        generatedAt={guideStep?.completedAt} canRetry={canDecide} onRefresh={loadReview} /> : null}
 
       <PrePlantingAssessmentErrorBoundary key={`${review.workflow.cropPlanRequestId}:${review.workflow.version}`}>
         <PrePlantingAssessmentPanel

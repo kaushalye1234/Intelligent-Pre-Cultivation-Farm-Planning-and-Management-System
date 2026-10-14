@@ -260,7 +260,7 @@ public sealed class CropResourceRequirementTests
     public void Reference_profile_validator_checks_resource_requirement_rules()
     {
         var validator = new CropReferenceProfileRequestValidator();
-        CropReferenceProfileRequest Request(params string[] json) => new(Guid.NewGuid(), null, null, "Source", null, "v1", DateTime.UtcNow.AddDays(-1), [],
+        CropReferenceProfileRequest Request(params string[] json) => new(Guid.NewGuid(), null, null, "Source", null, "v1", null, [],
             json.Select(item => new CropReferenceRuleRequest("ResourceRequirement", "Urea", item)).ToList());
 
         Assert.Empty(validator.Validate(Request(SampleUreaRule)));

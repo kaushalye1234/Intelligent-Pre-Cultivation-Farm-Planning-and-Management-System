@@ -32,10 +32,9 @@ public sealed class ResourceRequirementResearchService(
     IRequestValidator<ResourceRequirementResearchRequest> researchValidator,
     IRequestValidator<VerifyResourceRequirementRequest> verifyValidator,
     IResourceRequirementResearchAIClient aiClient,
-    ICropPlanningService cropPlanningService,
     ILogger<ResourceRequirementResearchService> logger) : IResourceRequirementResearchService
 {
-    public const string VerificationMethod = "AdminVerifiedWebResearch";
+    public const string VerificationMethod = "AdminReviewedWebResearchDraft";
     public const string PendingVerification = "PendingVerification";
     private const int MaxOtherCropNames = 200;
     private static readonly HashSet<string> ResearchStatuses =
@@ -121,7 +120,7 @@ public sealed class ResourceRequirementResearchService(
         var ruleKey = RuleKeyFor(resource.Name);
         var now = DateTime.UtcNow;
         var candidates = (await dbContext.CropReferenceProfiles
-                .Include(profile => profile.Rules)
+                .Include(profile => profile.Rules).Include(profile => profile.Stages)
                 .Where(profile => profile.CropTypeId == crop.Id && profile.IsActive && !profile.IsDeleted && profile.VerifiedAt <= now)
                 .ToListAsync(cancellationToken))
             .Where(profile => string.Equals(profile.VarietyName, varietyName, StringComparison.OrdinalIgnoreCase))
@@ -142,74 +141,56 @@ public sealed class ResourceRequirementResearchService(
                 $"This crop already has a verified reference for: {regions}. Leave Region empty or use one of these regions so the existing reference stays complete.");
         }
 
-        if (target is null)
+        // Admin research produces a new inactive draft. It must not mutate an active profile
+        // or claim that an Agricultural Officer verified source values and field regime.
+        var draft = new CropReferenceProfile
         {
-            // No reference exists yet: create one through the existing Admin reference-profile flow and its validator.
-            var created = await cropPlanningService.CreateReferenceProfileAsync(new CropReferenceProfileRequest(
-                crop.Id, request.CropVarietyId, region, sourceName, sourceUrl,
-                $"Admin-verified web research {now:yyyy-MM-dd}", now, [],
-                [new CropReferenceRuleRequest(CropResourceRequirementRule.RuleType, ruleKey, structuredValueJson)]), cancellationToken);
-            var createdRuleId = await dbContext.CropRuleReferences.AsNoTracking()
-                .Where(rule => rule.CropReferenceProfileId == created.Id && !rule.IsDeleted)
-                .Select(rule => rule.Id)
-                .SingleAsync(cancellationToken);
-            logger.LogInformation(
-                "Admin {AdminId} verified resource requirement rule {RuleId} for crop {CropTypeId} and resource {ResourceId} in new profile {ProfileId}",
-                adminId, createdRuleId, crop.Id, resource.Id, created.Id);
-            return Response(created.Id, createdRuleId, true, false);
-        }
-
-        // Append to the existing profile so its stages and their provenance stay intact. Each rule keeps its own
-        // SourceName, SourceUrl and VerifiedAt. A previous rule for the same resource is soft-deleted, because two
-        // rules for one resource make the requirement Unknown.
-        var replaced = false;
-        foreach (var rule in target.Rules.Where(rule => !rule.IsDeleted
-                     && string.Equals(rule.RuleType.Trim(), CropResourceRequirementRule.RuleType, StringComparison.OrdinalIgnoreCase)))
-        {
-            if (!CropResourceRequirementRule.TryParse(rule.StructuredValueJson, out var parsed, out _)) continue;
-            var sameResource = parsed!.ResourceId == resource.Id
-                || (parsed.ResourceId is null && string.Equals(parsed.ResourceName, resource.Name.Trim(), StringComparison.OrdinalIgnoreCase));
-            if (!sameResource) continue;
-            rule.IsDeleted = true;
-            rule.UpdatedAt = now;
-            rule.UpdatedByUserId = adminId;
-            replaced = true;
-        }
-
+            CropTypeId = crop.Id, VarietyName = varietyName, Region = target?.Region ?? region,
+            SourceName = sourceName, SourceUrl = sourceUrl,
+            SourceVersion = $"Officer review pending {now:yyyy-MM-dd}",
+            VerifiedAt = null, IsActive = false,
+            VerificationState = CropReferenceVerificationState.Draft, DraftVersion = 1,
+            CreatedByUserId = adminId,
+            Stages = target?.Stages.Where(stage => !stage.IsDeleted).Select(stage => new CropStageReference
+            {
+                StageName = stage.StageName, Sequence = stage.Sequence,
+                TypicalMinDays = stage.TypicalMinDays, TypicalMaxDays = stage.TypicalMaxDays,
+                Notes = stage.Notes, SourceName = stage.SourceName, SourceUrl = stage.SourceUrl,
+                CreatedByUserId = adminId
+            }).ToList() ?? [],
+            Rules = target?.Rules.Where(rule => !rule.IsDeleted && !SameResource(rule)).Select(rule => new CropRuleReference
+            {
+                RuleType = rule.RuleType, RuleKey = rule.RuleKey, StructuredValueJson = rule.StructuredValueJson,
+                SourceName = rule.SourceName, SourceUrl = rule.SourceUrl, VerifiedAt = default,
+                CreatedByUserId = adminId
+            }).ToList() ?? []
+        };
         var newRule = new CropRuleReference
         {
-            CropReferenceProfileId = target.Id,
             RuleType = CropResourceRequirementRule.RuleType,
             RuleKey = ruleKey,
             StructuredValueJson = structuredValueJson,
             SourceName = sourceName,
             SourceUrl = sourceUrl,
-            VerifiedAt = now,
+            VerifiedAt = default,
             CreatedByUserId = adminId
         };
-        dbContext.CropRuleReferences.Add(newRule);
-        target.UpdatedAt = now;
-        target.UpdatedByUserId = adminId;
-        try
-        {
-            // One SaveChanges: the replacement and the new rule are committed together or not at all.
-            await dbContext.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateException exception)
-        {
-            logger.LogError(exception, "Saving verified resource requirement for crop {CropTypeId} and resource {ResourceId} failed", crop.Id, resource.Id);
-            throw new ApiException(HttpStatusCode.InternalServerError, "RESOURCE_REQUIREMENT_SAVE_FAILED",
-                "The verified requirement could not be saved. No rule was changed.");
-        }
+        draft.Rules.Add(newRule);
+        dbContext.CropReferenceProfiles.Add(draft);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        logger.LogInformation("Admin {AdminId} saved resource evidence draft {ProfileId} for officer verification", adminId, draft.Id);
+        return new VerifiedResourceRequirementResponse(draft.Id, newRule.Id, ruleKey, crop.Id,
+            varietyName, draft.Region, resource.Id, resource.Name, request.QuantityPerArea,
+            resource.Unit, areaUnit, sourceName, sourceUrl, null, true, false,
+            CropReferenceVerificationState.Draft);
 
-        logger.LogInformation(
-            "Admin {AdminId} verified resource requirement rule {RuleId} for crop {CropTypeId} and resource {ResourceId} in profile {ProfileId} (replaced previous: {Replaced})",
-            adminId, newRule.Id, crop.Id, resource.Id, target.Id, replaced);
-        return Response(target.Id, newRule.Id, false, replaced);
-
-        VerifiedResourceRequirementResponse Response(Guid profileId, Guid ruleId, bool createdProfile, bool replacedRule) =>
-            new(profileId, ruleId, ruleKey, crop.Id, varietyName, target?.Region ?? region, resource.Id, resource.Name,
-                request.QuantityPerArea, resource.Unit, areaUnit, sourceName, sourceUrl, now, createdProfile, replacedRule);
+        bool SameResource(CropRuleReference rule)
+        {
+            if (!rule.RuleType.Equals(CropResourceRequirementRule.RuleType, StringComparison.OrdinalIgnoreCase)
+                || !CropResourceRequirementRule.TryParse(rule.StructuredValueJson, out var parsed, out _)) return false;
+            return parsed!.ResourceId == resource.Id
+                || (parsed.ResourceId is null && string.Equals(parsed.ResourceName, resource.Name.Trim(), StringComparison.OrdinalIgnoreCase));
+        }
     }
 
     private async Task<CropType> LoadCropAsync(Guid cropTypeId, CancellationToken cancellationToken)

@@ -1,4 +1,4 @@
-﻿export type ApplicationRole = 1 | 2 | 3 | 4 | 5
+export type ApplicationRole = 1 | 2 | 3 | 4 | 5
 
 export type UserProfile = {
   id: string
@@ -87,10 +87,15 @@ export type CropReferenceProfile = {
   sourceName: string
   sourceUrl?: string | null
   sourceVersion: string
-  verifiedAt: string
+  verifiedAt?: string | null
   isActive: boolean
   stageCount: number
   ruleCount: number
+  verificationState?: number
+  draftVersion?: number
+  verifiedByUserId?: string | null
+  waterRegime?: number | null
+  fieldWaterRegimeVerificationId?: string | null
 }
 
 export type CropReferenceStage = {
@@ -100,6 +105,8 @@ export type CropReferenceStage = {
   typicalMinDays?: number | null
   typicalMaxDays?: number | null
   notes?: string | null
+  sourceName?: string | null
+  sourceUrl?: string | null
 }
 
 export type CropReferenceRule = {
@@ -107,6 +114,8 @@ export type CropReferenceRule = {
   ruleType: string
   ruleKey: string
   structuredValueJson: string
+  sourceName?: string | null
+  sourceUrl?: string | null
 }
 
 export type CropReferenceProfileDetails = {
@@ -118,10 +127,15 @@ export type CropReferenceProfileDetails = {
   sourceName: string
   sourceUrl?: string | null
   sourceVersion: string
-  verifiedAt: string
+  verifiedAt?: string | null
   isActive: boolean
   stages: CropReferenceStage[]
   rules: CropReferenceRule[]
+  verificationState?: number
+  draftVersion?: number
+  verifiedByUserId?: string | null
+  waterRegime?: number | null
+  fieldWaterRegimeVerificationId?: string | null
 }
 
 export type CropPlan = {
@@ -790,3 +804,26 @@ export type WeatherResourceHistoryDetail = {
 }
 
 
+
+
+export type WorkflowEvidenceResolution = {
+  workflowId: string
+  cropPlanRequestId: string
+  cropTypeId: string
+  cropName: string
+  cropVarietyId?: string | null
+  varietyName?: string | null
+  fieldId?: string | null
+  fieldName?: string | null
+  region?: string | null
+  status: number
+  preferredStartDate: string
+  preferredEndDate: string
+  pinnedProfileId?: string | null
+  blockingReasons: string[]
+  profiles: CropReferenceProfile[]
+  compatibleVerifiedProfileIds: string[]
+  successorWorkflowId?: string | null
+  nextResponsibleRole: string
+  canStartReplacement: boolean
+}

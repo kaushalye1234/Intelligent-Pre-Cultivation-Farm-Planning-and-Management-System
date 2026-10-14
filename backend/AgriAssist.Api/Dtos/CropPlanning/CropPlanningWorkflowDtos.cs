@@ -1,10 +1,12 @@
-﻿using AgriAssist.Api.Models.Inspections;
+using AgriAssist.Api.Models.Inspections;
 using AgriAssist.Api.Models.Shared;
 using AgriAssist.Api.Models.CropPlanning;
 using AgriAssist.Api.Dtos.Inspections;
 using System.Text.Json.Serialization;
 
 namespace AgriAssist.Api.Dtos.CropPlanning;
+
+public sealed record StartReplacementRequest(Guid BlockedWorkflowId, Guid VerifiedProfileId, Guid IdempotencyKey);
 
 public sealed record CropPlanningWorkflowStartResponse(
     Guid WorkflowId,
@@ -363,4 +365,6 @@ public sealed record FarmerApprovedPlanResponse(
     IReadOnlyList<FarmerApprovedTaskResponse> ApprovedTasks,
     IReadOnlyList<FarmerApprovedIrrigationResponse> ApprovedIrrigationSchedules,
     FarmerApprovedCropHealthResponse? CropHealth,
-    AgriAssist.Api.Dtos.FinalCultivationGuide.FinalCultivationGuideOutputDto? FinalGuide);
+    AgriAssist.Api.Dtos.FinalCultivationGuide.FinalCultivationGuideOutputDto? FinalGuide,
+    string? FinalGuideStatus = null,
+    DateTime? FinalGuideGeneratedAt = null);

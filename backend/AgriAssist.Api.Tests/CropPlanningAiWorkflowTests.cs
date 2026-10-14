@@ -1,5 +1,6 @@
-﻿using AgriAssist.Api.Data;
+using AgriAssist.Api.Data;
 using AgriAssist.Api.Dtos.CropPlanning;
+using AgriAssist.Api.Dtos.FinalCultivationGuide;
 using System.Text.Json;
 using AgriAssist.Api.Dtos.Shared;
 using AgriAssist.Api.Dtos.Inspections;
@@ -152,7 +153,7 @@ public sealed class CropPlanningAiWorkflowTests
         Assert.Equal("ADMIN_REQUIRED", forbidden.Code);
 
         var profile = await admin.CreateReferenceProfileAsync(new CropReferenceProfileRequest(
-            cropId, active.Id, "Sri Lanka", "Verified source", "https://example.test/rice", "1", DateTime.UtcNow.AddDays(-1),
+            cropId, active.Id, "Sri Lanka", "Verified source", "https://example.test/rice", "1", null,
             [new CropReferenceStageRequest("Establishment", 1, 1, 30, "Source verified")],
             [new CropReferenceRuleRequest("Season", "planting-window", "{\"season\":\"Maha\"}")]), CancellationToken.None);
         Assert.Equal("Bg 352", profile.VarietyName);
@@ -840,6 +841,107 @@ public sealed class CropPlanningAiWorkflowTests
         Assert.Equal(Member2CropHealthContractVersions.FarmerApprovedPlan, result.ContractVersion);
         Assert.Null(result.CropHealth);
         Assert.Equal(data.Request.Objective, result.Objective);
+        Assert.Equal("Unavailable", result.FinalGuideStatus);
+        Assert.Null(result.FinalGuideGeneratedAt);
+    }
+
+    [Fact]
+    public async Task Farmer_approved_plan_tolerates_field_analysis_without_condition_summary()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.Approved);
+        var workflow = ApprovedWorkflow(data, new SchedulingValidationOutput(
+            Guid.Empty, 1, "CandidateReady", true, true, [], [], [], [], null, [], 1));
+        workflow.Steps.Single().OutputJson = JsonSerializer.Serialize(
+            JsonSerializer.Deserialize<SchedulingValidationOutput>(workflow.Steps.Single().OutputJson)! with { WorkflowId = workflow.Id });
+        workflow.Steps.Add(new AgentStep
+        {
+            AgentWorkflow = workflow,
+            AgentName = "CropFieldAnalysisAgent",
+            StepName = "FieldAnalysis",
+            Sequence = 2,
+            Status = AgentStepStatus.Completed,
+            OutputJson = JsonSerializer.Serialize(new { workflowId = workflow.Id, status = "Analyzed", warnings = new[] { "Synthetic evidence only." } })
+        });
+        db.Add(workflow);
+        await db.SaveChangesAsync();
+
+        var result = await NewService(db, data.Farmer.Id, new PlannedAiClient())
+            .GetApprovedPlanAsync(data.Request.Id, CancellationToken.None);
+
+        Assert.Null(result.FieldSummary);
+        Assert.Contains("Synthetic evidence only.", result.Warnings);
+        Assert.Equal("Unavailable", result.FinalGuideStatus);
+    }
+
+    [Theory]
+    [InlineData(AgentStepStatus.Pending, "Pending")]
+    [InlineData(AgentStepStatus.Running, "Pending")]
+    [InlineData(AgentStepStatus.Failed, "Unavailable")]
+    public async Task Farmer_approved_plan_reports_current_revision_guide_step_status(
+        AgentStepStatus stepStatus, string expectedStatus)
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.Approved);
+        var workflow = ApprovedWorkflow(data, new SchedulingValidationOutput(
+            Guid.Empty, 1, "CandidateReady", true, true, [], [], [], [], null, [], 1));
+        workflow.Steps.Single().OutputJson = JsonSerializer.Serialize(
+            JsonSerializer.Deserialize<SchedulingValidationOutput>(workflow.Steps.Single().OutputJson)! with { WorkflowId = workflow.Id });
+        workflow.Steps.Add(new AgentStep
+        {
+            AgentWorkflow = workflow,
+            AgentName = "FinalCultivationGuideAgent",
+            StepName = "FarmerGuide",
+            Sequence = 5,
+            CandidateRevision = 1,
+            Status = stepStatus,
+        });
+        db.Add(workflow);
+        await db.SaveChangesAsync();
+
+        var result = await NewService(db, data.Farmer.Id, new PlannedAiClient())
+            .GetApprovedPlanAsync(data.Request.Id, CancellationToken.None);
+
+        Assert.Equal(expectedStatus, result.FinalGuideStatus);
+        Assert.Null(result.FinalGuide);
+        Assert.Null(result.FinalGuideGeneratedAt);
+    }
+
+    [Fact]
+    public async Task Farmer_approved_plan_labels_only_the_current_revision_guide_with_its_generation_time()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.Approved);
+        var workflow = ApprovedWorkflow(data, new SchedulingValidationOutput(
+            Guid.Empty, 2, "CandidateReady", true, true, [], [], [], [], null, [], 1));
+        workflow.CandidateRevision = 2;
+        workflow.Steps.Single().OutputJson = JsonSerializer.Serialize(
+            JsonSerializer.Deserialize<SchedulingValidationOutput>(workflow.Steps.Single().OutputJson)! with { WorkflowId = workflow.Id });
+        var generatedAt = DateTime.UtcNow.AddMinutes(-5);
+        var currentGuide = new FinalCultivationGuideOutputDto(
+            1, workflow.Id, 2, ["Review the approved tasks."], null, [], [], [], "Approved evidence.");
+        workflow.Steps.Add(new AgentStep
+        {
+            AgentWorkflow = workflow, AgentName = "FinalCultivationGuideAgent", StepName = "FarmerGuide",
+            Sequence = 5, CandidateRevision = 1, Status = AgentStepStatus.Completed,
+            OutputJson = JsonSerializer.Serialize(currentGuide with { ApprovedRevision = 1 }),
+            CompletedAt = generatedAt.AddDays(-1),
+        });
+        workflow.Steps.Add(new AgentStep
+        {
+            AgentWorkflow = workflow, AgentName = "FinalCultivationGuideAgent", StepName = "FarmerGuide",
+            Sequence = 6, CandidateRevision = 2, Status = AgentStepStatus.Completed,
+            OutputJson = JsonSerializer.Serialize(currentGuide), CompletedAt = generatedAt,
+        });
+        db.Add(workflow);
+        await db.SaveChangesAsync();
+
+        var result = await NewService(db, data.Farmer.Id, new PlannedAiClient())
+            .GetApprovedPlanAsync(data.Request.Id, CancellationToken.None);
+
+        Assert.Equal("Ready", result.FinalGuideStatus);
+        Assert.Equal(generatedAt, result.FinalGuideGeneratedAt);
+        Assert.Equal(2, result.FinalGuide?.ApprovedRevision);
     }
 
     [Theory]
@@ -940,6 +1042,82 @@ public sealed class CropPlanningAiWorkflowTests
         });
         return workflow;
     }
+
+    [Fact]
+    public async Task Replacement_workflow_preserves_blocked_history_and_pins_one_verified_profile()
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.PreliminaryGenerated);
+        data.Request.PreferredStartDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(30);
+        data.Request.PreferredEndDate = data.Request.PreferredStartDate.AddDays(120);
+        var old = new AgentWorkflow { CropPlanRequestId = data.Request.Id, InitiatedByUserId = data.Farmer.Id,
+            Status = AgentWorkflowStatus.MissingDependency, CurrentStep = "SchedulingValidationAgent", Version = 7 };
+        var reference = SyntheticVerifiedReference(data);
+        db.AddRange(old, reference);
+        await db.SaveChangesAsync();
+        var service = NewService(db, data.Farmer.Id, new PlannedAiClient(), ApplicationRole.Admin);
+        var request = new StartReplacementRequest(old.Id, reference.Id, Guid.NewGuid());
+
+        var created = await service.StartReplacementWorkflowAsync(data.Request.Id, request, CancellationToken.None);
+        var replay = await service.StartReplacementWorkflowAsync(data.Request.Id, request, CancellationToken.None);
+
+        Assert.Equal(created.WorkflowId, replay.WorkflowId);
+        Assert.Equal(2, await db.AgentWorkflows.CountAsync());
+        Assert.Equal(AgentWorkflowStatus.MissingDependency, old.Status);
+        Assert.Equal(7, old.Version);
+        var replacement = await db.AgentWorkflows.SingleAsync(item => item.Id == created.WorkflowId);
+        Assert.Equal(old.Id, replacement.SupersedesWorkflowId);
+        Assert.Equal(reference.Id, replacement.RequiredCropReferenceProfileId);
+        Assert.Equal(reference.DraftVersion, replacement.RequiredCropReferenceVersion);
+        var conflict = await Assert.ThrowsAsync<ApiException>(() => service.StartReplacementWorkflowAsync(data.Request.Id,
+            request with { IdempotencyKey = Guid.NewGuid() }, CancellationToken.None));
+        Assert.Equal("REPLACEMENT_ALREADY_EXISTS", conflict.Code);
+        Assert.Empty(await db.FarmTasks.ToListAsync());
+        Assert.Empty(await db.IrrigationSchedules.ToListAsync());
+        Assert.Empty(await db.ResourceReservations.ToListAsync());
+    }
+
+    [Theory]
+    [InlineData("stale-window", "PLANNING_WINDOW_STALE")]
+    [InlineData("inactive-profile", "REFERENCE_NOT_COMPATIBLE")]
+    [InlineData("legacy-profile", "REFERENCE_NOT_COMPATIBLE")]
+    [InlineData("wrong-workflow", "BLOCKED_WORKFLOW_MISMATCH")]
+    [InlineData("wrong-role", "ADMIN_REQUIRED")]
+    public async Task Replacement_workflow_requires_eligible_plan_profile_and_admin(string defect, string code)
+    {
+        await using var db = NewDbContext();
+        var data = await SeedPlanAsync(db, CropPlanRequestStatus.PreliminaryGenerated);
+        data.Request.PreferredStartDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(30);
+        data.Request.PreferredEndDate = data.Request.PreferredStartDate.AddDays(120);
+        var old = new AgentWorkflow { CropPlanRequestId = data.Request.Id, InitiatedByUserId = data.Farmer.Id,
+            Status = AgentWorkflowStatus.CandidateBlocked, CurrentStep = "SchedulingValidationAgent" };
+        var reference = SyntheticVerifiedReference(data);
+        if (defect == "stale-window") data.Request.PreferredStartDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-1);
+        if (defect == "inactive-profile") reference.IsActive = false;
+        if (defect == "legacy-profile") reference.VerificationState = CropReferenceVerificationState.LegacyReviewRequired;
+        db.AddRange(old, reference);
+        await db.SaveChangesAsync();
+        var service = NewService(db, data.Farmer.Id, new PlannedAiClient(),
+            defect == "wrong-role" ? ApplicationRole.AgriculturalOfficer : ApplicationRole.Admin);
+        var error = await Assert.ThrowsAsync<ApiException>(() => service.StartReplacementWorkflowAsync(data.Request.Id,
+            new StartReplacementRequest(defect == "wrong-workflow" ? Guid.NewGuid() : old.Id, reference.Id, Guid.NewGuid()), CancellationToken.None));
+        Assert.Equal(code, error.Code);
+        Assert.Single(await db.AgentWorkflows.ToListAsync());
+    }
+
+    private static CropReferenceProfile SyntheticVerifiedReference(SeededPlan data) => new()
+    {
+        CropTypeId = data.Request.CropTypeId, SourceName = "SYNTHETIC TEST SOURCE", SourceUrl = "https://example.test/source",
+        SourceVersion = "test", VerificationState = CropReferenceVerificationState.Verified, VerifiedAt = DateTime.UtcNow,
+        VerifiedByUserId = data.Farmer.Id, WaterRegime = WaterRegime.Irrigated, DraftVersion = 2,
+        FieldWaterRegimeVerification = new FieldWaterRegimeVerification { FieldId = data.Field.Id, WaterRegime = WaterRegime.Irrigated,
+            Observation = "Synthetic officer observation", VerifiedByUserId = data.Farmer.Id, VerifiedAt = DateTime.UtcNow },
+        Stages = [new CropStageReference { StageName = "Maturity", Sequence = 1, TypicalMinDays = 98, TypicalMaxDays = 102,
+            SourceName = "SYNTHETIC TEST SOURCE", SourceUrl = "https://example.test/source" }],
+        Rules = [new CropRuleReference { RuleType = "ResourceRequirement", RuleKey = "Urea",
+            StructuredValueJson = WeatherResourceTestData.SampleUreaRule, SourceName = "SYNTHETIC TEST SOURCE",
+            SourceUrl = "https://example.test/source", VerifiedAt = DateTime.UtcNow }]
+    };
 
     private static AppDbContext NewDbContext() =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);

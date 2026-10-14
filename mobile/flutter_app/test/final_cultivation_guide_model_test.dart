@@ -28,9 +28,13 @@ void main() {
           {'title': 'Prepare the field', 'scheduledAt': '2026-10-19T08:00:00Z'},
         ],
       },
+      'finalGuideStatus': 'Ready',
+      'finalGuideGeneratedAt': '2026-10-19T09:00:00Z',
     });
 
     expect(detail.finalGuide, isNotNull);
+    expect(detail.finalGuideStatus, 'Ready');
+    expect(detail.finalGuideGeneratedAt, '2026-10-19T09:00:00Z');
     expect(detail.finalGuide?.weeklyGuidance, ['Check field drainage.']);
     expect(detail.finalGuide?.monthlyGuidance.single.month, '2026-11');
     expect(
@@ -48,5 +52,21 @@ void main() {
     });
 
     expect(detail.finalGuide, isNull);
+    expect(detail.finalGuideStatus, 'Unavailable');
+  });
+
+  test('pending guide keeps approved work available', () {
+    final detail = FarmerApprovedPlan.fromJson({
+      'contractVersion': 1,
+      'cropPlanRequestId': 'request-1',
+      'approvedTasks': [
+        {'id': 'task-1', 'title': 'Prepare field', 'description': '', 'dueAt': '2026-10-19T09:00:00Z', 'status': 'Approved'},
+      ],
+      'approvedIrrigationSchedules': [],
+      'finalGuideStatus': 'Pending',
+    });
+
+    expect(detail.finalGuideStatus, 'Pending');
+    expect(detail.approvedTasks, hasLength(1));
   });
 }

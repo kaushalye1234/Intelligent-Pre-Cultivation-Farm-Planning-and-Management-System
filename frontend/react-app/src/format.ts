@@ -1,4 +1,4 @@
-export function formatDate(value?: string) {
+export function formatDate(value?: string | null) {
   if (!value) return 'Not set'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
@@ -10,7 +10,7 @@ export function formatDate(value?: string) {
   }).format(date)
 }
 
-export function formatDateTime(value?: string) {
+export function formatDateTime(value?: string | null) {
   if (!value) return 'Not set'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value

@@ -12,6 +12,7 @@ namespace AgriAssist.Api.Services.Resources;
 public interface ICropResourceRequirementService
 {
     Task<CropResourceRequirementsResult> GetRequirementsAsync(Guid cropPlanRequestId, CancellationToken cancellationToken);
+    Task<CropResourceRequirementsResult> GetRequirementsAsync(Guid cropPlanRequestId, Guid? requiredProfileId, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -23,7 +24,10 @@ public sealed class CropResourceRequirementService(AppDbContext dbContext, IConf
 {
     public const string FieldAreaUnitConfigurationKey = "Resources:FieldAreaUnit";
 
-    public async Task<CropResourceRequirementsResult> GetRequirementsAsync(Guid cropPlanRequestId, CancellationToken cancellationToken)
+    public Task<CropResourceRequirementsResult> GetRequirementsAsync(Guid cropPlanRequestId, CancellationToken cancellationToken) =>
+        GetRequirementsAsync(cropPlanRequestId, null, cancellationToken);
+
+    public async Task<CropResourceRequirementsResult> GetRequirementsAsync(Guid cropPlanRequestId, Guid? requiredProfileId, CancellationToken cancellationToken)
     {
         var plan = await dbContext.CropPlanRequests.AsNoTracking()
             .Include(item => item.CropType)
@@ -41,9 +45,11 @@ public sealed class CropResourceRequirementService(AppDbContext dbContext, IConf
         var now = DateTime.UtcNow;
         var profiles = await dbContext.CropReferenceProfiles.AsNoTracking()
             .Include(profile => profile.Rules)
+            .Include(profile => profile.FieldWaterRegimeVerification)
             .Where(profile => profile.CropTypeId == plan.CropTypeId && profile.IsActive && !profile.IsDeleted && profile.VerifiedAt <= now)
             .ToListAsync(cancellationToken);
         var profile = profiles
+            .Where(item => !requiredProfileId.HasValue || (item.Id == requiredProfileId.Value && CropReferenceCompatibility.IsVerifiedForPlan(item, plan)))
             .Where(item => item.Rules.Any(IsRequirementRule))
             .Where(item => item.VarietyName is null || string.Equals(item.VarietyName, varietyName, StringComparison.OrdinalIgnoreCase))
             .Where(item => CropReferenceRegionMatcher.Rank(item.Region, plan.Farm) >= 0)
@@ -57,7 +63,9 @@ public sealed class CropResourceRequirementService(AppDbContext dbContext, IConf
         {
             var subject = varietyName is null ? cropName : $"{cropName} ({varietyName})";
             return new CropResourceRequirementsResult(plan.Id, plan.CropTypeId, cropName, varietyName, field?.Id, field?.Area, fieldAreaUnit,
-                "Unavailable", $"No verified crop-resource requirement is available for {subject}.", null, []);
+                "Unavailable", requiredProfileId.HasValue
+                    ? "The required crop reference is missing, inactive, unverified, or incompatible with the field evidence."
+                    : $"No verified crop-resource requirement is available for {subject}.", null, []);
         }
 
         string? areaProblem = field is null
@@ -127,7 +135,7 @@ public sealed class CropResourceRequirementService(AppDbContext dbContext, IConf
         var calculated = requirements.Count(item => item.Status == RequirementCalculationStatus.Calculated);
         var status = calculated == requirements.Count ? "Available" : "Incomplete";
         var reason = status == "Available" ? null : areaProblem ?? "One or more verified requirements could not be calculated.";
-        var source = new RequirementSourceSummary(profile.Id, profile.SourceName, profile.SourceUrl, profile.SourceVersion, profile.VerifiedAt, profile.Region, profile.VarietyName);
+        var source = new RequirementSourceSummary(profile.Id, profile.SourceName, profile.SourceUrl, profile.SourceVersion, profile.VerifiedAt!.Value, profile.Region, profile.VarietyName);
         return new CropResourceRequirementsResult(plan.Id, plan.CropTypeId, cropName, varietyName, field?.Id, field?.Area, fieldAreaUnit,
             status, reason, source, requirements);
     }

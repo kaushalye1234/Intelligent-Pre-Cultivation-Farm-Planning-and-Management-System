@@ -66,8 +66,13 @@ class EvidenceScheduler:
                 missing.append(f"{label} is missing, incomplete, or from another workflow.")
         if request.field_id is None or request.preferred_end_date < request.preferred_start_date:
             missing.append("A valid field and scheduling window are required.")
-        if not evidence.profile_id or not evidence.verified_at or not evidence.stages:
+        if not evidence.profile_id or not evidence.verified_at:
             missing.append("A verified crop profile with stages is required.")
+        elif not evidence.stages:
+            source = request.weather_resource_output.get("requirementSource")
+            pinned = isinstance(source, dict) and str(source.get("cropReferenceProfileId", "")).lower() == str(evidence.profile_id).lower()
+            missing.append("Member 3 pinned a crop reference profile without growth stages; an officer must verify a compatible profile with stages and resource rules." if pinned
+                           else "A verified crop profile with stages is required.")
         if not all((evidence.coordinator_step_id, evidence.field_analysis_step_id, evidence.weather_resource_step_id)):
             missing.append("Persisted upstream step IDs are required.")
         source = request.weather_resource_output.get("requirementSource")

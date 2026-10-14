@@ -241,6 +241,15 @@ namespace AgriAssist.Api.Migrations
                     b.Property<Guid>("CropTypeId")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("DraftVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1);
+
+                    b.Property<Guid?>("FieldWaterRegimeVerificationId")
+                        .HasColumnType("uuid");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
@@ -275,12 +284,30 @@ namespace AgriAssist.Api.Migrations
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)");
 
-                    b.Property<DateTime>("VerifiedAt")
+                    b.Property<string>("VerificationState")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasDefaultValue("LegacyReviewRequired");
+
+                    b.Property<DateTime?>("VerifiedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("VerifiedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("WaterRegime")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
 
                     b.HasKey("Id");
 
+                    b.HasIndex("FieldWaterRegimeVerificationId");
+
                     b.HasIndex("VerifiedAt");
+
+                    b.HasIndex("VerifiedByUserId");
 
                     b.HasIndex("CropTypeId", "VarietyName", "Region", "IsActive");
 
@@ -588,6 +615,55 @@ namespace AgriAssist.Api.Migrations
                     b.HasIndex("IsActive");
 
                     b.ToTable("Fields");
+                });
+
+            modelBuilder.Entity("AgriAssist.Api.Models.CropPlanning.FieldWaterRegimeVerification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("FieldId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Observation")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("VerifiedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("VerifiedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("WaterRegime")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("VerifiedByUserId");
+
+                    b.HasIndex("FieldId", "VerifiedAt");
+
+                    b.ToTable("FieldWaterRegimeVerifications");
                 });
 
             modelBuilder.Entity("AgriAssist.Api.Models.Inspections.CropIssue", b =>
@@ -1572,6 +1648,15 @@ namespace AgriAssist.Api.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<Guid?>("ReplacementIdempotencyKey")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("RequiredCropReferenceProfileId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("RequiredCropReferenceVersion")
+                        .HasColumnType("integer");
+
                     b.Property<int>("RevisionCount")
                         .HasColumnType("integer");
 
@@ -1579,6 +1664,9 @@ namespace AgriAssist.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");
+
+                    b.Property<Guid?>("SupersedesWorkflowId")
+                        .HasColumnType("uuid");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -1596,7 +1684,15 @@ namespace AgriAssist.Api.Migrations
 
                     b.HasIndex("InitiatedByUserId");
 
+                    b.HasIndex("RequiredCropReferenceProfileId");
+
                     b.HasIndex("Status");
+
+                    b.HasIndex("SupersedesWorkflowId")
+                        .IsUnique();
+
+                    b.HasIndex("CropPlanRequestId", "ReplacementIdempotencyKey")
+                        .IsUnique();
 
                     b.ToTable("AgentWorkflows");
                 });
@@ -1972,7 +2068,19 @@ namespace AgriAssist.Api.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("AgriAssist.Api.Models.CropPlanning.FieldWaterRegimeVerification", "FieldWaterRegimeVerification")
+                        .WithMany()
+                        .HasForeignKey("FieldWaterRegimeVerificationId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("AgriAssist.Api.Models.Shared.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("VerifiedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("CropType");
+
+                    b.Navigation("FieldWaterRegimeVerification");
                 });
 
             modelBuilder.Entity("AgriAssist.Api.Models.CropPlanning.CropRuleReference", b =>
@@ -2028,6 +2136,23 @@ namespace AgriAssist.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Farm");
+                });
+
+            modelBuilder.Entity("AgriAssist.Api.Models.CropPlanning.FieldWaterRegimeVerification", b =>
+                {
+                    b.HasOne("AgriAssist.Api.Models.CropPlanning.Field", "Field")
+                        .WithMany()
+                        .HasForeignKey("FieldId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AgriAssist.Api.Models.Shared.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("VerifiedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Field");
                 });
 
             modelBuilder.Entity("AgriAssist.Api.Models.Inspections.CropIssue", b =>
@@ -2256,6 +2381,16 @@ namespace AgriAssist.Api.Migrations
                         .HasForeignKey("InitiatedByUserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("AgriAssist.Api.Models.CropPlanning.CropReferenceProfile", null)
+                        .WithMany()
+                        .HasForeignKey("RequiredCropReferenceProfileId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("AgriAssist.Api.Models.Shared.AgentWorkflow", null)
+                        .WithMany()
+                        .HasForeignKey("SupersedesWorkflowId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("CropPlanRequest");
 

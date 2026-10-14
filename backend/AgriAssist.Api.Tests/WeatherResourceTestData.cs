@@ -38,12 +38,13 @@ internal static class WeatherResourceTestData
         string resourceUnit = "kg",
         string? ruleJson = SampleUreaRule,
         string farmLocation = "Kurunegala",
-        string? farmDistrict = null)
+        string? farmDistrict = null,
+        string cropTypeName = "Tomato")
     {
         var farmer = new AppUser { FullName = "Farmer", Email = $"farmer.{Guid.NewGuid():N}@example.test", PasswordHash = "hash", Role = ApplicationRole.Farmer, IsActive = true };
         var farm = new Farm { Name = "North Farm", Location = farmLocation, District = farmDistrict, TotalArea = 10, OwnerUser = farmer };
         var field = fieldArea is null ? null : new Field { Name = "Field A", Area = fieldArea.Value, SoilType = "Loam", Farm = farm, IsActive = true };
-        var cropType = new CropType { Name = "Tomato", IsActive = true };
+        var cropType = new CropType { Name = cropTypeName, IsActive = true };
         var request = new CropPlanRequest
         {
             Farm = farm,
@@ -86,7 +87,7 @@ internal static class WeatherResourceTestData
             new AgentStep { AgentName = "WeatherResourceAgent", StepName = "WeatherResourceAnalysis", Sequence = 3 },
             new AgentStep { AgentName = "SchedulingValidationAgent", StepName = "Scheduling", Sequence = 4 }
         ];
-        var resource = new Resource { Name = resourceName, Unit = resourceUnit, ResourceCategory = new ResourceCategory { Name = "Fertilizer" } };
+        var resource = new Resource { Name = resourceName, Unit = resourceUnit, ResourceCategory = new ResourceCategory { Name = cropTypeName == "Tomato" ? "Fertilizer" : "Fertilizer " + cropTypeName } };
         var stock = new InventoryStock { Resource = resource, QuantityOnHand = onHand, ReservedQuantity = reserved, LowStockThreshold = threshold };
         db.AddRange(farmer, farm, cropType, request, workflow, stock);
         if (field is not null) db.Add(field);

@@ -11,7 +11,13 @@ public sealed class CropReferenceProfile : AuditableEntity
     public string SourceName { get; set; } = string.Empty;
     public string? SourceUrl { get; set; }
     public string SourceVersion { get; set; } = string.Empty;
-    public DateTime VerifiedAt { get; set; }
+    public DateTime? VerifiedAt { get; set; }
+    public Guid? VerifiedByUserId { get; set; }
+    public CropReferenceVerificationState VerificationState { get; set; } = CropReferenceVerificationState.LegacyReviewRequired;
+    public int DraftVersion { get; set; } = 1;
+    public WaterRegime? WaterRegime { get; set; }
+    public Guid? FieldWaterRegimeVerificationId { get; set; }
+    public FieldWaterRegimeVerification? FieldWaterRegimeVerification { get; set; }
     public bool IsActive { get; set; } = true;
     public List<CropStageReference> Stages { get; set; } = [];
     public List<CropRuleReference> Rules { get; set; } = [];

@@ -33,6 +33,27 @@ public sealed class CropPlanningWorkflowAuthorizationIntegrationTests
             (await admin.PostAsJsonAsync($"/api/crop-plans/{requestId}/start-ai-workflow", new { })).StatusCode);
     }
 
+    [Fact]
+    public async Task Recovery_actions_enforce_admin_and_officer_roles()
+    {
+        await using var factory = CreateFactory();
+        var id = Guid.NewGuid();
+        using var anonymous = factory.CreateClient();
+        using var farmer = await ClientForAsync(factory, ApplicationRole.Farmer);
+        using var officer = await ClientForAsync(factory, ApplicationRole.AgriculturalOfficer);
+        using var admin = await ClientForAsync(factory, ApplicationRole.Admin);
+        var replacement = new { blockedWorkflowId = Guid.NewGuid(), verifiedProfileId = Guid.NewGuid(), idempotencyKey = Guid.NewGuid() };
+        var verification = new { fieldId = Guid.NewGuid(), waterRegime = 1, observation = "Synthetic observation", expectedDraftVersion = 1, confirmed = true };
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.PostAsJsonAsync($"/api/crop-plans/{id}/replace-blocked-workflow", replacement)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await farmer.PostAsJsonAsync($"/api/crop-plans/{id}/replace-blocked-workflow", replacement)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await officer.PostAsJsonAsync($"/api/crop-plans/{id}/replace-blocked-workflow", replacement)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await admin.PostAsJsonAsync($"/api/crop-plans/{id}/replace-blocked-workflow", replacement)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await admin.PostAsJsonAsync($"/api/crop-planning/crop-reference-profiles/{id}/verify", verification)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await officer.PostAsJsonAsync($"/api/crop-planning/crop-reference-profiles/{id}/verify", verification)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await farmer.GetAsync($"/api/task-approval/workflows/{id}/evidence-resolution")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await officer.GetAsync($"/api/task-approval/workflows/{id}/evidence-resolution")).StatusCode);
+    }
+
     private static async Task<HttpClient> ClientForAsync(WebApplicationFactory<Program> factory, ApplicationRole role)
     {
         var email = $"{role.ToString().ToLowerInvariant()}-{Guid.NewGuid():N}@cropplanning.test";
